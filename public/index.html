@@ -12,18 +12,13 @@
 <!-- LOGIN -->
 <div class="login-overlay" id="loginOverlay">
 <div class="login-box">
-  <div class="logo">realcore</div>
   <h2>Unitleiter-Erfassung</h2>
-  <p>IST-Statusaufnahme &amp; Team / Skill-Matrix<br>Transformation 2026–2029</p>
+  <p>Portfolio, Organisation &amp; Skill-Matrix<br>Transformation 2026–2029</p>
+  <p style="color:var(--rc-muted);font-size:.75rem;text-align:left;margin:-.6rem 0 1rem">Anmeldung mit E-Mail und Passwort. Ihre Unit wird aus der Benutzerverwaltung übernommen.</p>
   <label style="text-align:left">E-Mail-Adresse *</label>
   <input type="email" id="loginEmail" placeholder="vorname.nachname@realcore.de" style="text-align:left">
   <label style="text-align:left">Passwort *</label>
   <input type="password" id="loginPassword" placeholder="Passwort eingeben" style="text-align:left">
-  <label style="text-align:left">Ihre Unit *</label>
-  <select id="loginUnit" style="text-align:left" disabled>
-    <option value="">– Zuerst E-Mail und Passwort eingeben –</option>
-  </select>
-  <p id="loginUnitHint" style="color:var(--rc-muted);font-size:.75rem;text-align:left;margin:-.4rem 0 .6rem">Units werden nach Eingabe der Zugangsdaten geladen.</p>
   <p id="loginError" style="color:#c0392b;font-size:.8rem;font-weight:600;display:none;margin-bottom:.5rem"></p>
   <div class="btn-group" style="justify-content:center">
     <button class="btn btn-primary" onclick="doLogin()">Anmelden &amp; starten</button>
@@ -39,10 +34,9 @@
     <span class="header-unit-hint" id="superAdminViewHint" style="display:none">Nur Ansicht – zum Erfassen eine Unit wählen</span>
   </div>
   <div class="header-main">
-    <div class="logo">realcore</div>
     <div>
       <div class="title">Unitleiter-Erfassung</div>
-      <div class="subtitle">IST-Statusaufnahme &amp; Team / Skill-Matrix · Transformation 2026–2029</div>
+      <div class="subtitle">Portfolio, Organisation &amp; Skill-Matrix · Transformation 2026–2029</div>
     </div>
     <div class="unit-info">
       <span class="unit-badge" id="headerUnit"></span>
@@ -53,191 +47,323 @@
 </div>
 
 <div class="tabs" id="tabs" style="display:none">
-  <div class="tab active" data-page="status">📊 Unit Übersicht</div>
-  <div class="tab" data-page="team">👥 Team Übersicht</div>
-  <div class="tab" data-page="skills">🧠 Skill-Übersicht</div>
-  <div class="tab" data-page="overview">📋 Uebersicht</div>
-  <div class="tab" data-page="export">📤 Export</div>
-  <div class="tab" data-page="admin" id="tabAdmin" style="display:none">⚙️ Admin</div>
+  <div class="tabs-nav-main">
+    <div class="tab active" data-page="portfolio">🧩 Portfolio</div>
+    <div class="tab" data-page="organisation">🏢 Organisation</div>
+    <div class="tab" data-page="skills">🧠 Skills</div>
+    <div class="tab" data-page="overview">📋 Uebersicht</div>
+    <div class="tab" data-page="export">📤 Export</div>
+    <div class="tab" data-page="admin" id="tabAdmin" style="display:none">⚙️ Admin</div>
+  </div>
 </div>
 
 <div class="main" id="appMain" style="display:none">
 
-<!-- ===== IST-STATUS ===== -->
-<div class="page active" id="page-status">
-<div class="three-col" id="statusLayout">
-  <!-- LEFT: NAV -->
-  <div class="nav-panel" id="navPanelStatus">
-    <h4>📍 Navigation</h4>
-    <div class="nav-section"><div class="nav-label">Workstream</div><div id="navWS_status"></div></div>
-    <div class="nav-divider"></div>
-    <div class="nav-section"><div class="nav-label">Kategorie</div><div id="navKat_status"></div></div>
+<!-- ===== PORTFOLIO ===== -->
+<div class="page active" id="page-portfolio">
+  <div class="unit-save-notice" style="display:none" role="status">
+    <strong>Speichern nicht möglich:</strong> Oben ist <em>Alle Units</em> aktiv.
+    Bitte im Bereich <strong>Unit-Ansicht</strong> eine konkrete Unit wählen, dann erfassen und speichern.
   </div>
-  <!-- CENTER -->
-  <div class="status-center-col">
-    <div class="status-subtabs" role="group" aria-label="Unit Übersicht Modus">
-      <button type="button" class="status-subtab-btn active" id="btnStatusSubtabErfassung" data-mode="erfassung">Erfassung</button>
-      <button type="button" class="status-subtab-btn" id="btnStatusSubtabBeispiele" data-mode="beispiele">Beispieldaten</button>
-    </div>
-    <div id="statusPanelErfassung">
-    <div class="card">
-      <h3>IST-Statusaufnahme je Workstream</h3>
-      <p style="color:var(--rc-muted);font-size:.8rem;margin-bottom:.8rem">Erfassen Sie den aktuellen Stand Ihres Bereichs. Waehlen Sie Workstream + Kategorie, beantworten Sie die Leitfrage und setzen Sie die Ampel.</p>
-      <form id="statusForm" autocomplete="off">
-        <input type="hidden" id="s_editId" value="">
-        <div class="row row3">
-          <div>
-            <label>Workstream *</label>
-            <select id="s_workstream" required><option value="">– waehlen –</option>
-              <option value="Portfolio & Markt">📊 Portfolio &amp; Markt</option>
-              <option value="Skills & Mindset">🧠 Skills &amp; Mindset</option>
-              <option value="Organisation & Rollen">🏗️ Organisation &amp; Rollen</option>
-              <option value="Partner & Ecosystem">🤝 Partner &amp; Ecosystem</option>
-            </select>
-          </div>
-          <div>
-            <label>Kategorie *</label>
-            <select id="s_kategorie" required><option value="">– erst WS waehlen –</option></select>
-          </div>
-          <div>
-            <label>Ampel *</label>
-            <select id="s_ampel" required><option value="">– waehlen –</option>
-              <option value="green">🟩 Etabliert / funktioniert</option>
-              <option value="orange">🟧 Begonnen / teilweise</option>
-              <option value="blue">🟦 In Planung</option>
-              <option value="red">🟥 Fehlt / kritisch</option>
-            </select>
-          </div>
-        </div>
-        <label>Bezeichnung / Name</label>
-        <input type="text" id="s_titel" placeholder="z.B. AMS Copilot, KI-Portfolio 2026">
-        <div id="s_leitfrageBox" style="background:#f0f4ff;border-radius:8px;padding:.7rem;margin-bottom:.8rem;font-size:.8rem;color:var(--rc-accent2);display:none">
-          <strong>Leitfrage:</strong> <span id="s_leitfrage"></span>
-        </div>
-        <label>Beschreibung / Erläuterung *</label>
-        <textarea id="s_stand" required placeholder="Beschreibung und Erlaeuterung zum aktuellen Stand..."></textarea>
-        <label>Kommentar / Nachweis</label>
-        <textarea id="s_kommentar" placeholder="Ergaenzende Erlaeuterungen..." style="min-height:45px"></textarea>
-        <div class="row row2"><div><label>Datum</label><input type="date" id="s_datum"></div><div></div></div>
-        <div class="btn-group">
-          <button type="submit" class="btn btn-primary" id="btnStatusSave">💾 Speichern</button>
-          <button type="button" class="btn btn-outline" id="btnStatusCancel" style="display:none" onclick="cancelStatusEdit()">Abbrechen</button>
-        </div>
-      </form>
-    </div>
-    </div>
-    <div id="statusPanelBeispiele" style="display:none">
-      <div class="card">
-        <h3>Beispieldaten Unit Übersicht</h3>
-        <p class="status-examples-note">Nur zur Orientierung – wird nicht gespeichert.</p>
-        <div class="row row2" style="margin-bottom:.8rem">
-          <div>
-            <label>Workstream</label>
-            <select id="statusExamplesWS">
-              <option value="Portfolio & Markt">📊 Portfolio &amp; Markt</option>
-              <option value="Skills & Mindset">🧠 Skills &amp; Mindset</option>
-              <option value="Organisation & Rollen">🏗️ Organisation &amp; Rollen</option>
-              <option value="Partner & Ecosystem">🤝 Partner &amp; Ecosystem</option>
-            </select>
-          </div>
-          <div></div>
-        </div>
-        <div id="statusExamplesContent"></div>
+  <div class="three-col unit-sidebar-layout" id="portfolioLayout">
+    <div class="nav-panel nav-panel-unit-context" id="navPanelPortfolioUnit">
+      <h4>Unit</h4>
+      <div id="portfolioUnitContext">
+        <p class="nav-empty-hint">Wird geladen…</p>
       </div>
     </div>
+    <div class="unit-sidebar-main-col">
+  <div class="card" style="border-left-color:var(--rc-accent2);margin-bottom:1rem">
+    <h3>Portfolio erfassen</h3>
+    <p style="color:var(--rc-muted);font-size:.8rem;margin-bottom:.8rem">
+      Erfassung pro Unit (ohne Workstream): Produkte, Services, Loesungen, Partnergeschaeft und Projektgeschaeft mit Bezeichnung, Beschreibung/Erläuterung, Hinweis, jaehrlichem Umsatz und Ampel.
+    </p>
   </div>
-  <!-- RIGHT: INFO -->
-  <div class="info-panel" id="infoPanelStatus">
-    <h4>ℹ️ Erlaeuterungen &amp; Beispiele</h4>
-    <div id="infoContentStatus">
-      <p style="font-style:italic">Waehlen Sie links einen Workstream und eine Kategorie – hier erscheinen dann Erklaerungen und Beispiele als Orientierungshilfe.</p>
+
+  <details class="card admin-collapsible admin-collapsible--accent portfolio-section" style="border-left-color:var(--rc-accent);margin-bottom:1rem">
+    <summary class="admin-collapsible__summary">
+      <span class="admin-collapsible__chevron" aria-hidden="true">›</span>
+      <span>Produkte</span>
+    </summary>
+    <div class="admin-collapsible__body">
+    <form id="portfolioProdukteForm" autocomplete="off">
+      <input type="hidden" id="pf_prod_editId" value="">
+      <label>Bezeichnung *</label>
+      <input type="text" id="pf_prod_bezeichnung" required placeholder="z.B. AMS Copilot">
+      <label>Beschreibung / Erlaeuterung *</label>
+      <textarea id="pf_prod_beschreibung" required placeholder="Kurzbeschreibung, Nutzen, Status..." style="min-height:70px"></textarea>
+      <label>Hinweis</label>
+      <textarea id="pf_prod_hinweis" placeholder="Ergaenzende Hinweise, offene Punkte..." style="min-height:45px"></textarea>
+      <label>Jaehrlicher Umsatz</label>
+      <input type="text" id="pf_prod_jahresumsatz" placeholder="z.B. 1,2 Mio. EUR">
+      <label>Ampel *</label>
+      <select id="pf_prod_ampel" required>
+        <option value="">– waehlen –</option>
+        <option value="green">🟩 Etabliert / funktioniert</option>
+        <option value="orange">🟧 Begonnen / teilweise</option>
+        <option value="blue">🟦 In Planung</option>
+        <option value="red">🟥 Fehlt / kritisch</option>
+      </select>
+      <div class="btn-group">
+        <button type="submit" class="btn btn-primary">💾 Speichern</button>
+        <button type="button" class="btn btn-outline" id="btnPfProdCancel" style="display:none">Abbrechen</button>
+      </div>
+    </form>
+    <div class="tbl-wrap" style="margin-top:.75rem">
+      <table class="entries">
+        <thead><tr><th>Bezeichnung</th><th>Ampel</th><th>Umsatz/J.</th><th>Beschreibung</th><th>Hinweis</th><th>Aktionen</th></tr></thead>
+        <tbody id="pf_prod_list"></tbody>
+      </table>
+    </div>
+    <p id="pf_prod_empty" style="text-align:center;color:var(--rc-muted);padding:1.1rem;display:none">Noch keine Produkte erfasst.</p>
+    </div>
+  </details>
+
+  <details class="card admin-collapsible admin-collapsible--accent portfolio-section" style="border-left-color:var(--rc-accent);margin-bottom:1rem">
+    <summary class="admin-collapsible__summary">
+      <span class="admin-collapsible__chevron" aria-hidden="true">›</span>
+      <span>Services</span>
+    </summary>
+    <div class="admin-collapsible__body">
+    <form id="portfolioServicesForm" autocomplete="off">
+      <input type="hidden" id="pf_srv_editId" value="">
+      <label>Bezeichnung *</label>
+      <input type="text" id="pf_srv_bezeichnung" required placeholder="z.B. Managed AMS Betrieb">
+      <label>Beschreibung / Erlaeuterung *</label>
+      <textarea id="pf_srv_beschreibung" required placeholder="Kurzbeschreibung, Nutzen, Status..." style="min-height:70px"></textarea>
+      <label>Hinweis</label>
+      <textarea id="pf_srv_hinweis" placeholder="Ergaenzende Hinweise, offene Punkte..." style="min-height:45px"></textarea>
+      <label>Jaehrlicher Umsatz</label>
+      <input type="text" id="pf_srv_jahresumsatz" placeholder="z.B. 1,2 Mio. EUR">
+      <label>Ampel *</label>
+      <select id="pf_srv_ampel" required>
+        <option value="">– waehlen –</option>
+        <option value="green">🟩 Etabliert / funktioniert</option>
+        <option value="orange">🟧 Begonnen / teilweise</option>
+        <option value="blue">🟦 In Planung</option>
+        <option value="red">🟥 Fehlt / kritisch</option>
+      </select>
+      <div class="btn-group">
+        <button type="submit" class="btn btn-primary">💾 Speichern</button>
+        <button type="button" class="btn btn-outline" id="btnPfSrvCancel" style="display:none">Abbrechen</button>
+      </div>
+    </form>
+    <div class="tbl-wrap" style="margin-top:.75rem">
+      <table class="entries">
+        <thead><tr><th>Bezeichnung</th><th>Ampel</th><th>Umsatz/J.</th><th>Beschreibung</th><th>Hinweis</th><th>Aktionen</th></tr></thead>
+        <tbody id="pf_srv_list"></tbody>
+      </table>
+    </div>
+    <p id="pf_srv_empty" style="text-align:center;color:var(--rc-muted);padding:1.1rem;display:none">Noch keine Services erfasst.</p>
+    </div>
+  </details>
+
+  <details class="card admin-collapsible admin-collapsible--accent portfolio-section" style="border-left-color:var(--rc-accent);margin-bottom:1rem">
+    <summary class="admin-collapsible__summary">
+      <span class="admin-collapsible__chevron" aria-hidden="true">›</span>
+      <span>Loesungen</span>
+    </summary>
+    <div class="admin-collapsible__body">
+    <form id="portfolioLoesungenForm" autocomplete="off">
+      <input type="hidden" id="pf_sol_editId" value="">
+      <label>Bezeichnung *</label>
+      <input type="text" id="pf_sol_bezeichnung" required placeholder="z.B. Retail KI Accelerator">
+      <label>Beschreibung / Erlaeuterung *</label>
+      <textarea id="pf_sol_beschreibung" required placeholder="Kurzbeschreibung, Nutzen, Status..." style="min-height:70px"></textarea>
+      <label>Hinweis</label>
+      <textarea id="pf_sol_hinweis" placeholder="Ergaenzende Hinweise, offene Punkte..." style="min-height:45px"></textarea>
+      <label>Jaehrlicher Umsatz</label>
+      <input type="text" id="pf_sol_jahresumsatz" placeholder="z.B. 1,2 Mio. EUR">
+      <label>Ampel *</label>
+      <select id="pf_sol_ampel" required>
+        <option value="">– waehlen –</option>
+        <option value="green">🟩 Etabliert / funktioniert</option>
+        <option value="orange">🟧 Begonnen / teilweise</option>
+        <option value="blue">🟦 In Planung</option>
+        <option value="red">🟥 Fehlt / kritisch</option>
+      </select>
+      <div class="btn-group">
+        <button type="submit" class="btn btn-primary">💾 Speichern</button>
+        <button type="button" class="btn btn-outline" id="btnPfSolCancel" style="display:none">Abbrechen</button>
+      </div>
+    </form>
+    <div class="tbl-wrap" style="margin-top:.75rem">
+      <table class="entries">
+        <thead><tr><th>Bezeichnung</th><th>Ampel</th><th>Umsatz/J.</th><th>Beschreibung</th><th>Hinweis</th><th>Aktionen</th></tr></thead>
+        <tbody id="pf_sol_list"></tbody>
+      </table>
+    </div>
+    <p id="pf_sol_empty" style="text-align:center;color:var(--rc-muted);padding:1.1rem;display:none">Noch keine Loesungen erfasst.</p>
+    </div>
+  </details>
+
+  <details class="card admin-collapsible admin-collapsible--accent portfolio-section" style="border-left-color:var(--rc-accent);margin-bottom:1rem">
+    <summary class="admin-collapsible__summary">
+      <span class="admin-collapsible__chevron" aria-hidden="true">›</span>
+      <span>Partnergeschaeft</span>
+    </summary>
+    <div class="admin-collapsible__body">
+    <form id="portfolioPartnergeschaeftForm" autocomplete="off">
+      <input type="hidden" id="pf_pgs_editId" value="">
+      <label>Bezeichnung *</label>
+      <input type="text" id="pf_pgs_bezeichnung" required placeholder="z.B. Strategische Partnerschaft XYZ">
+      <label>Beschreibung / Erlaeuterung *</label>
+      <textarea id="pf_pgs_beschreibung" required placeholder="Kurzbeschreibung, Nutzen, Status..." style="min-height:70px"></textarea>
+      <label>Hinweis</label>
+      <textarea id="pf_pgs_hinweis" placeholder="Ergaenzende Hinweise, offene Punkte..." style="min-height:45px"></textarea>
+      <label>Jaehrlicher Umsatz</label>
+      <input type="text" id="pf_pgs_jahresumsatz" placeholder="z.B. 1,2 Mio. EUR">
+      <label>Ampel *</label>
+      <select id="pf_pgs_ampel" required>
+        <option value="">– waehlen –</option>
+        <option value="green">🟩 Etabliert / funktioniert</option>
+        <option value="orange">🟧 Begonnen / teilweise</option>
+        <option value="blue">🟦 In Planung</option>
+        <option value="red">🟥 Fehlt / kritisch</option>
+      </select>
+      <div class="btn-group">
+        <button type="submit" class="btn btn-primary">💾 Speichern</button>
+        <button type="button" class="btn btn-outline" id="btnPfPgsCancel" style="display:none">Abbrechen</button>
+      </div>
+    </form>
+    <div class="tbl-wrap" style="margin-top:.75rem">
+      <table class="entries">
+        <thead><tr><th>Bezeichnung</th><th>Ampel</th><th>Umsatz/J.</th><th>Beschreibung</th><th>Hinweis</th><th>Aktionen</th></tr></thead>
+        <tbody id="pf_pgs_list"></tbody>
+      </table>
+    </div>
+    <p id="pf_pgs_empty" style="text-align:center;color:var(--rc-muted);padding:1.1rem;display:none">Noch kein Partnergeschaeft erfasst.</p>
+    </div>
+  </details>
+
+  <details class="card admin-collapsible admin-collapsible--accent portfolio-section" style="border-left-color:var(--rc-accent);margin-bottom:1rem">
+    <summary class="admin-collapsible__summary">
+      <span class="admin-collapsible__chevron" aria-hidden="true">›</span>
+      <span>Projektgeschaeft</span>
+    </summary>
+    <div class="admin-collapsible__body">
+    <form id="portfolioProjektgeschaeftForm" autocomplete="off">
+      <input type="hidden" id="pf_pjg_editId" value="">
+      <label>Bezeichnung *</label>
+      <input type="text" id="pf_pjg_bezeichnung" required placeholder="z.B. SAP S/4HANA Rollout">
+      <label>Beschreibung / Erlaeuterung *</label>
+      <textarea id="pf_pjg_beschreibung" required placeholder="Kurzbeschreibung, Nutzen, Status..." style="min-height:70px"></textarea>
+      <label>Hinweis</label>
+      <textarea id="pf_pjg_hinweis" placeholder="Ergaenzende Hinweise, offene Punkte..." style="min-height:45px"></textarea>
+      <label>Jaehrlicher Umsatz</label>
+      <input type="text" id="pf_pjg_jahresumsatz" placeholder="z.B. 1,2 Mio. EUR">
+      <label>Ampel *</label>
+      <select id="pf_pjg_ampel" required>
+        <option value="">– waehlen –</option>
+        <option value="green">🟩 Etabliert / funktioniert</option>
+        <option value="orange">🟧 Begonnen / teilweise</option>
+        <option value="blue">🟦 In Planung</option>
+        <option value="red">🟥 Fehlt / kritisch</option>
+      </select>
+      <div class="btn-group">
+        <button type="submit" class="btn btn-primary">💾 Speichern</button>
+        <button type="button" class="btn btn-outline" id="btnPfPjgCancel" style="display:none">Abbrechen</button>
+      </div>
+    </form>
+    <div class="tbl-wrap" style="margin-top:.75rem">
+      <table class="entries">
+        <thead><tr><th>Bezeichnung</th><th>Ampel</th><th>Umsatz/J.</th><th>Beschreibung</th><th>Hinweis</th><th>Aktionen</th></tr></thead>
+        <tbody id="pf_pjg_list"></tbody>
+      </table>
+    </div>
+    <p id="pf_pjg_empty" style="text-align:center;color:var(--rc-muted);padding:1.1rem;display:none">Noch kein Projektgeschaeft erfasst.</p>
+    </div>
+  </details>
     </div>
   </div>
-</div>
 </div>
 
-<!-- ===== TEAM ===== -->
-<div class="page" id="page-team">
-<div class="three-col" id="teamLayout">
-  <div class="nav-panel" id="navPanelTeam">
-    <h4>📍 Navigation</h4>
-    <div class="nav-section"><div class="nav-label">Workstream</div><div id="navWS_team"></div></div>
+<!-- ===== ORGANISATION (Aufbau & Rollen je Unit) ===== -->
+<div class="page" id="page-organisation">
+  <div class="unit-save-notice" id="org_unit_save_notice" style="display:none" role="status">
+    <strong>Speichern nicht möglich:</strong> Oben ist <em>Alle Units</em> aktiv (nur Übersicht).
+    Bitte im Bereich <strong>Unit-Ansicht</strong> eine konkrete Unit wählen (z.&nbsp;B. SAP Infrastructure), dann erfassen und speichern.
   </div>
-  <div class="team-center-col">
-    <div class="status-subtabs" role="group" aria-label="Team Übersicht Modus">
-      <button type="button" class="status-subtab-btn active" id="btnTeamSubtabErfassung" data-mode="erfassung">Erfassung</button>
-      <button type="button" class="status-subtab-btn" id="btnTeamSubtabBeispiele" data-mode="beispiele">Beispieldaten</button>
-    </div>
-    <div id="teamPanelErfassung">
-    <div class="card">
-      <h3>Teamuebersicht je Workstream</h3>
-      <p style="color:var(--rc-muted);font-size:.8rem;margin-bottom:.8rem">Erfassen Sie Teams mit Headcount, Rollenmix, Schwerpunkt und Ressourcenlage.</p>
-      <form id="teamForm" autocomplete="off">
-        <input type="hidden" id="t_editId" value="">
-        <div class="row row2">
-          <div><label>Workstream *</label>
-            <select id="t_workstream" required><option value="">– waehlen –</option>
-              <option value="Portfolio & Markt">📊 Portfolio &amp; Markt</option>
-              <option value="Skills & Mindset">🧠 Skills &amp; Mindset</option>
-              <option value="Organisation & Rollen">🏗️ Organisation &amp; Rollen</option>
-              <option value="Partner & Ecosystem">🤝 Partner &amp; Ecosystem</option>
-            </select>
-          </div>
-          <div><label>Bereich / Team *</label><input type="text" id="t_bereich" required placeholder="z.B. Produktentwicklung"></div>
-        </div>
-        <div class="row row4">
-          <div><label>Headcount *</label><input type="number" id="t_headcount" required min="0"></div>
-          <div><label>Offene Stellen</label><input type="number" id="t_offen" min="0"></div>
-          <div><label>Ausbau +12M</label><input type="text" id="t_ausbau" placeholder="+3 (Dev)"></div>
-          <div><label>Status</label>
-            <select id="t_status"><option value="">–</option>
-              <option value="green">🟩 Stabil</option><option value="orange">🟧 Kritisch</option><option value="blue">🟦 In Planung</option><option value="red">🟥 Unterbesetzt</option>
-            </select>
-          </div>
-        </div>
-        <label>Rollenmix (% Verteilung)</label>
-        <input type="text" id="t_rollenmix" placeholder="50% Entwickler, 30% Architekten, 20% UX">
-        <label>Schwerpunkt / Hauptfokus</label>
-        <input type="text" id="t_schwerpunkt" placeholder="Modulentwicklung, API-Design">
-        <label>Bemerkungen</label>
-        <textarea id="t_bemerkung" style="min-height:45px" placeholder="Ergaenzende Hinweise..."></textarea>
-        <div class="btn-group">
-          <button type="submit" class="btn btn-primary">💾 Speichern</button>
-          <button type="button" class="btn btn-outline" id="btnTeamCancel" style="display:none" onclick="cancelTeamEdit()">Abbrechen</button>
-        </div>
-      </form>
-    </div>
-    </div>
-    <div id="teamPanelBeispiele" style="display:none">
-      <div class="card">
-        <h3>Beispieldaten Team Übersicht</h3>
-        <p class="status-examples-note">Nur zur Orientierung – wird nicht gespeichert.</p>
-        <div id="teamExamplesContent"></div>
+  <div class="three-col unit-sidebar-layout" id="organisationLayout">
+    <div class="nav-panel nav-panel-unit-context" id="navPanelOrganisationUnit">
+      <h4>Unit</h4>
+      <div id="orgUnitContext">
+        <p class="nav-empty-hint">Wird geladen…</p>
       </div>
     </div>
+    <div class="unit-sidebar-main-col">
+  <div class="card" style="border-left-color:var(--rc-accent2);margin-bottom:1rem">
+    <h3>Organisatorischer Aufbau der Unit</h3>
+    <p style="color:var(--rc-muted);font-size:.8rem;margin-bottom:.8rem">
+      Erfassung technologischer oder organisatoischer Schwerpunkt sowie Rollen in der Unit
+    </p>
   </div>
-  <div class="info-panel" id="infoPanelTeam">
-    <h4>ℹ️ Teamuebersicht – Hinweise</h4>
-    <div class="info-title">Was erfassen?</div>
-    <p>Erfassen Sie <strong>alle Teams/Bereiche</strong> Ihrer Unit, die zu den Workstreams beitragen. Mindestens 3 Teams je Workstream.</p>
-    <div class="info-hint">💡 Beispielzeilen in den PPTX-Vorlagen dienen der Orientierung – bitte eigene Daten eintragen.</div>
-    <div class="info-example">
-      <strong>Beispiel – Portfolio &amp; Markt:</strong><br>
-      Produktentwicklung | HC: 8 | 50% Dev, 30% Arch, 20% UX | Fokus: Modulentwicklung | 2 offene Stellen | +3 Dev geplant | 🟧
+
+  <form id="organisationForm" autocomplete="off">
+    <input type="hidden" id="org_editId" value="">
+
+    <details class="card admin-collapsible admin-collapsible--accent organisation-section" id="orgSectionGliederung" style="border-left-color:var(--rc-accent);margin-bottom:1rem">
+      <summary class="admin-collapsible__summary">
+        <span class="admin-collapsible__chevron" aria-hidden="true">›</span>
+        <span>Organisatorische Gliederung</span>
+      </summary>
+      <div class="admin-collapsible__body">
+      <label>Gibt es eine Unterteilung nach technologischen oder anderen organisatorischen Gesichtspunkten?</label>
+      <select id="org_hat_gliederung">
+        <option value="">– waehlen –</option>
+        <option value="ja">Ja</option>
+        <option value="nein">Nein</option>
+      </select>
+      <div id="org_gliederung_section" style="margin-top:.75rem;display:none">
+        <p style="color:var(--rc-muted);font-size:.78rem;margin-bottom:.5rem">Erfassen Sie die organisatorischen Bereiche / Unterteilungen Ihrer Unit.</p>
+        <div id="org_gliederung_rows"></div>
+        <div class="btn-group org-section-actions">
+          <button type="button" class="btn btn-outline btn-sm" id="btnOrgGliederungAdd">+ Bereich hinzufuegen</button>
+          <button type="submit" class="btn btn-primary btn-sm org-form-save-btn">💾 Speichern</button>
+        </div>
+        <div id="org_gliederung_charts" class="org-gliederung-charts" hidden>
+          <p class="org-gliederung-charts-intro">Verteilung nach erfassten Bereichen (aktualisiert sich beim Ausfuellen)</p>
+          <div class="org-gliederung-charts-grid">
+            <div class="org-chart-panel">
+              <h4>Headcount nach Bereich</h4>
+              <div id="org_chart_headcount" class="org-pie-chart-wrap" aria-live="polite"></div>
+            </div>
+            <div class="org-chart-panel">
+              <h4>Umsatz nach Bereich</h4>
+              <div id="org_chart_umsatz" class="org-pie-chart-wrap" aria-live="polite"></div>
+            </div>
+          </div>
+        </div>
+      </div>
+      </div>
+    </details>
+
+    <details class="card admin-collapsible admin-collapsible--accent organisation-section" id="orgSectionRollen" style="border-left-color:var(--rc-accent);margin-bottom:1rem">
+      <summary class="admin-collapsible__summary">
+        <span class="admin-collapsible__chevron" aria-hidden="true">›</span>
+        <span>Rollen in der Unit</span>
+      </summary>
+      <div class="admin-collapsible__body">
+      <p style="color:var(--rc-muted);font-size:.78rem;margin-bottom:.5rem">Wie viele Personen haben welche Rolle? Rollen aus Liste waehlen oder unter „Sonstiges“ frei eingeben.</p>
+      <div id="org_rollen_rows"></div>
+      <div id="org_rollen_charts" class="org-gliederung-charts" hidden>
+        <p class="org-gliederung-charts-intro">Verteilung nach erfassten Rollen (aktualisiert sich beim Ausfuellen)</p>
+        <div class="org-gliederung-charts-grid">
+          <div class="org-chart-panel">
+            <h4>Personen nach Rolle</h4>
+            <div id="org_chart_rollen" class="org-pie-chart-wrap" aria-live="polite"></div>
+          </div>
+        </div>
+      </div>
+      <div class="btn-group org-section-actions">
+        <button type="button" class="btn btn-outline btn-sm" id="btnOrgRolleAdd">+ Rolle hinzufuegen</button>
+        <button type="submit" class="btn btn-primary btn-sm org-form-save-btn">💾 Speichern</button>
+      </div>
+      </div>
+    </details>
+  </form>
     </div>
-    <div class="info-example">
-      <strong>Beispiel – Organisation &amp; Rollen:</strong><br>
-      Innovation / Lab | HC: 4 | 50% Engineers, 25% Arch, 25% PO | Fokus: Prototypen | 2 offen | +4 Hub | 🟥
-    </div>
-    <table>
-      <tr><th>Status</th><th>Bedeutung</th></tr>
-      <tr><td>🟩</td><td>Stabil – Team vollstaendig besetzt</td></tr>
-      <tr><td>🟧</td><td>Kritisch – Engpaesse vorhanden</td></tr>
-      <tr><td>🟦</td><td>In Planung – Massnahme vorgesehen</td></tr>
-      <tr><td>🟥</td><td>Unterbesetzt – dringender Handlungsbedarf</td></tr>
-    </table>
   </div>
-</div>
 </div>
 
 <!-- ===== SKILLS ===== -->
@@ -248,66 +374,78 @@
     <button type="button" class="btn btn-sm btn-outline" id="btnSkillEmployeeNew" style="width:100%;margin-bottom:.6rem">+ Neuer Mitarbeiter</button>
     <div id="navSkillEmployees" class="nav-skill-list"></div>
     <p id="navSkillEmployeesEmpty" class="nav-empty-hint" style="display:none">Noch keine Mitarbeiter erfasst.</p>
-    <div class="nav-panel-footer">
-      <div class="nav-divider"></div>
-      <button type="button" class="btn btn-sm btn-outline" id="btnSkillExamplesLoad" style="width:100%;margin-bottom:.35rem">Beispieldaten laden</button>
-      <button type="button" class="btn btn-sm btn-outline" id="btnSkillExamplesRemove" style="width:100%">Beispieldaten entfernen</button>
+  </div>
+  <div class="nav-panel nav-panel-unit-context" id="navPanelMitarbeiterUnit" style="display:none">
+    <h4>🏢 Ihre Unit</h4>
+    <div id="mitarbeiterUnitContext">
+      <p class="nav-empty-hint">Wird geladen…</p>
     </div>
   </div>
   <div class="skills-center-col">
-    <div class="status-subtabs" role="group" aria-label="Skill-Übersicht Modus">
-      <button type="button" class="status-subtab-btn active" id="btnSkillSubtabErfassung" data-mode="erfassung">Erfassung</button>
-      <button type="button" class="status-subtab-btn" id="btnSkillSubtabBeispiele" data-mode="beispiele">Beispieldaten</button>
-    </div>
-    <div id="skillPanelErfassung">
-    <div class="card">
+    <div class="card skill-matrix-card">
       <h3>Skill-Matrix</h3>
-      <p style="color:var(--rc-muted);font-size:.8rem;margin-bottom:.8rem">Pro Mitarbeiter Fachskills und Soft Skills (1:n) gemaess den Assessment-Vorlagen erfassen.</p>
+      <p style="color:var(--rc-muted);font-size:.8rem;margin-bottom:.8rem">Zuerst Mitarbeiter erfassen, danach Fachskills und Soft Skills (1:n) gemaess den Assessment-Vorlagen.</p>
       <div id="skillSaveSuccess" class="save-success-banner" role="status" aria-live="polite" style="display:none"></div>
-      <form id="skillForm" autocomplete="off">
+      <form id="skillForm" autocomplete="off" novalidate>
         <input type="hidden" id="sk_editId" value="">
-        <div class="section-label" style="font-weight:700;font-size:.82rem;color:var(--rc-accent2);margin:.4rem 0 .3rem">Mitarbeiter</div>
-        <div class="row row4">
-          <div><label>Mitarbeiter-ID</label><input type="text" id="sk_mitarbeiter_id" placeholder="z.B. MA001 (optional)"></div>
-          <div><label>Nachname *</label><input type="text" id="sk_nachname" required placeholder="Nachname"></div>
-          <div><label>Vorname *</label><input type="text" id="sk_vorname" required placeholder="Vorname"></div>
-          <div><label>Rolle / Position *</label><input type="text" id="sk_rolle" required placeholder="z.B. Solution Architect"></div>
+        <div class="skill-employee-block">
+          <div class="section-label" style="font-weight:700;font-size:.82rem;color:var(--rc-accent2);margin:.2rem 0 .45rem">Mitarbeiter</div>
+          <div class="row row3">
+            <div><label>Personalnummer</label><input type="text" id="sk_personalnummer" placeholder="z.B. 12345"></div>
+            <div><label>Nachname *</label><input type="text" id="sk_nachname" required placeholder="Nachname"></div>
+            <div><label>Vorname *</label><input type="text" id="sk_vorname" required placeholder="Vorname"></div>
+          </div>
+          <div class="skill-employee-unit-row">
+            <label>Unit</label>
+            <div id="sk_unit_display" class="skill-employee-unit-display">–</div>
+          </div>
+          <div class="row row2 skill-employee-catalog-row">
+            <div>
+              <label>Rollen in der Unit</label>
+              <div id="sk_org_roles" class="skill-catalog-checkboxes" aria-label="Rollen"></div>
+            </div>
+            <div>
+              <label>Positionen</label>
+              <div id="sk_positions" class="skill-catalog-checkboxes" aria-label="Positionen"></div>
+            </div>
+          </div>
+          <p class="skill-employee-catalog-hint">Mindestens eine Rolle oder eine Position auswählen. Mehrfachauswahl möglich.</p>
+          <div class="row row2" style="margin-top:.5rem;margin-bottom:.65rem">
+            <div><label>E-Mail</label><input type="email" id="sk_email" placeholder="optional – sonst automatisch aus Name"></div>
+            <div></div>
+          </div>
         </div>
-        <div class="row row2" style="margin-top:.5rem">
-          <div><label>E-Mail</label><input type="email" id="sk_email" placeholder="optional – sonst automatisch aus Name"></div>
-          <div></div>
-        </div>
-        <div class="section-label" style="font-weight:700;font-size:.82rem;color:var(--rc-accent2);margin:.8rem 0 .3rem">Bewertungen (1:n)</div>
-        <div class="skill-kind-toggle" role="group" aria-label="Skill-Art">
-          <button type="button" class="skill-kind-btn active" data-kind="tech" id="btnSkillKindTech">Fachskills</button>
-          <button type="button" class="skill-kind-btn" data-kind="soft" id="btnSkillKindSoft">Soft Skills</button>
-        </div>
-        <div id="sk_assessment_section">
-          <div id="sk_assessment_rows"></div>
-          <button type="button" class="btn btn-sm btn-outline" onclick="addSkillAssessmentRow()" style="margin-bottom:.8rem">+ Fachskill-Zeile</button>
-        </div>
-        <div id="ss_assessment_section" style="display:none">
-          <div id="ss_assessment_rows"></div>
-          <button type="button" class="btn btn-sm btn-outline" onclick="addSoftSkillAssessmentRow()" style="margin-bottom:.8rem">+ Soft-Skill-Zeile</button>
-        </div>
+
+        <details class="card admin-collapsible admin-collapsible--purple skill-details-tech" id="skillDetailsTech" style="border-left-color:#8e44ad;margin-bottom:.75rem">
+          <summary class="admin-collapsible__summary">
+            <span class="admin-collapsible__chevron" aria-hidden="true">›</span>
+            <span>⚙️ Fachskills</span>
+          </summary>
+          <div class="admin-collapsible__body" id="sk_assessment_section">
+            <ul id="sk_assessment_rows" class="skill-assessment-list" aria-label="Fachskills"></ul>
+            <p id="sk_assessment_empty" class="skill-assessment-empty">Noch keine Fachskills erfasst.</p>
+            <button type="button" class="btn btn-sm btn-outline" onclick="addSkillAssessmentRowFromButton()">+ Fachskill</button>
+          </div>
+        </details>
+
+        <details class="card admin-collapsible admin-collapsible--purple skill-details-soft" id="skillDetailsSoft" style="border-left-color:#9b59b6;margin-bottom:.75rem">
+          <summary class="admin-collapsible__summary">
+            <span class="admin-collapsible__chevron" aria-hidden="true">›</span>
+            <span>🤝 Soft Skills</span>
+          </summary>
+          <div class="admin-collapsible__body" id="ss_assessment_section">
+            <ul id="ss_assessment_rows" class="skill-assessment-list" aria-label="Soft Skills"></ul>
+            <p id="ss_assessment_empty" class="skill-assessment-empty">Noch keine Soft Skills erfasst.</p>
+            <button type="button" class="btn btn-sm btn-outline" onclick="addSoftSkillAssessmentRowFromButton()">+ Soft Skill</button>
+          </div>
+        </details>
+
         <div class="btn-group skill-form-actions">
           <button type="submit" class="btn btn-primary">💾 Speichern</button>
           <button type="button" class="btn btn-danger btn-outline" id="btnSkillDelete" disabled title="Mitarbeiter aus Liste wählen oder speichern">🗑️ Löschen</button>
           <button type="button" class="btn btn-outline" id="btnSkillCancel" style="display:none" onclick="cancelSkillEdit()">Abbrechen</button>
         </div>
       </form>
-    </div>
-    </div>
-    <div id="skillPanelBeispiele" style="display:none">
-      <div class="card">
-        <h3>Beispieldaten Skill-Übersicht</h3>
-        <p class="status-examples-note">Nur zur Orientierung – wird nicht gespeichert. Orientierung an Technologie- und Soft-Skill-Matrix.</p>
-        <div class="skill-kind-toggle" role="group" aria-label="Beispiel-Set" style="margin-bottom:.8rem">
-          <button type="button" class="skill-kind-btn active" id="btnSkillExampleTech" data-kind="technologie">Technologie / Delivery</button>
-          <button type="button" class="skill-kind-btn" id="btnSkillExampleSoft" data-kind="softskill">Soft Skills / Enablement</button>
-        </div>
-        <div id="skillMatrixExamplesContent"></div>
-      </div>
     </div>
   </div>
   <div class="info-panel skills-info-panel" id="infoPanelSkill">
@@ -325,7 +463,7 @@
   <div class="card">
     <h3>Alle Eintraege – <span id="ovUnitLabel"></span></h3>
     <div class="filter-row">
-      <div><label>Typ</label><select id="ov_filterType"><option value="">Alle</option><option value="status">Unit Übersicht</option><option value="team">Team Übersicht</option><option value="skill">Skill-Übersicht</option></select></div>
+      <div><label>Typ</label><select id="ov_filterType"><option value="">Alle</option><option value="portfolio">Portfolio</option><option value="organisation">Organisation</option><option value="skill">Skills</option></select></div>
       <div><label>Workstream</label><select id="ov_filterWS"><option value="">Alle</option><option>Portfolio & Markt</option><option>Skills & Mindset</option><option>Organisation & Rollen</option><option>Partner & Ecosystem</option></select></div>
       <div><label>Suche</label><input type="text" id="ov_filterSearch" placeholder="Freitext..."></div>
     </div>
@@ -355,73 +493,281 @@
 
 <!-- ===== ADMIN ===== -->
 <div class="page" id="page-admin">
-  <div class="card" style="border-left-color:var(--rc-accent)">
-    <h3 style="color:var(--rc-accent)">⚙️ Benutzerverwaltung (Admin)</h3>
-    <p style="color:var(--rc-muted);font-size:.82rem;margin-bottom:1rem">Benutzer anlegen, bearbeiten und loeschen. Unit Leads erhalten eine oder mehrere Units aus der Master-Liste. Mitarbeiter aus der Skill-Uebersicht werden automatisch mit Rolle „Mitarbeiter“ und der Unit des Unit Leads angelegt.</p>
+  <div class="status-subtabs admin-subtabs" role="group" aria-label="Admin Bereich">
+    <button type="button" class="status-subtab-btn active" id="btnAdminSubtabUsers" data-mode="users">👥 Benutzerverwaltung</button>
+    <button type="button" class="status-subtab-btn" id="btnAdminSubtabSkills" data-mode="skills">🧠 Skill-Pflege</button>
+    <button type="button" class="status-subtab-btn" id="btnAdminSubtabRoles" data-mode="roles">👔 Rollen &amp; Positionen</button>
+    <button type="button" class="status-subtab-btn" id="btnAdminSubtabOrg" data-mode="org">🏛️ Organigramm</button>
+  </div>
 
-    <div class="card" id="superAdminUnitsCard" style="border-left-color:var(--rc-orange);margin-bottom:1rem;display:none">
-      <h3>🏢 Units verwalten (Super Admin)</h3>
-      <p style="color:var(--rc-muted);font-size:.78rem;margin-bottom:.75rem">Units anlegen und entfernen. Nur Super Admin.</p>
-      <div class="row row2" style="margin-bottom:.75rem">
-        <div><label>Neue Unit *</label><input type="text" id="adm_unit_name" placeholder="z.B. SAP Infrastructure"></div>
-        <div style="display:flex;align-items:flex-end">
-          <button type="button" class="btn btn-primary" id="btnAdminAddUnit">➕ Unit anlegen</button>
+  <div id="adminPanelUsers">
+    <div class="card" style="border-left-color:var(--rc-accent)">
+      <h3 style="color:var(--rc-accent)">👥 Benutzerverwaltung</h3>
+      <p style="color:var(--rc-muted);font-size:.82rem;margin-bottom:1rem">Units und Benutzer pflegen – inkl. Rollen Geschaeftsfuehrung, Regionalleiter, Unit Lead und Mitarbeiter fuer das Organigramm.</p>
+
+      <details class="card admin-collapsible admin-collapsible--accent2" style="border-left-color:var(--rc-accent2);margin-bottom:1rem">
+        <summary class="admin-collapsible__summary">
+          <span class="admin-collapsible__chevron" aria-hidden="true">›</span>
+          <span>👥 Registrierte Benutzer (<span id="admUserCount">0</span>)</span>
+        </summary>
+        <div class="admin-collapsible__body">
+          <div class="admin-users-new-block" style="margin-bottom:1.25rem;padding-bottom:1.25rem;border-bottom:1px dashed var(--rc-border)">
+            <div class="section-label" style="font-weight:700;font-size:.82rem;color:var(--rc-accent2);margin:0 0 .65rem">Neuen Benutzer anlegen</div>
+            <div class="row row4">
+              <div><label>E-Mail *</label><input type="email" id="adm_email" placeholder="vorname.name@realcore.de"></div>
+              <div><label>Nachname *</label><input type="text" id="adm_nachname" placeholder="Nachname"></div>
+              <div><label>Vorname *</label><input type="text" id="adm_vorname" placeholder="Vorname"></div>
+              <div><label>Initial-Passwort *</label><input type="text" id="adm_pw" placeholder="Temporäres Passwort"></div>
+            </div>
+            <div class="row row2" style="margin-bottom:.5rem">
+              <div><label>Personalnummer</label><input type="text" id="adm_personalnummer" placeholder="z.B. 12345"></div>
+            </div>
+            <p style="color:var(--rc-muted);font-size:.75rem;margin:0 0 .75rem">
+              Positionen, Administration, Rollen (Organisation), Vorgesetzte und Units werden am Mitarbeiter bzw. beim Bearbeiten des Benutzers gepflegt.
+            </p>
+            <div class="btn-group">
+              <button type="button" class="btn btn-primary" id="btnAdminAddUser" onclick="adminAddUser()">➕ Benutzer anlegen</button>
+            </div>
+            <p id="admError" style="color:#c0392b;font-size:.8rem;font-weight:600;display:none;margin-top:.5rem"></p>
+            <p id="admSuccess" style="color:var(--rc-accent);font-size:.8rem;font-weight:600;display:none;margin-top:.5rem"></p>
+          </div>
+          <div class="tbl-wrap">
+            <table class="entries">
+              <thead><tr>
+                <th>Personalnummer</th>
+                <th>E-Mail</th>
+                <th class="adm-users-th-filter">
+                  <span class="adm-users-th-label">Name</span>
+                  <input type="search" id="admUserFilterName" class="adm-users-filter-input" placeholder="Name suchen…" autocomplete="off" aria-label="Benutzer nach Name suchen">
+                </th>
+                <th>Positionen</th>
+                <th>Administration</th>
+                <th>Rollen</th>
+                <th>Vorgesetzte</th>
+                <th class="adm-users-th-filter">
+                  <span class="adm-users-th-label">Units</span>
+                  <select id="admUserFilterUnit" class="adm-users-filter-select" aria-label="Benutzer nach Unit filtern">
+                    <option value="">Alle Units</option>
+                  </select>
+                </th>
+                <th>Aktionen</th>
+              </tr></thead>
+              <tbody id="admUsersBody"></tbody>
+            </table>
+          </div>
         </div>
-      </div>
-      <p id="admUnitError" style="color:#c0392b;font-size:.8rem;font-weight:600;display:none;margin-bottom:.5rem"></p>
-      <div class="tbl-wrap">
-        <table class="entries">
-          <thead><tr><th>Unit</th><th>Aktionen</th></tr></thead>
-          <tbody id="admUnitsBody"></tbody>
-        </table>
-      </div>
-    </div>
+      </details>
 
-    <div class="card" style="border-left-color:var(--rc-accent2);margin-bottom:1rem">
-      <h3>Neuen Benutzer anlegen</h3>
-      <div class="row row4">
-        <div><label>E-Mail *</label><input type="email" id="adm_email" placeholder="vorname.name@realcore.de"></div>
-        <div><label>Nachname *</label><input type="text" id="adm_nachname" placeholder="Nachname"></div>
-        <div><label>Vorname *</label><input type="text" id="adm_vorname" placeholder="Vorname"></div>
-        <div><label>Initial-Passwort *</label><input type="text" id="adm_pw" placeholder="Temporäres Passwort"></div>
-      </div>
-      <div class="row row2" style="margin-bottom:.5rem">
-        <div>
-          <label>Rolle *</label>
-          <select id="adm_role">
-            <option value="unit_lead">Unit Lead</option>
-            <option value="mitarbeiter">Mitarbeiter</option>
-            <option value="admin">Admin</option>
-          </select>
+      <details class="card admin-collapsible admin-collapsible--orange" id="superAdminUnitsCard" style="border-left-color:var(--rc-orange);margin-bottom:1rem;display:none">
+        <summary class="admin-collapsible__summary">
+          <span class="admin-collapsible__chevron" aria-hidden="true">›</span>
+          <span>🏢 Units verwalten (Super Admin)</span>
+        </summary>
+        <div class="admin-collapsible__body">
+          <p style="color:var(--rc-muted);font-size:.78rem;margin-bottom:.75rem">Units anlegen, bearbeiten sowie Unit Leiter und Stellvertreter je Unit pflegen.</p>
+          <div class="row row2" style="margin-bottom:.75rem">
+            <div><label>Neue Unit *</label><input type="text" id="adm_unit_name" placeholder="z.B. SAP Infrastructure"></div>
+            <div style="display:flex;align-items:flex-end">
+              <button type="button" class="btn btn-primary" id="btnAdminAddUnit">➕ Unit anlegen</button>
+            </div>
+          </div>
+          <p id="admUnitError" style="color:#c0392b;font-size:.8rem;font-weight:600;display:none;margin-bottom:.5rem"></p>
+          <div class="tbl-wrap">
+            <table class="entries">
+              <thead><tr><th>Unit</th><th>Unit Leiter</th><th>Stellvertreter</th><th>Aktionen</th></tr></thead>
+              <tbody id="admUnitsBody"></tbody>
+            </table>
+          </div>
         </div>
-        <div></div>
-      </div>
-      <label id="adm_units_label">Units *</label>
-      <div id="adm_units_select" class="unit-checkbox-list"></div>
-      <p id="adm_units_hint" style="color:var(--rc-muted);font-size:.75rem;margin:-.2rem 0 .75rem">Mehrere Units auswählen. Pro Unit kann es mehrere Unit Leads und Mitarbeiter geben.</p>
-      <div class="btn-group">
-        <button class="btn btn-primary" onclick="adminAddUser()">➕ Benutzer anlegen</button>
-      </div>
-      <p id="admError" style="color:#c0392b;font-size:.8rem;font-weight:600;display:none;margin-top:.5rem"></p>
-      <p id="admSuccess" style="color:var(--rc-accent);font-size:.8rem;font-weight:600;display:none;margin-top:.5rem"></p>
-    </div>
+      </details>
 
-    <div class="card" style="border-left-color:var(--rc-accent2)">
-      <h3>Registrierte Benutzer (<span id="admUserCount">0</span>)</h3>
-      <div class="tbl-wrap">
-        <table class="entries">
-          <thead><tr><th>E-Mail</th><th>Name</th><th>Rolle</th><th>Units</th><th>Aktionen</th></tr></thead>
-          <tbody id="admUsersBody"></tbody>
-        </table>
-      </div>
+      <details class="card admin-collapsible admin-collapsible--accent" style="border-left-color:var(--rc-accent);margin-bottom:1rem">
+        <summary class="admin-collapsible__summary">
+          <span class="admin-collapsible__chevron" aria-hidden="true">›</span>
+          <span>⇅ Export / Import</span>
+        </summary>
+        <div class="admin-collapsible__body">
+          <p style="color:var(--rc-muted);font-size:.82rem;margin-bottom:.75rem">
+            Excel (.xlsx): Alle Benutzerdaten exportieren und im gleichen Format wieder importieren.
+            Abgleich ueber die <strong>E-Mail</strong>. Spalten (erste Zeile):
+            <strong>personalnummer</strong>, <strong>nachname</strong>, <strong>vorname</strong>, <strong>email</strong>,
+            <strong>positionen</strong>, <strong>rollen_organisation</strong>, <strong>units</strong>, <strong>standort</strong>,
+            <strong>regionalleiter_email</strong>, <strong>geschaeftsfuehrung_email</strong>, <strong>administration</strong>
+            (Listen mit Semikolon). <strong>standort</strong> fuer Regionalleiter: Essen oder Bremen.
+            Neue Benutzer ohne Position erhalten Rolle Mitarbeiter.
+            Super Admin kann nur in der Oberflaeche vergeben werden.
+          </p>
+          <div class="btn-group" style="margin-bottom:.65rem;flex-wrap:wrap">
+            <button type="button" class="btn btn-outline" id="btnAdminExportUsers">📤 Benutzer exportieren (Excel)</button>
+          </div>
+          <div class="row row2" style="align-items:flex-end;margin-bottom:.5rem">
+            <div>
+              <label>Excel-Datei importieren</label>
+              <input type="file" id="adm_users_import_file" accept=".xlsx,.xls,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet,application/vnd.ms-excel">
+            </div>
+            <div style="display:flex;align-items:flex-end">
+              <button type="button" class="btn btn-primary" id="btnAdminImportUsers">📥 Import starten</button>
+            </div>
+          </div>
+          <p id="admImportError" style="color:#c0392b;font-size:.8rem;font-weight:600;display:none;margin-top:.5rem"></p>
+          <p id="admImportSuccess" style="color:var(--rc-accent);font-size:.8rem;font-weight:600;display:none;margin-top:.5rem"></p>
+        </div>
+      </details>
     </div>
+  </div>
 
-    <div class="card" style="border-left-color:var(--rc-orange);margin-top:1rem">
-      <h3>Erweiterte Optionen</h3>
-      <div class="btn-group">
-        <button class="btn btn-outline" onclick="adminExportUsers()">📄 Benutzer als JSON exportieren</button>
-        <button class="btn btn-outline" onclick="adminResetUsers()">🔄 Auf Standard-Benutzer zuruecksetzen</button>
+  <div id="adminPanelSkills" style="display:none">
+    <div class="card admin-categories-card" style="border-left-color:#8e44ad">
+      <h3 style="color:#8e44ad">🧠 Skill-Pflege</h3>
+      <p style="color:var(--rc-muted);font-size:.82rem;margin-bottom:1rem">Fachskill- und Soft-Skill-Kategorien pflegen. Aenderungen erscheinen in den Pulldown-Menues der Skill-Pflege bei Mitarbeitern und Unit Leads.</p>
+
+      <details class="card admin-collapsible admin-collapsible--purple" style="border-left-color:#8e44ad;margin-bottom:1rem">
+        <summary class="admin-collapsible__summary">
+          <span class="admin-collapsible__chevron" aria-hidden="true">›</span>
+          <span>⚙️ Fachskill-Kategorien (<span id="admTechCatCount">0</span>)</span>
+        </summary>
+        <div class="admin-collapsible__body">
+          <div class="btn-group" style="margin:0 0 .75rem">
+            <button type="button" class="btn btn-primary btn-sm" id="btnAdminCatNewTech">➕ Neue Fachskill-Kategorie</button>
+          </div>
+          <div class="tbl-wrap">
+            <table class="entries">
+              <thead><tr><th>Name</th><th>Beschreibung</th><th>Beispiel-Technologien</th><th>Aktionen</th></tr></thead>
+              <tbody id="admCategoriesBodyTech"></tbody>
+            </table>
+          </div>
+          <p id="admCategoriesEmptyTech" style="text-align:center;color:var(--rc-muted);padding:1.5rem;display:none">Noch keine Fachskill-Kategorien.</p>
+        </div>
+      </details>
+
+      <details class="card admin-collapsible admin-collapsible--purple" style="border-left-color:#9b59b6;margin-bottom:1rem">
+        <summary class="admin-collapsible__summary">
+          <span class="admin-collapsible__chevron" aria-hidden="true">›</span>
+          <span>🤝 Soft-Skill-Kategorien (<span id="admSoftCatCount">0</span>)</span>
+        </summary>
+        <div class="admin-collapsible__body">
+          <div class="btn-group" style="margin:0 0 .75rem">
+            <button type="button" class="btn btn-primary btn-sm" id="btnAdminCatNewSoft">➕ Neue Soft-Skill-Kategorie</button>
+          </div>
+          <div class="tbl-wrap">
+            <table class="entries">
+              <thead><tr><th>Name</th><th>Beschreibung</th><th>Beispiel-Kompetenzen</th><th>Aktionen</th></tr></thead>
+              <tbody id="admCategoriesBodySoft"></tbody>
+            </table>
+          </div>
+          <p id="admCategoriesEmptySoft" style="text-align:center;color:var(--rc-muted);padding:1.5rem;display:none">Noch keine Soft-Skill-Kategorien.</p>
+        </div>
+      </details>
+
+      <details class="card admin-collapsible admin-collapsible--purple" style="border-left-color:#8e44ad;margin-bottom:0">
+        <summary class="admin-collapsible__summary">
+          <span class="admin-collapsible__chevron" aria-hidden="true">›</span>
+          <span>⇅ Export / Import (Kategorien)</span>
+        </summary>
+        <div class="admin-collapsible__body">
+          <p style="color:var(--rc-muted);font-size:.82rem;margin-bottom:.75rem">
+            Excel mit Blatt <strong>skill_kategorien</strong>: Spalten
+            <strong>id</strong>, <strong>kind</strong> (tech|soft), <strong>name</strong>, <strong>beschreibung</strong>,
+            <strong>beispiel</strong>, <strong>sort_order</strong>. Abgleich ueber id oder kind+name.
+          </p>
+          <div class="btn-group" style="margin-bottom:.65rem;flex-wrap:wrap">
+            <button type="button" class="btn btn-outline btn-sm" id="btnAdminExportSkillCategories">📤 Kategorien exportieren</button>
+          </div>
+          <div class="row row2" style="align-items:flex-end;margin-bottom:.5rem">
+            <div>
+              <label>Excel importieren</label>
+              <input type="file" id="adm_skill_categories_import_file" accept=".xlsx,.xls,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet,application/vnd.ms-excel">
+            </div>
+            <div style="display:flex;align-items:flex-end">
+              <button type="button" class="btn btn-primary btn-sm" id="btnAdminImportSkillCategories">📥 Import starten</button>
+            </div>
+          </div>
+          <p id="admSkillCatImportError" style="color:#c0392b;font-size:.8rem;font-weight:600;display:none;margin-top:.5rem"></p>
+          <p id="admSkillCatImportSuccess" style="color:var(--rc-accent);font-size:.8rem;font-weight:600;display:none;margin-top:.5rem"></p>
+        </div>
+      </details>
+    </div>
+  </div>
+
+  <div id="adminPanelRoles" style="display:none">
+    <details class="card admin-collapsible admin-collapsible--teal admin-roles-card" style="border-left-color:#16a085;margin-bottom:1rem">
+      <summary class="admin-collapsible__summary">
+        <span class="admin-collapsible__chevron" aria-hidden="true">›</span>
+        <span>👔 Rollen (Organisation)</span>
+      </summary>
+      <div class="admin-collapsible__body">
+        <p style="color:var(--rc-muted);font-size:.82rem;margin-bottom:1rem">
+          Rollen fuer den Bereich <strong>Organisation → Rollen in der Unit</strong> (z.&nbsp;B. Solution Architect, Projektmanager).
+          Unabhaengig von den Positionen in der Skill-Matrix.
+        </p>
+        <div class="btn-group" style="margin:.75rem 0">
+          <button type="button" class="btn btn-primary btn-sm" id="btnAdminRoleNew">➕ Neue Rolle</button>
+        </div>
+        <div class="tbl-wrap">
+          <table class="entries">
+            <thead><tr><th>Name</th><th>Aktionen</th></tr></thead>
+            <tbody id="admRolesBody"></tbody>
+          </table>
+        </div>
+        <p id="admRolesEmpty" style="text-align:center;color:var(--rc-muted);padding:1.5rem;display:none">Noch keine Rollen hinterlegt.</p>
       </div>
+    </details>
+    <details class="card admin-collapsible admin-collapsible--blue admin-positions-card" style="border-left-color:#2980b9;margin-bottom:1rem">
+      <summary class="admin-collapsible__summary">
+        <span class="admin-collapsible__chevron" aria-hidden="true">›</span>
+        <span>💼 Positionen (Skill-Matrix)</span>
+      </summary>
+      <div class="admin-collapsible__body">
+        <p style="color:var(--rc-muted);font-size:.82rem;margin-bottom:1rem">
+          Positionen fuer <strong>Skills → Rolle / Position</strong> (z.&nbsp;B. Geschaeftsfuehrer, Unit Leiter, Mitarbeiter).
+        </p>
+        <div class="btn-group" style="margin:.75rem 0">
+          <button type="button" class="btn btn-primary btn-sm" id="btnAdminPositionNew">➕ Neue Position</button>
+        </div>
+        <div class="tbl-wrap">
+          <table class="entries">
+            <thead><tr><th>Name</th><th>Aktionen</th></tr></thead>
+            <tbody id="admPositionsBody"></tbody>
+          </table>
+        </div>
+        <p id="admPositionsEmpty" style="text-align:center;color:var(--rc-muted);padding:1.5rem;display:none">Noch keine Positionen hinterlegt.</p>
+      </div>
+    </details>
+    <details class="card admin-collapsible admin-collapsible--teal" style="border-left-color:#16a085;margin-bottom:0">
+      <summary class="admin-collapsible__summary">
+        <span class="admin-collapsible__chevron" aria-hidden="true">›</span>
+        <span>⇅ Export / Import (Rollen &amp; Positionen)</span>
+      </summary>
+      <div class="admin-collapsible__body">
+        <p style="color:var(--rc-muted);font-size:.82rem;margin-bottom:.75rem">
+          Eine Excel-Datei mit zwei Blaettern: <strong>rollen_organisation</strong> und <strong>positionen</strong>
+          (jeweils Spalten <strong>id</strong>, <strong>name</strong>, <strong>sort_order</strong>).
+          Abgleich ueber id oder Name. Umbenennungen werden in Benutzern und Skill-Matrix uebernommen.
+        </p>
+        <div class="btn-group" style="margin-bottom:.65rem;flex-wrap:wrap">
+          <button type="button" class="btn btn-outline btn-sm" id="btnAdminExportCatalogs">📤 Rollen &amp; Positionen exportieren</button>
+        </div>
+        <div class="row row2" style="align-items:flex-end;margin-bottom:.5rem">
+          <div>
+            <label>Excel importieren</label>
+            <input type="file" id="adm_catalogs_import_file" accept=".xlsx,.xls,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet,application/vnd.ms-excel">
+          </div>
+          <div style="display:flex;align-items:flex-end">
+            <button type="button" class="btn btn-primary btn-sm" id="btnAdminImportCatalogs">📥 Import starten</button>
+          </div>
+        </div>
+        <p id="admCatalogImportError" style="color:#c0392b;font-size:.8rem;font-weight:600;display:none;margin-top:.5rem"></p>
+        <p id="admCatalogImportSuccess" style="color:var(--rc-accent);font-size:.8rem;font-weight:600;display:none;margin-top:.5rem"></p>
+      </div>
+    </details>
+  </div>
+
+  <div id="adminPanelOrg" style="display:none">
+    <div class="card admin-org-card admin-org-panel" style="border-left-color:var(--rc-orange);margin-bottom:0">
+      <h3 style="color:var(--rc-orange)">🏛️ Organigramm</h3>
+      <p class="admin-org-intro">Hierarchie: Geschaeftsfuehrung → Regionalleitung → Unit Lead → Units → Mitarbeiter. Sind einer Regionalleitung keine Units zugewiesen, gilt stattdessen die Vorgesetzten-Kette (Regionalleiter → Unit Lead → Mitarbeiter).</p>
+      <div id="adminOrgChart" class="org-chart-wrap" tabindex="0" aria-label="Organigramm – horizontal und vertikal scrollbar"></div>
+      <p id="adminOrgEmpty" style="text-align:center;color:var(--rc-muted);padding:2rem;display:none">Keine Organisationsdaten vorhanden.</p>
     </div>
   </div>
 </div>
@@ -437,12 +783,159 @@
   </div>
 </div>
 
+<div id="admUnitEdit" class="login-overlay" style="display:none;align-items:center;justify-content:center">
+  <div class="login-box" style="max-width:480px;text-align:left">
+    <h3 style="margin-bottom:.75rem">Unit bearbeiten</h3>
+    <input type="hidden" id="adm_unit_edit_id" value="">
+    <label>Unit-Name *</label>
+    <input type="text" id="adm_unit_edit_name" placeholder="z.B. SAP Infrastructure">
+    <label style="margin-top:.5rem">Unit Leiter *</label>
+    <select id="adm_unit_edit_lead_id">
+      <option value="">– Unit Leiter waehlen –</option>
+    </select>
+    <label style="margin-top:.5rem">Stellvertreter</label>
+    <select id="adm_unit_edit_deputy_id">
+      <option value="">– optional –</option>
+    </select>
+    <p id="adm_unit_edit_deputy_hint" style="color:var(--rc-muted);font-size:.75rem;margin:.25rem 0 .75rem">Stellvertreter: Benutzer mit Position „Stellv. Unit Leiter“, gefiltert nach dieser Unit. Optional, darf nicht identisch mit Unit Leiter sein.</p>
+    <p id="admUnitEditError" style="color:#c0392b;font-size:.8rem;font-weight:600;display:none;margin-top:.5rem"></p>
+    <div class="btn-group" style="justify-content:flex-end;margin-top:.75rem">
+      <button type="button" class="btn btn-outline" id="admUnitEditCancel">Abbrechen</button>
+      <button type="button" class="btn btn-primary" id="admUnitEditSave">Speichern</button>
+    </div>
+  </div>
+</div>
+
+<div id="admRoleEdit" class="login-overlay" style="display:none;align-items:center;justify-content:center">
+  <div class="login-box" style="max-width:480px;text-align:left">
+    <h3 style="margin-bottom:.75rem" id="admRoleEditTitle">Rolle bearbeiten</h3>
+    <input type="hidden" id="adm_role_edit_id" value="">
+    <label>Name *</label>
+    <input type="text" id="adm_role_name" placeholder="z.B. Solution Architect">
+    <p id="admRoleEditError" style="color:#c0392b;font-size:.8rem;font-weight:600;display:none;margin-top:.5rem"></p>
+    <div class="btn-group" style="justify-content:flex-end;margin-top:.75rem">
+      <button type="button" class="btn btn-outline" id="admRoleEditCancel">Abbrechen</button>
+      <button type="button" class="btn btn-primary" id="admRoleEditSave">Speichern</button>
+    </div>
+  </div>
+</div>
+
+<div id="admPositionEdit" class="login-overlay" style="display:none;align-items:center;justify-content:center">
+  <div class="login-box" style="max-width:480px;text-align:left">
+    <h3 style="margin-bottom:.75rem" id="admPositionEditTitle">Position bearbeiten</h3>
+    <input type="hidden" id="adm_position_edit_id" value="">
+    <label>Name *</label>
+    <input type="text" id="adm_position_name" placeholder="z.B. Unit Leiter">
+    <p id="admPositionEditError" style="color:#c0392b;font-size:.8rem;font-weight:600;display:none;margin-top:.5rem"></p>
+    <div class="btn-group" style="justify-content:flex-end;margin-top:.75rem">
+      <button type="button" class="btn btn-outline" id="admPositionEditCancel">Abbrechen</button>
+      <button type="button" class="btn btn-primary" id="admPositionEditSave">Speichern</button>
+    </div>
+  </div>
+</div>
+
+<div id="admCategoryEdit" class="login-overlay" style="display:none;align-items:center;justify-content:center">
+  <div class="login-box" style="max-width:520px;text-align:left">
+    <h3 style="margin-bottom:.75rem" id="admCategoryEditTitle">Kategorie bearbeiten</h3>
+    <input type="hidden" id="adm_cat_edit_id" value="">
+    <input type="hidden" id="adm_cat_edit_kind" value="tech">
+    <label>Name *</label>
+    <input type="text" id="adm_cat_name" placeholder="z.B. Cloud & Infrastructure">
+    <label style="margin-top:.5rem">Beschreibung</label>
+    <textarea id="adm_cat_beschreibung" style="min-height:70px" placeholder="Kurze Beschreibung der Kategorie"></textarea>
+    <label style="margin-top:.5rem" id="adm_cat_beispiel_label">Beispiel-Technologien</label>
+    <input type="text" id="adm_cat_beispiel" placeholder="z.B. AWS, Azure, Kubernetes">
+    <p id="admCategoryEditError" style="color:#c0392b;font-size:.8rem;font-weight:600;display:none;margin-top:.5rem"></p>
+    <div class="btn-group" style="justify-content:flex-end;margin-top:.75rem">
+      <button type="button" class="btn btn-outline" id="admCategoryEditCancel">Abbrechen</button>
+      <button type="button" class="btn btn-primary" id="admCategoryEditSave">Speichern</button>
+    </div>
+  </div>
+</div>
+
+<div id="admUserEdit" class="login-overlay" style="display:none;align-items:center;justify-content:center">
+  <div class="login-box" style="max-width:640px;max-height:90vh;overflow:auto;text-align:left">
+    <h3 style="margin-bottom:.75rem">Benutzer bearbeiten</h3>
+    <input type="hidden" id="adm_edit_id" value="">
+    <label>E-Mail *</label>
+    <input type="email" id="adm_edit_email" placeholder="name@realcore.de">
+    <div class="row row2">
+      <div><label>Nachname *</label><input type="text" id="adm_edit_nachname" placeholder="Nachname"></div>
+      <div><label>Vorname *</label><input type="text" id="adm_edit_vorname" placeholder="Vorname"></div>
+    </div>
+    <label>Personalnummer</label>
+    <input type="text" id="adm_edit_personalnummer" placeholder="z.B. 12345">
+    <p id="adm_edit_personalnummer_hint" style="display:none;color:var(--rc-muted);font-size:.75rem;margin:-.2rem 0 .6rem">Nur Admin und Super Admin koennen die Personalnummer aendern.</p>
+    <div class="admin-user-section" style="margin-bottom:.65rem">
+      <h4 style="margin:0 0 .35rem;font-size:.9rem">Positionen *</h4>
+      <div id="adm_edit_user_positions_select" class="unit-checkbox-list" style="margin-bottom:.2rem;max-height:100px;overflow:auto"></div>
+      <p style="color:var(--rc-muted);font-size:.75rem;margin:0 0 .45rem">Steuert Hierarchie, Vorgesetzte und Unit-Zuordnung.</p>
+      <div id="adm_edit_standort_wrap" style="display:none">
+        <label>Standort *</label>
+        <select id="adm_edit_standort">
+          <option value="">– Standort waehlen –</option>
+          <option value="Essen">Essen</option>
+          <option value="Bremen">Bremen</option>
+        </select>
+      </div>
+    </div>
+    <div class="admin-user-section" style="margin-bottom:.65rem;padding:.55rem .65rem;background:var(--rc-surface2, #f4f6f8);border-radius:6px">
+      <h4 style="margin:0 0 .35rem;font-size:.9rem">System-Administration</h4>
+      <div id="adm_edit_privilege_roles_select" class="unit-checkbox-list" style="margin-bottom:.25rem">
+        <label class="unit-checkbox-item"><input type="checkbox" data-admin-role="admin"> Admin</label>
+        <label class="unit-checkbox-item"><input type="checkbox" data-admin-role="super_admin"> Super Admin</label>
+      </div>
+      <div id="adm_edit_super_admin_pw_wrap" style="display:none;margin-bottom:.35rem">
+        <label>Super-Admin-Freischaltung *</label>
+        <input type="password" id="adm_edit_super_admin_pw" placeholder="Freischalt-Passwort" autocomplete="off">
+        <p style="color:var(--rc-muted);font-size:.75rem;margin:.25rem 0 0">Erforderlich zum Zuweisen der Rolle Super Admin.</p>
+      </div>
+    </div>
+    <div class="admin-user-section" style="margin-bottom:.65rem">
+      <h4 style="margin:0 0 .35rem;font-size:.9rem">Rollen (Organisation)</h4>
+      <div id="adm_edit_user_org_roles_select" class="unit-checkbox-list" style="margin-bottom:.2rem;max-height:140px;overflow:auto"></div>
+    </div>
+    <div class="admin-user-section" style="margin-bottom:.65rem">
+      <h4 style="margin:0 0 .35rem;font-size:.9rem">Units *</h4>
+      <div id="adm_edit_units_select" class="unit-checkbox-list" style="margin-bottom:.25rem;max-height:140px;overflow:auto"></div>
+      <p id="adm_edit_units_hint" style="color:var(--rc-muted);font-size:.75rem;margin:0 0 .35rem">Unit Lead und Mitarbeiter benoetigen mindestens eine Unit; Mitarbeiter genau eine.</p>
+      <p id="adm_edit_unit_lead_auto_hint" style="display:none;color:var(--rc-muted);font-size:.75rem;margin:0 0 .65rem"></p>
+    </div>
+    <div id="adm_edit_geschaeftsfuehrung_wrap" style="display:none">
+      <label>Vorgesetzte (Geschaeftsfuehrung)</label>
+      <select id="adm_edit_geschaeftsfuehrung_id">
+        <option value="">– optional –</option>
+      </select>
+      <p style="color:var(--rc-muted);font-size:.75rem;margin:.25rem 0 .75rem">Optional: zustaendige Geschaeftsfuehrung fuer den Regionalleiter.</p>
+    </div>
+    <div id="adm_edit_regionalleiter_wrap" style="display:none">
+      <label>Vorgesetzte (Regionalleiter) *</label>
+      <select id="adm_edit_regionalleiter_id">
+        <option value="">– Regionalleiter waehlen –</option>
+      </select>
+      <p style="color:var(--rc-muted);font-size:.75rem;margin:.25rem 0 .75rem">Ein Regionalleiter kann mehrere Unit Leads haben.</p>
+    </div>
+    <div id="adm_edit_unit_lead_wrap" style="display:none" aria-hidden="true">
+      <select id="adm_edit_unit_lead_id" hidden>
+        <option value=""></option>
+      </select>
+    </div>
+    <label>Neues Passwort</label>
+    <input type="text" id="adm_edit_pw" placeholder="Leer lassen = unverändert" autocomplete="new-password">
+    <p id="admEditError" style="color:#c0392b;font-size:.8rem;font-weight:600;display:none;margin-top:.5rem"></p>
+    <div class="btn-group" style="justify-content:flex-end;margin-top:.75rem">
+      <button type="button" class="btn btn-outline" id="admUserEditCancel">Abbrechen</button>
+      <button type="button" class="btn btn-primary" id="admUserEditSave">Speichern</button>
+    </div>
+  </div>
+</div>
+
 </div>
 <div class="toast" id="toast"></div>
 
-<script src="/js/status-examples-data.js"></script>
-<script src="/js/team-examples-data.js"></script>
+<script src="/vendor/xlsx/xlsx.full.min.js"></script>
 <script src="/js/skill-matrix-examples-data.js"></script>
 <script src="/js/skill-ref-data.js"></script>
 <script src="/js/soft-skill-ref-data.js"></script>
+<script src="/js/organisation-ref-data.js"></script>
 <script src="/js/app.js"></script>

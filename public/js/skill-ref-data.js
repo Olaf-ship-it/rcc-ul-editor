@@ -2,7 +2,7 @@
 
 const SELECT_SONSTIGES = "__sonstiges__";
 
-const SKILL_CATEGORIES = [
+const DEFAULT_SKILL_CATEGORIES = [
   {
     id: "cloud",
     name: "Cloud & Infrastructure",
@@ -65,6 +65,17 @@ const SKILL_CATEGORIES = [
   },
 ];
 
+let SKILL_CATEGORIES = DEFAULT_SKILL_CATEGORIES.map((c) => ({ ...c }));
+
+function setSkillCategories(categories) {
+  SKILL_CATEGORIES = (categories || []).map((c) => ({
+    id: c.id != null ? String(c.id) : c.slug || c.name,
+    name: c.name,
+    beschreibung: c.beschreibung || "",
+    beispielTechnologien: c.beispielTechnologien || c.beispiel || "",
+  }));
+}
+
 const SKILL_LEVELS = [
   {
     level: 1,
@@ -110,11 +121,6 @@ const SKILL_EXAMPLES = [
         kategorie: "Cloud & Infrastructure",
         technologie: "AWS, Terraform, Kubernetes",
         level: 4,
-        zertifikatVorhanden: "Ja",
-        zertifikatDetails: "AWS Solutions Architect Professional (2024)",
-        interesseWeiterbildung: "Mittel",
-        letzteAnwendung: "2026-05-15",
-        projektBeispiel: "Migration Cloud-ERP (Projekt Alpha)",
         bemerkungen: "Schwerpunkt IaC",
       },
     ],
@@ -130,11 +136,6 @@ const SKILL_EXAMPLES = [
         kategorie: "Data & Analytics",
         technologie: "Python, SQL, Snowflake, dbt",
         level: 3,
-        zertifikatVorhanden: "Nein",
-        zertifikatDetails: "",
-        interesseWeiterbildung: "Hoch",
-        letzteAnwendung: "2026-05-20",
-        projektBeispiel: "DWH-Modernisierung (Projekt Beta)",
         bemerkungen: "Interesse an ML-Integration",
       },
     ],
@@ -150,11 +151,6 @@ const SKILL_EXAMPLES = [
         kategorie: "AI & Machine Learning",
         technologie: "Azure OpenAI, Prompt Engineering, LangChain",
         level: 2,
-        zertifikatVorhanden: "Nein",
-        zertifikatDetails: "",
-        interesseWeiterbildung: "Hoch",
-        letzteAnwendung: "2026-04-10",
-        projektBeispiel: "Chatbot POC (Projekt Gamma)",
         bemerkungen: "Noch in Lernphase",
       },
     ],
@@ -163,6 +159,12 @@ const SKILL_EXAMPLES = [
 
 function getCategoryByName(name) {
   return SKILL_CATEGORIES.find((c) => c.name === name) || null;
+}
+
+function getCategoryById(id) {
+  const n = Number(id);
+  if (!Number.isInteger(n) || n <= 0) return null;
+  return SKILL_CATEGORIES.find((c) => Number(c.id) === n) || null;
 }
 
 function getLevelDef(level) {
@@ -185,13 +187,22 @@ function isKnownCategory(name) {
   return !!getCategoryByName(name);
 }
 
+function isKnownCategoryId(id) {
+  return !!getCategoryById(id);
+}
+
 function isKnownLevel(level) {
   return !!getLevelDef(level);
 }
 
-function resolveCategorySelect(kategorie) {
+function resolveCategorySelect(kategorie, kategorieId) {
+  const id = Number(kategorieId);
+  if (Number.isInteger(id) && id > 0 && isKnownCategoryId(id)) {
+    return { value: String(id), other: "" };
+  }
   if (!kategorie) return { value: "", other: "" };
-  if (isKnownCategory(kategorie)) return { value: kategorie, other: "" };
+  const byName = getCategoryByName(kategorie);
+  if (byName) return { value: String(byName.id), other: "" };
   return { value: SELECT_SONSTIGES, other: kategorie };
 }
 
@@ -203,12 +214,14 @@ function resolveLevelSelect(level, levelCustom) {
   return { value: "", other: "" };
 }
 
-function buildCategoryOptions(selected) {
-  const resolved = resolveCategorySelect(selected);
+function buildCategoryOptions(selected, selectedId) {
+  const resolved = resolveCategorySelect(selected, selectedId);
   let html = '<option value="">– Kategorie waehlen –</option>';
   SKILL_CATEGORIES.forEach((c) => {
-    const sel = c.name === resolved.value ? " selected" : "";
-    html += `<option value="${c.name.replace(/"/g, "&quot;")}"${sel}>${c.name}</option>`;
+    const id = Number(c.id);
+    if (!Number.isInteger(id) || id <= 0) return;
+    const sel = String(id) === String(resolved.value) ? " selected" : "";
+    html += `<option value="${id}"${sel}>${c.name.replace(/"/g, "&quot;")}</option>`;
   });
   const osel = resolved.value === SELECT_SONSTIGES ? " selected" : "";
   html += `<option value="${SELECT_SONSTIGES}"${osel}>Sonstiges (manuelle Eingabe)</option>`;

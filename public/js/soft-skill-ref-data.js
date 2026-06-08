@@ -1,6 +1,6 @@
 /* Referenzdaten aus Mitarbeiter_Soft_Skill_Assessment.xlsx */
 
-const SOFT_SKILL_CATEGORIES = [
+const DEFAULT_SOFT_SKILL_CATEGORIES = [
   {
     id: "kommunikation",
     name: "Kommunikation & Präsentation",
@@ -63,6 +63,17 @@ const SOFT_SKILL_CATEGORIES = [
   },
 ];
 
+let SOFT_SKILL_CATEGORIES = DEFAULT_SOFT_SKILL_CATEGORIES.map((c) => ({ ...c }));
+
+function setSoftSkillCategories(categories) {
+  SOFT_SKILL_CATEGORIES = (categories || []).map((c) => ({
+    id: c.id != null ? String(c.id) : c.slug || c.name,
+    name: c.name,
+    beschreibung: c.beschreibung || "",
+    beispielKompetenzen: c.beispielKompetenzen || c.beispiel || "",
+  }));
+}
+
 const SOFT_SKILL_LEVELS = [
   {
     level: 1,
@@ -108,11 +119,6 @@ const SOFT_SKILL_EXAMPLES = [
         kategorie: "Vertrieb & Akquise",
         kompetenz: "B2B-Vertrieb, Cold Calling, Account Management",
         level: 4,
-        nachweise: "Ja",
-        zertifikatDetails: "Verkaufstraining Sandler Method (2023)",
-        entwicklungsinteresse: "Mittel",
-        letzteAnwendung: "2026-05-28",
-        kontextBeispiel: "Neukundengewinnung Q1/2026: 5 Enterprise-Deals abgeschlossen",
         bemerkungen: "Stärke: Beziehungsaufbau",
       },
     ],
@@ -128,11 +134,6 @@ const SOFT_SKILL_EXAMPLES = [
         kategorie: "Kommunikation & Präsentation",
         kompetenz: "Stakeholder-Präsentationen, Workshop-Moderation",
         level: 3,
-        nachweise: "Nein",
-        zertifikatDetails: "",
-        entwicklungsinteresse: "Hoch",
-        letzteAnwendung: "2026-05-20",
-        kontextBeispiel: "Quartals-Review für C-Level (40 Teilnehmer)",
         bemerkungen: "Möchte Storytelling vertiefen",
       },
     ],
@@ -148,11 +149,6 @@ const SOFT_SKILL_EXAMPLES = [
         kategorie: "Leadership & People Management",
         kompetenz: "Mitarbeiterführung, 1:1s, Feedback-Kultur",
         level: 3,
-        nachweise: "Ja",
-        zertifikatDetails: "Certified Scrum Master (2024)",
-        entwicklungsinteresse: "Mittel",
-        letzteAnwendung: "2026-05-25",
-        kontextBeispiel: "Führung Team mit 8 Entwicklern",
         bemerkungen: "Noch wenig Erfahrung mit Konflikt-Eskalationen",
       },
     ],
@@ -161,6 +157,12 @@ const SOFT_SKILL_EXAMPLES = [
 
 function getSoftCategoryByName(name) {
   return SOFT_SKILL_CATEGORIES.find((c) => c.name === name) || null;
+}
+
+function getSoftCategoryById(id) {
+  const n = Number(id);
+  if (!Number.isInteger(n) || n <= 0) return null;
+  return SOFT_SKILL_CATEGORIES.find((c) => Number(c.id) === n) || null;
 }
 
 function getSoftLevelDef(level) {
@@ -177,13 +179,22 @@ function isKnownSoftCategory(name) {
   return !!getSoftCategoryByName(name);
 }
 
+function isKnownSoftCategoryId(id) {
+  return !!getSoftCategoryById(id);
+}
+
 function isKnownSoftLevel(level) {
   return !!getSoftLevelDef(level);
 }
 
-function resolveSoftCategorySelect(kategorie) {
+function resolveSoftCategorySelect(kategorie, kategorieId) {
+  const id = Number(kategorieId);
+  if (Number.isInteger(id) && id > 0 && isKnownSoftCategoryId(id)) {
+    return { value: String(id), other: "" };
+  }
   if (!kategorie) return { value: "", other: "" };
-  if (isKnownSoftCategory(kategorie)) return { value: kategorie, other: "" };
+  const byName = getSoftCategoryByName(kategorie);
+  if (byName) return { value: String(byName.id), other: "" };
   return { value: SELECT_SONSTIGES, other: kategorie };
 }
 
@@ -195,12 +206,14 @@ function resolveSoftLevelSelect(level, levelCustom) {
   return { value: "", other: "" };
 }
 
-function buildSoftCategoryOptions(selected) {
-  const resolved = resolveSoftCategorySelect(selected);
+function buildSoftCategoryOptions(selected, selectedId) {
+  const resolved = resolveSoftCategorySelect(selected, selectedId);
   let html = '<option value="">– Kategorie waehlen –</option>';
   SOFT_SKILL_CATEGORIES.forEach((c) => {
-    const sel = c.name === resolved.value ? " selected" : "";
-    html += `<option value="${c.name.replace(/"/g, "&quot;")}"${sel}>${c.name}</option>`;
+    const id = Number(c.id);
+    if (!Number.isInteger(id) || id <= 0) return;
+    const sel = String(id) === String(resolved.value) ? " selected" : "";
+    html += `<option value="${id}"${sel}>${c.name.replace(/"/g, "&quot;")}</option>`;
   });
   const osel = resolved.value === SELECT_SONSTIGES ? " selected" : "";
   html += `<option value="${SELECT_SONSTIGES}"${osel}>Sonstiges (manuelle Eingabe)</option>`;

@@ -32,11 +32,28 @@ const pool = new Pool({
 
 const seedUsers = [
   { email: "olaf.glebsattel@realcore.de", name: "Glebsattel, Olaf", role: "super_admin", units: [] },
-  { email: "max.mustermann@realcore.de", name: "Mustermann, Max", role: "unit_lead", units: ["SAP Infrastructure"] },
-  { email: "anna.beispiel@realcore.de", name: "Beispiel, Anna", role: "unit_lead", units: ["SAP Engineers"] },
-  { email: "thomas.schmidt@realcore.de", name: "Schmidt, Thomas", role: "unit_lead", units: ["SAP Integration"] },
-  { email: "lisa.weber@realcore.de", name: "Weber, Lisa", role: "unit_lead", units: ["SAP Architecture"] },
 ];
+
+const DEMO_USER_EMAILS = [
+  "maria.geschaeft@realcore.de",
+  "klaus.regional@realcore.de",
+  "petra.regional@realcore.de",
+  "stefan.regional@realcore.de",
+  "julia.regional@realcore.de",
+  "max.mustermann@realcore.de",
+  "anna.beispiel@realcore.de",
+  "thomas.schmidt@realcore.de",
+  "lisa.weber@realcore.de",
+  "olaf.glebsattel.2@realcore.de",
+  "peter.testmann@realcore.de",
+];
+
+async function removeDemoUsers() {
+  if (DEMO_USER_EMAILS.length) {
+    await pool.query(`DELETE FROM users WHERE email = ANY($1::text[])`, [DEMO_USER_EMAILS]);
+  }
+  await pool.query(`DELETE FROM users WHERE email LIKE 'test.%@realcore.de'`);
+}
 
 const DEFAULT_MASTER_UNITS = [
   "SAP Infrastructure",
@@ -51,32 +68,477 @@ function normalizeUnits(units) {
   return [...new Set(list.map((u) => String(u).trim()).filter(Boolean))];
 }
 
-function isAdminRole(role) {
-  return role === "admin" || role === "super_admin";
+const USER_STANDORTE = ["Essen", "Bremen"];
+
+function normalizeUserStandort(value) {
+  const trimmed = String(value || "").trim();
+  if (!trimmed) return null;
+  const match = USER_STANDORTE.find((s) => s.toLowerCase() === trimmed.toLowerCase());
+  return match || null;
 }
 
-function isSuperAdminRole(role) {
-  return role === "super_admin";
+const SUPER_ADMIN_GRANT_PASSWORD =
+  process.env.SUPER_ADMIN_GRANT_PASSWORD || "234";
+
+function validateSuperAdminGrant(nextRoles, currentRoles, superAdminGrantPassword) {
+  const wantsSuperAdmin = normalizeUserRoles(nextRoles).includes("super_admin");
+  const hadSuperAdmin = normalizeUserRoles(currentRoles).includes("super_admin");
+  if (!wantsSuperAdmin || hadSuperAdmin) return null;
+  if (String(superAdminGrantPassword || "") !== SUPER_ADMIN_GRANT_PASSWORD) {
+    return "Super Admin erfordert das korrekte Freischalt-Passwort.";
+  }
+  return null;
 }
 
-function isUnitScopedRole(role) {
-  return role === "unit_lead" || role === "mitarbeiter";
+const ROLE_PRIORITY = [
+  "super_admin",
+  "admin",
+  "unit_lead",
+  "mitarbeiter",
+  "regionalleiter",
+  "geschaeftsfuehrung",
+];
+
+function normalizeUserRoles(roles, fallbackRole = null) {
+  const list = Array.isArray(roles) ? roles : roles ? [roles] : [];
+  const normalized = list
+    .map((role) => normalizeAssignableRole(role))
+    .filter((role) => role && ROLE_PRIORITY.includes(role));
+  if (!normalized.length && fallbackRole) {
+    const safe = normalizeAssignableRole(fallbackRole);
+    if (safe) normalized.push(safe);
+  }
+  return [...new Set(normalized)];
+}
+
+function getUserRoles(user) {
+  if (!user) return [];
+  if (Array.isArray(user.roles) && user.roles.length) {
+    return normalizeUserRoles(user.roles, user.role);
+  }
+  return normalizeUserRoles([user.role].filter(Boolean));
+}
+
+function userHasRole(user, role) {
+  return getUserRoles(user).includes(role);
+}
+
+function userHasAnyRole(user, ...roles) {
+  const userRoles = getUserRoles(user);
+  return roles.some((role) => userRoles.includes(role));
+}
+
+function primaryRoleFromRoles(roles) {
+  const normalized = normalizeUserRoles(roles);
+  for (const role of ROLE_PRIORITY) {
+    if (normalized.includes(role)) return role;
+  }
+  return normalized[0] || "unit_lead";
+}
+
+function isAdminRole(roleOrUser) {
+  if (roleOrUser && typeof roleOrUser === "object") {
+    return userHasAnyRole(roleOrUser, "admin", "super_admin");
+  }
+  return roleOrUser === "admin" || roleOrUser === "super_admin";
+}
+
+function isSuperAdminRole(roleOrUser) {
+  if (roleOrUser && typeof roleOrUser === "object") {
+    return userHasRole(roleOrUser, "super_admin");
+  }
+  return roleOrUser === "super_admin";
+}
+
+function isUnitScopedRole(roleOrUser) {
+  if (roleOrUser && typeof roleOrUser === "object") {
+    return userHasAnyRole(roleOrUser, "unit_lead", "mitarbeiter");
+  }
+  return roleOrUser === "unit_lead" || roleOrUser === "mitarbeiter";
+}
+
+function isMitarbeiterRole(roleOrUser) {
+  if (roleOrUser && typeof roleOrUser === "object") {
+    return userHasRole(roleOrUser, "mitarbeiter");
+  }
+  return roleOrUser === "mitarbeiter";
+}
+
+function isOrgHierarchyRole(roleOrUser) {
+  if (roleOrUser && typeof roleOrUser === "object") {
+    return userHasAnyRole(roleOrUser, "geschaeftsfuehrung", "regionalleiter");
+  }
+  return roleOrUser === "geschaeftsfuehrung" || roleOrUser === "regionalleiter";
 }
 
 function normalizeAssignableRole(role, fallback = "unit_lead") {
+  if (role === "super_admin") return "super_admin";
   if (role === "admin") return "admin";
+  if (role === "geschaeftsfuehrung") return "geschaeftsfuehrung";
+  if (role === "regionalleiter") return "regionalleiter";
   if (role === "mitarbeiter") return "mitarbeiter";
   if (role === "unit_lead") return "unit_lead";
   return fallback;
 }
 
-async function validateUnitsForRole(role, units) {
-  if (!isUnitScopedRole(role)) return { units: [] };
+async function validateUnitsForRoles(roles, units) {
+  const safeRoles = normalizeUserRoles(roles);
+  if (!safeRoles.some((role) => isUnitScopedRole(role))) return { units: [] };
   const normalized = normalizeUnits(units);
   if (!normalized.length) {
     return { error: "Mindestens eine Unit erforderlich." };
   }
+  if (safeRoles.includes("mitarbeiter") && normalized.length > 1) {
+    return { error: "Mitarbeiter koennen nur einer Unit zugewiesen werden." };
+  }
   return validateUnitsAgainstMaster(normalized);
+}
+
+async function validateUnitsForRole(role, units) {
+  return validateUnitsForRoles([role], units);
+}
+
+function normalizeStringArray(values) {
+  if (!values) return [];
+  const list = Array.isArray(values) ? values : String(values).split(",");
+  return [...new Set(list.map((v) => String(v).trim()).filter(Boolean))];
+}
+
+function normalizeBigIntArray(values) {
+  if (!values) return [];
+  const list = Array.isArray(values) ? values : [values];
+  return [
+    ...new Set(
+      list
+        .map((v) => Number(v))
+        .filter((n) => Number.isInteger(n) && n > 0)
+    ),
+  ];
+}
+
+function filterToAllowedNames(names, allowedList) {
+  const allowed = new Set(allowedList);
+  return normalizeStringArray(names).filter((name) => allowed.has(name));
+}
+
+async function fetchCatalogRoleNames() {
+  const result = await pool.query("SELECT name FROM app_roles ORDER BY sort_order, name");
+  return result.rows.map((row) => row.name);
+}
+
+async function fetchCatalogPositionNames() {
+  const result = await pool.query("SELECT name FROM app_positions ORDER BY sort_order, name");
+  return result.rows.map((row) => row.name);
+}
+
+async function fetchCatalogLookup(table) {
+  const safeTable = table === "app_positions" ? "app_positions" : "app_roles";
+  const result = await pool.query(
+    `SELECT id, name FROM ${safeTable} ORDER BY sort_order, name`
+  );
+  const byId = new Map();
+  const byName = new Map();
+  const names = [];
+  for (const row of result.rows) {
+    const id = Number(row.id);
+    const name = String(row.name);
+    byId.set(id, name);
+    byName.set(name, id);
+    names.push(name);
+  }
+  return { byId, byName, names };
+}
+
+function resolveCatalogNamesFromIds(byId, ids) {
+  return normalizeBigIntArray(ids)
+    .map((id) => byId.get(id))
+    .filter(Boolean);
+}
+
+function resolveCatalogIdsFromInput(catalog, names, explicitIds) {
+  const byId = catalog?.byId || new Map();
+  const byName = catalog?.byName || new Map();
+  if (explicitIds !== undefined && explicitIds !== null) {
+    return normalizeBigIntArray(explicitIds).filter((id) => byId.has(id));
+  }
+  const allowedNames = [...byName.keys()];
+  return filterToAllowedNames(names, allowedNames)
+    .map((name) => byName.get(name))
+    .filter((id) => Number.isInteger(id) && id > 0);
+}
+
+async function validateUserCatalogAssignments(
+  userOrgRoles,
+  userPositions,
+  userOrgRoleIds,
+  userPositionIds
+) {
+  const roleCatalog = await fetchCatalogLookup("app_roles");
+  const positionCatalog = await fetchCatalogLookup("app_positions");
+  const orgRoleIds = resolveCatalogIdsFromInput(roleCatalog, userOrgRoles, userOrgRoleIds);
+  const positionIds = resolveCatalogIdsFromInput(positionCatalog, userPositions, userPositionIds);
+  return {
+    userOrgRoleIds: orgRoleIds,
+    userOrgRoles: resolveCatalogNamesFromIds(roleCatalog.byId, orgRoleIds),
+    userPositionIds: positionIds,
+    userPositions: resolveCatalogNamesFromIds(positionCatalog.byId, positionIds),
+  };
+}
+
+async function backfillUserCatalogIds() {
+  const roleCatalog = await fetchCatalogLookup("app_roles");
+  const positionCatalog = await fetchCatalogLookup("app_positions");
+  const users = await pool.query(
+    `SELECT id, user_org_roles, user_positions, user_org_role_ids, user_position_ids FROM users`
+  );
+  for (const row of users.rows) {
+    const orgIds = normalizeStringArray(row.user_org_roles)
+      .map((name) => roleCatalog.byName.get(name))
+      .filter((id) => Number.isInteger(id) && id > 0);
+    const positionIds = normalizeStringArray(row.user_positions)
+      .map((name) => positionCatalog.byName.get(name))
+      .filter((id) => Number.isInteger(id) && id > 0);
+    const existingOrgIds = normalizeBigIntArray(row.user_org_role_ids);
+    const existingPosIds = normalizeBigIntArray(row.user_position_ids);
+    const nextOrgIds = existingOrgIds.length ? existingOrgIds : orgIds;
+    const nextPosIds = existingPosIds.length ? existingPosIds : positionIds;
+    if (
+      nextOrgIds.length !== existingOrgIds.length ||
+      nextPosIds.length !== existingPosIds.length ||
+      (nextOrgIds.length && !existingOrgIds.length) ||
+      (nextPosIds.length && !existingPosIds.length)
+    ) {
+      await pool.query(
+        `UPDATE users SET user_org_role_ids = $1, user_position_ids = $2 WHERE id = $3`,
+        [nextOrgIds, nextPosIds, row.id]
+      );
+    }
+  }
+}
+
+function enrichUserCatalogFields(user, roleCatalog, positionCatalog) {
+  const roles = roleCatalog || { byId: new Map(), byName: new Map() };
+  const positions = positionCatalog || { byId: new Map(), byName: new Map() };
+  let orgIds = normalizeBigIntArray(user.userOrgRoleIds);
+  let positionIds = normalizeBigIntArray(user.userPositionIds);
+  if (!orgIds.length && user.userOrgRoles?.length) {
+    orgIds = user.userOrgRoles
+      .map((name) => roles.byName.get(name))
+      .filter((id) => Number.isInteger(id) && id > 0);
+  }
+  if (!positionIds.length && user.userPositions?.length) {
+    positionIds = user.userPositions
+      .map((name) => positions.byName.get(name))
+      .filter((id) => Number.isInteger(id) && id > 0);
+  }
+  const userOrgRoles = resolveCatalogNamesFromIds(roles.byId, orgIds);
+  const userPositions = resolveCatalogNamesFromIds(positions.byId, positionIds);
+  return {
+    ...user,
+    userOrgRoleIds: orgIds,
+    userPositionIds: positionIds,
+    userOrgRoles: userOrgRoles.length ? userOrgRoles : user.userOrgRoles || [],
+    userPositions: userPositions.length ? userPositions : user.userPositions || [],
+  };
+}
+
+async function enrichUsersCatalog(users) {
+  const roleCatalog = await fetchCatalogLookup("app_roles");
+  const positionCatalog = await fetchCatalogLookup("app_positions");
+  return users.map((user) => enrichUserCatalogFields(user, roleCatalog, positionCatalog));
+}
+
+function normalizePositionKey(name) {
+  return String(name || "")
+    .trim()
+    .toLowerCase()
+    .replace(/\s+/g, " ")
+    .replace(/ä/g, "ae")
+    .replace(/ö/g, "oe")
+    .replace(/ü/g, "ue")
+    .replace(/ß/g, "ss");
+}
+
+const POSITION_TO_HIERARCHY_ROLE = {
+  geschaeftsfuehrer: "geschaeftsfuehrung",
+  "regional leiter": "regionalleiter",
+  "unit leiter": "unit_lead",
+  mitarbeiter: "mitarbeiter",
+  berater: "mitarbeiter",
+  "cc leiter": "unit_lead",
+};
+
+function deriveHierarchyRolesFromPositions(positions) {
+  const roles = [];
+  for (const position of normalizeStringArray(positions)) {
+    const role = POSITION_TO_HIERARCHY_ROLE[normalizePositionKey(position)];
+    if (role && !roles.includes(role)) roles.push(role);
+  }
+  return roles;
+}
+
+function mergeUserRolesFromInput(inputRoles, positions) {
+  const privilege = normalizeUserRoles(inputRoles).filter(
+    (role) => role === "admin" || role === "super_admin"
+  );
+  return normalizeUserRoles([...deriveHierarchyRolesFromPositions(positions), ...privilege]);
+}
+
+const ORG_HIERARCHY_ROLES = ["geschaeftsfuehrung", "regionalleiter", "unit_lead", "mitarbeiter"];
+
+function getEffectiveHierarchyRoles(user) {
+  const fromPositions = deriveHierarchyRolesFromPositions(
+    normalizeStringArray(user?.user_positions)
+  );
+  const fromRoles = getUserRoles(user).filter((role) => ORG_HIERARCHY_ROLES.includes(role));
+  return [...new Set([...fromPositions, ...fromRoles])];
+}
+
+function userHasEffectiveHierarchyRole(user, hierarchyRole) {
+  return getEffectiveHierarchyRoles(user).includes(hierarchyRole);
+}
+
+function mapUserRow(row) {
+  const roles = getUserRoles(row);
+  return {
+    ...row,
+    roles,
+    role: primaryRoleFromRoles(roles) || row.role,
+    units: normalizeUnits(row.units),
+    standort: row.standort || "",
+    regionalleiter_id: row.regionalleiter_id || null,
+    regionalleiterName: row.regionalleiter_name ? String(row.regionalleiter_name) : null,
+    geschaeftsfuehrung_id: row.geschaeftsfuehrung_id || null,
+    geschaeftsfuehrungName: row.geschaeftsfuehrung_name ? String(row.geschaeftsfuehrung_name) : null,
+    unit_lead_id: row.unit_lead_id || null,
+    unitLeadName: row.unit_lead_name ? String(row.unit_lead_name) : null,
+    personalnummer: row.personalnummer ? String(row.personalnummer) : "",
+    userOrgRoles: normalizeStringArray(row.user_org_roles),
+    userPositions: normalizeStringArray(row.user_positions),
+    userOrgRoleIds: normalizeBigIntArray(row.user_org_role_ids),
+    userPositionIds: normalizeBigIntArray(row.user_position_ids),
+  };
+}
+
+async function validateUserRolesAndOrg(
+  roles,
+  { standort, regionalleiterId, geschaeftsfuehrungId, unitLeadId, units },
+  excludeUserId = null
+) {
+  const safeRoles = normalizeUserRoles(roles);
+  if (!safeRoles.length) {
+    return { error: "Mindestens eine Rolle erforderlich." };
+  }
+
+  const unitCheck = await validateUnitsForRoles(safeRoles, units);
+  if (unitCheck.error) return { error: unitCheck.error };
+
+  let safeStandort = null;
+  let safeRegionalleiterId = null;
+  let safeGeschaeftsfuehrungId = null;
+  let safeUnitLeadId = null;
+
+  if (safeRoles.includes("regionalleiter")) {
+    safeStandort = normalizeUserStandort(standort);
+    if (!safeStandort) {
+      return {
+        error: standort
+          ? "Standort muss Essen oder Bremen sein."
+          : "Standort ist fuer Regionalleiter erforderlich.",
+      };
+    }
+    const gid = geschaeftsfuehrungId ? Number(geschaeftsfuehrungId) : null;
+    if (gid) {
+      const gfResult = await pool.query(
+        `SELECT id FROM users
+         WHERE id = $1
+           AND (role = 'geschaeftsfuehrung' OR 'geschaeftsfuehrung' = ANY(roles))`,
+        [gid]
+      );
+      if (!gfResult.rows[0]) {
+        return { error: "Ungueltige Geschaeftsfuehrung." };
+      }
+      if (excludeUserId && String(gid) === String(excludeUserId)) {
+        return { error: "Regionalleiter kann sich nicht selbst als Geschaeftsfuehrung zuweisen." };
+      }
+      safeGeschaeftsfuehrungId = gid;
+    }
+  }
+
+  if (safeRoles.includes("unit_lead")) {
+    const rid = regionalleiterId ? Number(regionalleiterId) : null;
+    if (!rid) {
+      return { error: "Regionalleiter-Zuweisung ist fuer Unit Leads erforderlich." };
+    }
+    const rlResult = await pool.query(
+      `SELECT id FROM users
+       WHERE id = $1
+         AND (role = 'regionalleiter' OR 'regionalleiter' = ANY(roles))`,
+      [rid]
+    );
+    if (!rlResult.rows[0]) {
+      return { error: "Ungueltiger Regionalleiter." };
+    }
+    safeRegionalleiterId = rid;
+  }
+
+  if (safeRoles.includes("mitarbeiter")) {
+    const mitarbeiterUnits = unitCheck.units || [];
+    let ulid = unitLeadId ? Number(unitLeadId) : null;
+    if (!ulid && mitarbeiterUnits.length) {
+      const unitRow = await pool.query(
+        `SELECT unit_lead_id FROM units WHERE name = $1 AND unit_lead_id IS NOT NULL`,
+        [mitarbeiterUnits[0]]
+      );
+      ulid = unitRow.rows[0]?.unit_lead_id ? Number(unitRow.rows[0].unit_lead_id) : null;
+    }
+    if (!ulid) {
+      return {
+        error: mitarbeiterUnits.length
+          ? "Fuer die gewaehlte Unit ist kein Unit Leiter hinterlegt (Units verwalten)."
+          : "Unit ist fuer Mitarbeiter erforderlich.",
+      };
+    }
+    const ulResult = await pool.query(
+      `SELECT id, units FROM users
+       WHERE id = $1
+         AND (role = 'unit_lead' OR 'unit_lead' = ANY(roles))`,
+      [ulid]
+    );
+    if (!ulResult.rows[0]) {
+      return { error: "Ungueltiger Unit Lead." };
+    }
+    if (excludeUserId && String(ulid) === String(excludeUserId)) {
+      return { error: "Mitarbeiter kann sich nicht selbst als Unit Lead zuweisen." };
+    }
+    const leadUnits = normalizeUnits(ulResult.rows[0].units);
+    if (
+      mitarbeiterUnits.length &&
+      leadUnits.length &&
+      !mitarbeiterUnits.some((unit) => leadUnits.includes(unit))
+    ) {
+      const assignedToUnit = await pool.query(
+        "SELECT id FROM units WHERE name = $1 AND unit_lead_id = $2",
+        [mitarbeiterUnits[0], ulid]
+      );
+      if (!assignedToUnit.rows.length) {
+        return {
+          error: "Der Unit Leiter der gewaehlten Unit ist nicht gueltig.",
+        };
+      }
+    }
+    safeUnitLeadId = ulid;
+  }
+
+  return {
+    roles: safeRoles,
+    role: primaryRoleFromRoles(safeRoles),
+    standort: safeStandort,
+    regionalleiterId: safeRegionalleiterId,
+    geschaeftsfuehrungId: safeGeschaeftsfuehrungId,
+    unitLeadId: safeUnitLeadId,
+    units: unitCheck.units || [],
+  };
 }
 
 const DEFAULT_MITARBEITER_PASSWORD =
@@ -134,6 +596,12 @@ async function syncSkillEmployeeUser(entryId, entry, unit) {
 
   const name = String(entry.name || `${nachname}, ${vorname}`).trim();
   let email = await generateSkillEmployeeEmail(entry, entryId);
+  if (
+    DEMO_USER_EMAILS.includes(email) ||
+    (email.startsWith("test.") && email.endsWith("@realcore.de"))
+  ) {
+    return null;
+  }
   const unitName = String(unit || entry.unit || "").trim();
   if (!unitName) return null;
 
@@ -144,12 +612,17 @@ async function syncSkillEmployeeUser(entryId, entry, unit) {
     "SELECT id FROM users WHERE skill_entry_id = $1",
     [entryId]
   );
+  const personalnummer =
+    String(entry.personalnummer || entry.mitarbeiterId || "").trim() || null;
+
   if (linked.rows.length) {
     await pool.query(
       `UPDATE users
-       SET email = $1, name = $2, role = 'mitarbeiter', units = $3, updated_at = NOW()
-       WHERE skill_entry_id = $4`,
-      [email, name, units, entryId]
+       SET email = $1, name = $2, role = 'mitarbeiter', units = $3,
+           personalnummer = COALESCE($4, personalnummer),
+           updated_at = NOW()
+       WHERE skill_entry_id = $5`,
+      [email, name, units, personalnummer, entryId]
     );
     return linked.rows[0].id;
   }
@@ -163,9 +636,11 @@ async function syncSkillEmployeeUser(entryId, entry, unit) {
     if (!existing.skill_entry_id && isUnitScopedRole(existing.role)) {
       await pool.query(
         `UPDATE users
-         SET name = $1, role = 'mitarbeiter', units = $2, skill_entry_id = $3, updated_at = NOW()
-         WHERE id = $4`,
-        [name, units, entryId, existing.id]
+         SET name = $1, role = 'mitarbeiter', units = $2, skill_entry_id = $3,
+             personalnummer = COALESCE($4, personalnummer),
+             updated_at = NOW()
+         WHERE id = $5`,
+        [name, units, entryId, personalnummer, existing.id]
       );
       return existing.id;
     }
@@ -175,20 +650,20 @@ async function syncSkillEmployeeUser(entryId, entry, unit) {
   const passwordHash = bcrypt.hashSync(DEFAULT_MITARBEITER_PASSWORD, 10);
   try {
     const inserted = await pool.query(
-      `INSERT INTO users (email, name, password_hash, role, units, skill_entry_id)
-       VALUES ($1, $2, $3, 'mitarbeiter', $4, $5)
+      `INSERT INTO users (email, name, password_hash, role, units, skill_entry_id, personalnummer)
+       VALUES ($1, $2, $3, 'mitarbeiter', $4, $5, $6)
        RETURNING id`,
-      [email, name, passwordHash, units, entryId]
+      [email, name, passwordHash, units, entryId, personalnummer]
     );
     return inserted.rows[0].id;
   } catch (error) {
     if (error.code !== "23505") throw error;
     const fallbackEmail = `mitarbeiter.${entryId}@realcore.de`;
     const inserted = await pool.query(
-      `INSERT INTO users (email, name, password_hash, role, units, skill_entry_id)
-       VALUES ($1, $2, $3, 'mitarbeiter', $4, $5)
+      `INSERT INTO users (email, name, password_hash, role, units, skill_entry_id, personalnummer)
+       VALUES ($1, $2, $3, 'mitarbeiter', $4, $5, $6)
        RETURNING id`,
-      [fallbackEmail, name, passwordHash, units, entryId]
+      [fallbackEmail, name, passwordHash, units, entryId, personalnummer]
     );
     return inserted.rows[0].id;
   }
@@ -210,6 +685,87 @@ async function backfillSkillEmployeeUsers() {
     if (isSkillExamplePayload(payload)) continue;
     await syncSkillEmployeeUser(row.id, payload, row.unit);
   }
+
+  const mitarbeiterUsers = await pool.query(
+    `SELECT id, email, name, role, units, skill_entry_id FROM users WHERE role = 'mitarbeiter'`
+  );
+  for (const user of mitarbeiterUsers.rows) {
+    await ensureMitarbeiterSkillProfile(user);
+  }
+}
+
+async function ensureMitarbeiterSkillProfile(user) {
+  if (!user || !isMitarbeiterRole(user)) return user?.skill_entry_id || null;
+  if (user.skill_entry_id) return user.skill_entry_id;
+
+  const units = normalizeUnits(user.units);
+  const unit = units[0];
+  if (!unit) return null;
+
+  const email = String(user.email || "").trim().toLowerCase();
+  const byEmail = await pool.query(
+    `SELECT id FROM entries
+     WHERE type = 'skill' AND unit = $1 AND lower(COALESCE(payload->>'email', '')) = $2
+     LIMIT 1`,
+    [unit, email]
+  );
+  if (byEmail.rows[0]) {
+    await pool.query(`UPDATE users SET skill_entry_id = $1, updated_at = NOW() WHERE id = $2`, [
+      byEmail.rows[0].id,
+      user.id,
+    ]);
+    return byEmail.rows[0].id;
+  }
+
+  const nameParts = String(user.name || "").split(", ");
+  const nachname = (nameParts[0] || "").trim();
+  const vorname = (nameParts[1] || "").trim();
+  if (nachname && vorname) {
+    const byName = await pool.query(
+      `SELECT id FROM entries
+       WHERE type = 'skill' AND unit = $1
+         AND payload->>'nachname' = $2 AND payload->>'vorname' = $3
+       LIMIT 1`,
+      [unit, nachname, vorname]
+    );
+    if (byName.rows[0]) {
+      await pool.query(`UPDATE users SET skill_entry_id = $1, updated_at = NOW() WHERE id = $2`, [
+        byName.rows[0].id,
+        user.id,
+      ]);
+      return byName.rows[0].id;
+    }
+  }
+
+  const entryId = crypto.randomUUID();
+  const now = new Date().toISOString();
+  const entry = {
+    id: entryId,
+    type: "skill",
+    nachname: nachname || user.name,
+    vorname,
+    name: user.name,
+    rolle: "",
+    position_id: null,
+    org_role_ids: [],
+    org_roles: [],
+    position_ids: [],
+    positions: [],
+    email,
+    skills: [],
+    softSkills: [],
+    unit,
+  };
+  await pool.query(
+    `INSERT INTO entries (id, type, unit, workstream, payload, created_by_email, updated_by_email, created_at, updated_at)
+     VALUES ($1, 'skill', $2, '', $3::jsonb, $4, $4, $5, $5)`,
+    [entryId, unit, JSON.stringify(entry), email || "system", now]
+  );
+  await pool.query(`UPDATE users SET skill_entry_id = $1, updated_at = NOW() WHERE id = $2`, [
+    entryId,
+    user.id,
+  ]);
+  return entryId;
 }
 
 async function getMasterUnitNames() {
@@ -248,36 +804,111 @@ async function ensureEntriesSchema() {
   }
 }
 
+const ENTRY_TYPES = ["skill", "portfolio", "organisation"];
+const LEGACY_ENTRY_TYPES = ["status", "team"];
+
+async function purgeLegacyEntryTypes() {
+  const result = await pool.query(
+    `DELETE FROM entries WHERE type = ANY($1::text[]) RETURNING id`,
+    [LEGACY_ENTRY_TYPES]
+  );
+  if (result.rowCount > 0) {
+    console.log(`Removed ${result.rowCount} legacy entries (status/team).`);
+  }
+}
+
+async function ensureEntriesTypeConstraint() {
+  const allowed = ENTRY_TYPES.map((t) => `'${t}'`).join(", ");
+  await pool.query(`
+    ALTER TABLE entries
+    DROP CONSTRAINT IF EXISTS entries_type_check
+  `);
+  await pool.query(`
+    ALTER TABLE entries
+    ADD CONSTRAINT entries_type_check CHECK (type IN (${allowed}))
+  `);
+}
+
 async function ensureUsersSchema() {
   await pool.query(`
     ALTER TABLE users
     ADD COLUMN IF NOT EXISTS units TEXT[] NOT NULL DEFAULT '{}'
   `);
 
-  const defaultUnitsByEmail = [
-    ["max.mustermann@realcore.de", ["SAP Infrastructure"]],
-    ["anna.beispiel@realcore.de", ["SAP Engineers"]],
-    ["thomas.schmidt@realcore.de", ["SAP Integration"]],
-    ["lisa.weber@realcore.de", ["SAP Architecture"]],
-  ];
-  for (const [email, units] of defaultUnitsByEmail) {
-    await pool.query(
-      `UPDATE users
-       SET units = $2
-       WHERE email = $1 AND (units IS NULL OR cardinality(units) = 0)`,
-      [email, units]
-    );
-  }
+  await pool.query(`
+    ALTER TABLE users
+    ADD COLUMN IF NOT EXISTS roles TEXT[] NOT NULL DEFAULT '{}'
+  `);
 
-  await pool.query(
-    `UPDATE users SET role = 'super_admin' WHERE email = 'olaf.glebsattel@realcore.de'`
-  );
+  await pool.query(`
+    UPDATE users
+    SET roles = ARRAY[role]::text[]
+    WHERE cardinality(COALESCE(roles, '{}')) = 0
+      AND role IS NOT NULL
+      AND role <> ''
+  `);
+
+  await pool.query(`
+    UPDATE users SET role = 'super_admin'
+    WHERE email = 'olaf.glebsattel@realcore.de'
+      AND role <> 'super_admin'
+  `);
 
   await pool.query(`
     ALTER TABLE users
     ADD COLUMN IF NOT EXISTS skill_entry_id TEXT UNIQUE
   `);
+
+  await pool.query(`
+    ALTER TABLE users
+    ADD COLUMN IF NOT EXISTS standort TEXT
+  `);
+
+  await pool.query(`
+    ALTER TABLE users
+    ADD COLUMN IF NOT EXISTS regionalleiter_id BIGINT REFERENCES users(id) ON DELETE SET NULL
+  `);
+
+  await pool.query(`DROP INDEX IF EXISTS users_unit_lead_regionalleiter_unique`);
+
+  await pool.query(`
+    ALTER TABLE users
+    ADD COLUMN IF NOT EXISTS geschaeftsfuehrung_id BIGINT REFERENCES users(id) ON DELETE SET NULL
+  `);
+
+  await pool.query(`
+    ALTER TABLE users
+    ADD COLUMN IF NOT EXISTS personalnummer TEXT
+  `);
+
+  await pool.query(`
+    ALTER TABLE users
+    ADD COLUMN IF NOT EXISTS unit_lead_id BIGINT REFERENCES users(id) ON DELETE SET NULL
+  `);
+
+  await pool.query(`
+    ALTER TABLE users
+    ADD COLUMN IF NOT EXISTS user_org_roles TEXT[] NOT NULL DEFAULT '{}'
+  `);
+
+  await pool.query(`
+    ALTER TABLE users
+    ADD COLUMN IF NOT EXISTS user_positions TEXT[] NOT NULL DEFAULT '{}'
+  `);
+
+  await pool.query(`
+    ALTER TABLE users
+    ADD COLUMN IF NOT EXISTS user_org_role_ids BIGINT[] NOT NULL DEFAULT '{}'
+  `);
+
+  await pool.query(`
+    ALTER TABLE users
+    ADD COLUMN IF NOT EXISTS user_position_ids BIGINT[] NOT NULL DEFAULT '{}'
+  `);
+
+  await backfillUserCatalogIds();
   await backfillSkillEmployeeUsers();
+  await removeDemoUsers();
 }
 
 async function ensureMasterUnitsSchema() {
@@ -287,6 +918,14 @@ async function ensureMasterUnitsSchema() {
       name TEXT NOT NULL UNIQUE,
       created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
     )
+  `);
+  await pool.query(`
+    ALTER TABLE units
+    ADD COLUMN IF NOT EXISTS unit_lead_id BIGINT REFERENCES users(id) ON DELETE SET NULL
+  `);
+  await pool.query(`
+    ALTER TABLE units
+    ADD COLUMN IF NOT EXISTS deputy_lead_id BIGINT REFERENCES users(id) ON DELETE SET NULL
   `);
 
   for (const name of DEFAULT_MASTER_UNITS) {
@@ -301,6 +940,941 @@ async function ensureMasterUnitsSchema() {
   `);
   for (const row of legacy.rows) {
     await pool.query(`INSERT INTO units (name) VALUES ($1) ON CONFLICT (name) DO NOTHING`, [row.name]);
+  }
+
+  await backfillUnitLeadershipFromUsers();
+}
+
+async function backfillUnitLeadershipFromUsers() {
+  const units = await pool.query(
+    "SELECT id, name FROM units WHERE unit_lead_id IS NULL ORDER BY name"
+  );
+  for (const unit of units.rows) {
+    const leads = await pool.query(
+      `SELECT id FROM users
+       WHERE (role = 'unit_lead' OR 'unit_lead' = ANY(roles))
+         AND $1 = ANY(units)
+       ORDER BY name`,
+      [unit.name]
+    );
+    if (!leads.rows.length) continue;
+    const unitLeadId = leads.rows[0].id;
+    const deputyLeadId = leads.rows[1]?.id || null;
+    await pool.query(
+      "UPDATE units SET unit_lead_id = $1, deputy_lead_id = $2 WHERE id = $3",
+      [unitLeadId, deputyLeadId, unit.id]
+    );
+  }
+}
+
+function mapUnitLeadPerson(row, idKey, nameKey, emailKey) {
+  const id = row[idKey];
+  if (!id) return null;
+  return {
+    id,
+    name: row[nameKey] ? String(row[nameKey]) : "",
+    email: row[emailKey] ? String(row[emailKey]) : "",
+  };
+}
+
+async function validateUnitLeadUserId(userId) {
+  const id = normalizeUserId(userId);
+  if (!id) return null;
+  const result = await pool.query(
+    `SELECT id, role, roles, user_positions, user_position_ids FROM users WHERE id = $1`,
+    [id]
+  );
+  const row = result.rows[0];
+  if (!row) throw new Error("INVALID_UNIT_LEAD");
+  const positions = await resolveUserPositionNames(row);
+  if (!userIsUnitLeaderCandidate({ ...row, user_positions: positions })) {
+    throw new Error("INVALID_UNIT_LEAD");
+  }
+  return id;
+}
+
+async function validateDeputyLeadUserId(userId) {
+  const id = normalizeUserId(userId);
+  if (!id) return null;
+  const result = await pool.query(
+    `SELECT id, user_positions, user_position_ids FROM users WHERE id = $1`,
+    [id]
+  );
+  const row = result.rows[0];
+  const positions = await resolveUserPositionNames(row);
+  if (!row || !userHasDeputyUnitLeaderPosition(positions)) {
+    throw new Error("INVALID_DEPUTY_LEAD");
+  }
+  return id;
+}
+
+async function ensureUserHasUnitAssignment(userId, unitName) {
+  const row = await pool.query("SELECT units FROM users WHERE id = $1", [userId]);
+  if (!row.rows[0]) return;
+  const current = normalizeUnits(row.rows[0].units);
+  if (current.includes(unitName)) return;
+  await pool.query("UPDATE users SET units = $1, updated_at = NOW() WHERE id = $2", [
+    [...current, unitName],
+    userId,
+  ]);
+}
+
+async function removeUnitFromFormerLead(userId, unitName, unitId) {
+  const stillAssigned = await pool.query(
+    `SELECT id FROM units
+     WHERE name = $1
+       AND id <> $2
+       AND (unit_lead_id = $3 OR deputy_lead_id = $3)`,
+    [unitName, unitId, userId]
+  );
+  if (stillAssigned.rows.length) return;
+
+  const row = await pool.query("SELECT units FROM users WHERE id = $1", [userId]);
+  if (!row.rows[0]) return;
+  const next = normalizeUnits(row.rows[0].units).filter((u) => u !== unitName);
+  await pool.query("UPDATE users SET units = $1, updated_at = NOW() WHERE id = $2", [next, userId]);
+}
+
+async function assignUnitLeadership(unitId, unitName, { unitLeadId, deputyLeadId }) {
+  const leadId = await validateUnitLeadUserId(unitLeadId);
+  if (!leadId) {
+    throw new Error("UNIT_LEAD_REQUIRED");
+  }
+  let deputyId = null;
+  if (deputyLeadId !== undefined && deputyLeadId !== null && String(deputyLeadId).trim() !== "") {
+    deputyId = await validateDeputyLeadUserId(deputyLeadId);
+    if (deputyId === leadId) {
+      throw new Error("DEPUTY_SAME_AS_LEAD");
+    }
+  }
+
+  const prev = await pool.query(
+    "SELECT unit_lead_id, deputy_lead_id FROM units WHERE id = $1",
+    [unitId]
+  );
+  const prevLead = prev.rows[0]?.unit_lead_id || null;
+  const prevDeputy = prev.rows[0]?.deputy_lead_id || null;
+
+  await pool.query(
+    "UPDATE units SET unit_lead_id = $1, deputy_lead_id = $2 WHERE id = $3",
+    [leadId, deputyId, unitId]
+  );
+
+  const assigneeIds = [leadId, deputyId].map(normalizeUserId).filter(Boolean);
+  const prevIds = [prevLead, prevDeputy].map(normalizeUserId).filter(Boolean);
+
+  for (const userId of prevIds) {
+    if (!assigneeIds.includes(userId)) {
+      await removeUnitFromFormerLead(userId, unitName, unitId);
+    }
+  }
+  for (const userId of assigneeIds) {
+    await ensureUserHasUnitAssignment(userId, unitName);
+  }
+}
+
+const DEFAULT_TECH_SKILL_CATEGORIES = [
+  { name: "Cloud & Infrastructure", beschreibung: "Cloud-Plattformen, Container-Orchestrierung, Infrastructure as Code, Netzwerk und Betrieb.", beispiel: "AWS, Azure, GCP, Kubernetes, Docker, Terraform, CloudFormation, Ansible" },
+  { name: "Data & Analytics", beschreibung: "Datenbanken, Data Warehousing, BI-Tools, ETL/ELT-Prozesse und Datenanalyse.", beispiel: "SQL, PostgreSQL, MongoDB, Snowflake, dbt, Power BI, Tableau, Spark" },
+  { name: "Development & Automation", beschreibung: "Programmierung, API-Entwicklung, CI/CD, Scripting und Automatisierung.", beispiel: "Python, JavaScript, TypeScript, Java, Go, REST APIs, GraphQL, GitHub Actions" },
+  { name: "AI & Machine Learning", beschreibung: "LLMs, Machine Learning, Prompt Engineering, AI-Integration in Anwendungen.", beispiel: "Azure OpenAI, ChatGPT, LangChain, TensorFlow, PyTorch, Hugging Face" },
+  { name: "Security & Compliance", beschreibung: "IT-Sicherheit, Datenschutz, Governance, Audit und Compliance.", beispiel: "Zero Trust, IAM, DSGVO, ISO 27001, SIEM, Penetration Testing" },
+  { name: "Business Tools & Plattformen", beschreibung: "ERP, CRM, Collaboration-Suites und unternehmensweite Plattformen.", beispiel: "SAP S/4HANA, Microsoft Dynamics, Salesforce, Microsoft 365" },
+  { name: "Integration & Middleware", beschreibung: "System-Integration, Event-Streaming, Message Queues und Middleware.", beispiel: "REST/SOAP APIs, Apache Kafka, RabbitMQ, Azure Service Bus, MuleSoft" },
+  { name: "Low-Code / No-Code", beschreibung: "Visuelle Entwicklungsplattformen, Workflow-Automatisierung ohne klassische Programmierung.", beispiel: "Power Platform (Power Apps, Power Automate), Airtable, OutSystems" },
+  { name: "Emerging Tech", beschreibung: "Zukunftstechnologien je nach Branche und Innovationsfokus.", beispiel: "Blockchain, IoT, Edge Computing, Quantum Computing, AR/VR" },
+  { name: "Soft Skills & Methodik", beschreibung: "Agile Methoden, Architektur-Frameworks, Kommunikation und Zusammenarbeit.", beispiel: "Scrum, Kanban, DevOps-Kultur, TOGAF, Solution Architecture" },
+];
+
+const DEFAULT_SOFT_SKILL_CATEGORIES = [
+  { name: "Kommunikation & Präsentation", beschreibung: "Fähigkeit, Informationen klar und überzeugend zu vermitteln – mündlich, schriftlich, visuell", beispiel: "Präsentationstechniken, Storytelling, Executive Communication, Dokumentation, Visualization, Public Speaking" },
+  { name: "Vertrieb & Akquise", beschreibung: "Neukundengewinnung, Beziehungsaufbau, Verkaufsabschluss, Account-Pflege", beispiel: "B2B/B2C Sales, Cold Calling, Lead Qualification, Proposal Writing, Closing Techniques, Cross-Selling, CRM" },
+  { name: "Leadership & People Management", beschreibung: "Teams führen, entwickeln und motivieren; strategische Ausrichtung vermitteln", beispiel: "Mitarbeiterführung, 1:1s, Performance Management, Delegation, Coaching, Change Management, Talent Development" },
+  { name: "Projektmanagement & Organisation", beschreibung: "Projekte planen, steuern und erfolgreich abschließen; Stakeholder koordinieren", beispiel: "Agile/Waterfall PM, Roadmapping, Ressourcenplanung, Risk Management, Reporting, Stakeholder Management" },
+  { name: "Problemlösung & Analytisches Denken", beschreibung: "Komplexe Probleme strukturieren, Ursachen identifizieren, fundierte Entscheidungen treffen", beispiel: "Root Cause Analysis, Structured Thinking, Data-Driven Decision Making, Critical Thinking, Troubleshooting" },
+  { name: "Kreativität & Innovation", beschreibung: "Neue Ideen entwickeln, Prozesse hinterfragen, Innovationen vorantreiben", beispiel: "Design Thinking, Brainstorming, Prototyping, Lateral Thinking, Experimentation, Business Model Innovation" },
+  { name: "Teamarbeit & Kollaboration", beschreibung: "Effektiv mit anderen zusammenarbeiten, Wissen teilen, gemeinsame Ziele erreichen", beispiel: "Cross-Functional Collaboration, Active Listening, Feedback geben/nehmen, Remote Collaboration, Empathie" },
+  { name: "Kundenorientierung & Service", beschreibung: "Kundenbedürfnisse verstehen, Erwartungen übertreffen, langfristige Beziehungen aufbauen", beispiel: "Customer Success, User Empathy, Service Excellence, Complaint Handling, Relationship Management" },
+  { name: "Verhandlung & Konfliktlösung", beschreibung: "Win-Win-Lösungen erarbeiten, Interessenskonflikte auflösen, schwierige Gespräche führen", beispiel: "Negotiation Techniques, Mediation, Difficult Conversations, Diplomacy, De-escalation, Consensus Building" },
+  { name: "Zeitmanagement & Priorisierung", beschreibung: "Aufgaben effektiv planen, Deadlines einhalten, Wichtiges von Dringendem unterscheiden", beispiel: "Eisenhower-Matrix, Time Blocking, Delegation, Focus Management, Productivity Methods (GTD, Pomodoro)" },
+];
+
+function mapSkillCategoryRow(row) {
+  return {
+    id: row.id,
+    kind: row.kind,
+    name: row.name,
+    beschreibung: row.beschreibung || "",
+    beispiel: row.beispiel || "",
+    sortOrder: row.sort_order,
+  };
+}
+
+async function ensureSkillCategoriesSchema() {
+  await pool.query(`
+    CREATE TABLE IF NOT EXISTS skill_categories (
+      id BIGSERIAL PRIMARY KEY,
+      kind TEXT NOT NULL CHECK(kind IN ('tech', 'soft')),
+      name TEXT NOT NULL,
+      beschreibung TEXT NOT NULL DEFAULT '',
+      beispiel TEXT NOT NULL DEFAULT '',
+      sort_order INT NOT NULL DEFAULT 0,
+      created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+      updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+      UNIQUE(kind, name)
+    )
+  `);
+
+  const countResult = await pool.query("SELECT COUNT(*)::int AS count FROM skill_categories");
+  if (countResult.rows[0].count > 0) return;
+
+  let order = 0;
+  for (const cat of DEFAULT_TECH_SKILL_CATEGORIES) {
+    await pool.query(
+      `INSERT INTO skill_categories (kind, name, beschreibung, beispiel, sort_order)
+       VALUES ('tech', $1, $2, $3, $4)`,
+      [cat.name, cat.beschreibung, cat.beispiel, order++]
+    );
+  }
+  order = 0;
+  for (const cat of DEFAULT_SOFT_SKILL_CATEGORIES) {
+    await pool.query(
+      `INSERT INTO skill_categories (kind, name, beschreibung, beispiel, sort_order)
+       VALUES ('soft', $1, $2, $3, $4)`,
+      [cat.name, cat.beschreibung, cat.beispiel, order++]
+    );
+  }
+}
+
+/** Rollen in der Unit (Organisation) – ohne Hierarchie-Positionen (die liegen in app_positions). */
+const DEFAULT_ORG_ROLLEN = [
+  "Partner Manager",
+  "Alliance Manager",
+  "Trainer / Coach",
+  "Solution Architect",
+  "Delivery Manager",
+  "Projektmanager",
+  "Sales Manager",
+  "Consultant / Berater",
+  "Developer / Engineer",
+  "Product Owner",
+  "Scrum Master",
+  "HR / People & Culture",
+  "Marketing",
+  "Operations / PMO",
+];
+
+/** Positionen in der Skill-Matrix (Mitarbeiter) */
+const DEFAULT_APP_POSITIONS = [
+  "Geschäftsführer",
+  "Regional Leiter",
+  "Unit Leiter",
+  "Stellv. Unit Leiter",
+  "Mitarbeiter",
+  "CC Leiter",
+];
+
+/** Gehoeren in Positionen (Skill-Matrix), nicht in Organisations-Rollen. */
+const HIERARCHY_NAMES_NOT_ORG_ROLES = [
+  "Unit Lead",
+  "Unit Leiter",
+  "Regionalleiter",
+  "Regional Leiter",
+  "Geschaeftsfuehrung",
+  "Geschäftsführer",
+];
+
+const DEPUTY_UNIT_LEADER_POSITION = "Stellv. Unit Leiter";
+const DEPUTY_UNIT_LEADER_POSITION_KEY = normalizePositionKey(DEPUTY_UNIT_LEADER_POSITION);
+const UNIT_LEADER_POSITION = "Unit Leiter";
+const UNIT_LEADER_POSITION_KEY = normalizePositionKey(UNIT_LEADER_POSITION);
+
+function normalizeUserId(id) {
+  if (id === undefined || id === null || id === "") return null;
+  const n = Number(id);
+  return Number.isFinite(n) && n > 0 ? n : null;
+}
+
+function userHasDeputyUnitLeaderPosition(userPositions) {
+  return normalizeStringArray(userPositions).some(
+    (name) => normalizePositionKey(name) === DEPUTY_UNIT_LEADER_POSITION_KEY
+  );
+}
+
+function userHasUnitLeaderPosition(userPositions) {
+  return normalizeStringArray(userPositions).some(
+    (name) => normalizePositionKey(name) === UNIT_LEADER_POSITION_KEY
+  );
+}
+
+function userIsUnitLeaderCandidate(row) {
+  if (!row) return false;
+  const roles = getUserRoles(row);
+  if (roles.includes("unit_lead")) return true;
+  return userHasUnitLeaderPosition(row.user_positions);
+}
+
+function mapCatalogNameRow(row) {
+  return {
+    id: row.id,
+    name: row.name,
+    sortOrder: row.sort_order,
+  };
+}
+
+async function ensureAppRolesSchema() {
+  await pool.query(`
+    CREATE TABLE IF NOT EXISTS app_roles (
+      id BIGSERIAL PRIMARY KEY,
+      name TEXT NOT NULL UNIQUE,
+      sort_order INT NOT NULL DEFAULT 0,
+      created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+      updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+    )
+  `);
+}
+
+async function ensureAppPositionsSchema() {
+  await pool.query(`
+    CREATE TABLE IF NOT EXISTS app_positions (
+      id BIGSERIAL PRIMARY KEY,
+      name TEXT NOT NULL UNIQUE,
+      sort_order INT NOT NULL DEFAULT 0,
+      created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+      updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+    )
+  `);
+}
+
+async function upsertCatalogNames(table, names) {
+  let order = 0;
+  for (const name of names) {
+    await pool.query(
+      `INSERT INTO ${table} (name, sort_order) VALUES ($1, $2)
+       ON CONFLICT (name) DO NOTHING`,
+      [name, order++]
+    );
+  }
+}
+
+async function insertMissingCatalogNames(table, names) {
+  const maxResult = await pool.query(
+    `SELECT COALESCE(MAX(sort_order), -1)::int AS max_order FROM ${table}`
+  );
+  let order = maxResult.rows[0].max_order + 1;
+  for (const name of names) {
+    const exists = await pool.query(`SELECT 1 FROM ${table} WHERE name = $1`, [name]);
+    if (!exists.rows.length) {
+      await pool.query(`INSERT INTO ${table} (name, sort_order) VALUES ($1, $2)`, [name, order++]);
+    }
+  }
+}
+
+async function getCatalogNameById(table, id) {
+  const safeTable = table === "app_positions" ? "app_positions" : "app_roles";
+  const result = await pool.query(`SELECT name FROM ${safeTable} WHERE id = $1`, [id]);
+  return result.rows[0]?.name || null;
+}
+
+async function cascadeUserCatalogArrayRename(column, oldName, newName) {
+  if (!oldName || !newName || oldName === newName) return 0;
+  const safeColumn = column === "user_positions" ? "user_positions" : "user_org_roles";
+  const result = await pool.query(
+    `UPDATE users SET ${safeColumn} = array_replace(${safeColumn}, $1, $2)
+     WHERE $1 = ANY(${safeColumn})`,
+    [oldName, newName]
+  );
+  return result.rowCount || 0;
+}
+
+async function cascadeUserCatalogArrayRemoveById(column, catalogId) {
+  const id = Number(catalogId);
+  if (!Number.isInteger(id) || id <= 0) return 0;
+  const safeColumn = column === "user_position_ids" ? "user_position_ids" : "user_org_role_ids";
+  const result = await pool.query(
+    `UPDATE users SET ${safeColumn} = array_remove(${safeColumn}, $1::bigint)
+     WHERE $1::bigint = ANY(${safeColumn})`,
+    [id]
+  );
+  return result.rowCount || 0;
+}
+
+async function syncUserCatalogNameArraysFromIds(userId, orgRoleIds, positionIds) {
+  const stored = await pool.query(
+    `SELECT user_org_role_ids, user_position_ids FROM users WHERE id = $1`,
+    [userId]
+  );
+  const row = stored.rows[0];
+  if (!row) return;
+  const orgIds = normalizeBigIntArray(orgRoleIds).length
+    ? normalizeBigIntArray(orgRoleIds)
+    : normalizeBigIntArray(row.user_org_role_ids);
+  const posIds =
+    positionIds !== undefined && positionIds !== null
+      ? normalizeBigIntArray(positionIds)
+      : normalizeBigIntArray(row.user_position_ids);
+  const roleCatalog = await fetchCatalogLookup("app_roles");
+  const positionCatalog = await fetchCatalogLookup("app_positions");
+  await pool.query(
+    `UPDATE users
+     SET user_org_roles = $1, user_positions = $2
+     WHERE id = $3`,
+    [
+      resolveCatalogNamesFromIds(roleCatalog.byId, orgIds),
+      resolveCatalogNamesFromIds(positionCatalog.byId, posIds),
+      userId,
+    ]
+  );
+}
+
+async function refreshUserCatalogNameArraysByCatalogId(column, catalogId) {
+  const id = Number(catalogId);
+  if (!Number.isInteger(id) || id <= 0) return 0;
+  const idColumn = column === "user_position_ids" ? "user_position_ids" : "user_org_role_ids";
+  const users = await pool.query(
+    `SELECT id, user_org_role_ids, user_position_ids FROM users WHERE $1::bigint = ANY(${idColumn})`,
+    [id]
+  );
+  for (const row of users.rows) {
+    await syncUserCatalogNameArraysFromIds(
+      row.id,
+      row.user_org_role_ids,
+      row.user_position_ids
+    );
+  }
+  return users.rows.length;
+}
+
+async function resolveUserPositionNames(row) {
+  if (!row) return [];
+  const ids = normalizeBigIntArray(row.user_position_ids);
+  if (ids.length) {
+    const catalog = await fetchCatalogLookup("app_positions");
+    return resolveCatalogNamesFromIds(catalog.byId, ids);
+  }
+  return normalizeStringArray(row.user_positions);
+}
+
+async function cascadeOrgRoleNameInEntries(oldName, newName) {
+  if (!oldName || !newName || oldName === newName) return 0;
+  const rows = await pool.query(`SELECT id, payload FROM entries WHERE type = 'organisation'`);
+  let updated = 0;
+  for (const row of rows.rows) {
+    const payload = row.payload && typeof row.payload === "object" ? row.payload : {};
+    if (!Array.isArray(payload.rollen)) continue;
+    let changed = false;
+    const nextRollen = payload.rollen.map((item) => {
+      if (item && String(item.rolle || "") === oldName) {
+        changed = true;
+        return { ...item, rolle: newName };
+      }
+      return item;
+    });
+    if (!changed) continue;
+    await pool.query(
+      `UPDATE entries SET payload = $1::jsonb, updated_at = NOW() WHERE id = $2`,
+      [{ ...payload, rollen: nextRollen }, row.id]
+    );
+    updated += 1;
+  }
+  return updated;
+}
+
+function normalizeSkillPositionId(value) {
+  const id = Number(value);
+  return Number.isInteger(id) && id > 0 ? id : null;
+}
+
+function resolveCatalogIdArrayFromInput(catalog, names, explicitIds) {
+  const byId = catalog?.byId || new Map();
+  const byName = catalog?.byName || new Map();
+  const fromIds = normalizeBigIntArray(explicitIds).filter((id) => byId.has(id));
+  if (fromIds.length) return fromIds;
+  return filterToAllowedNames(names, [...byName.keys()])
+    .map((name) => byName.get(name))
+    .filter((id) => Number.isInteger(id) && id > 0);
+}
+
+function enrichSkillEntryCatalog(entry, roleCatalog, positionCatalog) {
+  const roles = roleCatalog || { byId: new Map(), byName: new Map() };
+  const positions = positionCatalog || { byId: new Map(), byName: new Map() };
+  const legacyRolle = String(entry.rolle || "").trim();
+
+  let orgRoleIds = resolveCatalogIdArrayFromInput(
+    roles,
+    entry.org_roles,
+    entry.org_role_ids ?? entry.orgRoleIds
+  );
+  if (!orgRoleIds.length && legacyRolle && roles.byName.has(legacyRolle) && !positions.byName.has(legacyRolle)) {
+    orgRoleIds = [roles.byName.get(legacyRolle)];
+  }
+
+  let positionIds = resolveCatalogIdArrayFromInput(
+    positions,
+    entry.positions,
+    entry.position_ids ?? entry.positionIds
+  );
+  const legacyPosId = normalizeSkillPositionId(entry.position_id ?? entry.positionId);
+  if (!positionIds.length && legacyPosId && positions.byId.has(legacyPosId)) {
+    positionIds = [legacyPosId];
+  }
+  if (!positionIds.length && legacyRolle && positions.byName.has(legacyRolle)) {
+    positionIds = [positions.byName.get(legacyRolle)];
+  }
+
+  const orgRoles = resolveCatalogNamesFromIds(roles.byId, orgRoleIds);
+  const posNames = resolveCatalogNamesFromIds(positions.byId, positionIds);
+
+  return {
+    ...entry,
+    org_role_ids: orgRoleIds,
+    org_roles: orgRoles,
+    position_ids: positionIds,
+    positions: posNames,
+    rolle: posNames[0] || legacyRolle,
+    position_id: positionIds[0] || null,
+  };
+}
+
+function enrichSkillEntryPosition(entry, positionCatalog) {
+  const roleCatalog = { byId: new Map(), byName: new Map() };
+  return enrichSkillEntryCatalog(entry, roleCatalog, positionCatalog);
+}
+
+async function fetchSkillCategoryLookup(kind) {
+  const safeKind = kind === "soft" ? "soft" : "tech";
+  const result = await pool.query(
+    `SELECT id, name FROM skill_categories WHERE kind = $1 ORDER BY sort_order, name`,
+    [safeKind]
+  );
+  const byId = new Map();
+  const byName = new Map();
+  for (const row of result.rows) {
+    const id = Number(row.id);
+    const name = String(row.name);
+    byId.set(id, name);
+    byName.set(name, id);
+  }
+  return { byId, byName, kind: safeKind };
+}
+
+function normalizeSkillCategoryId(value) {
+  const id = Number(value);
+  return Number.isInteger(id) && id > 0 ? id : null;
+}
+
+function enrichSkillAssessmentItem(item, categoryCatalog) {
+  const catalog = categoryCatalog || { byId: new Map(), byName: new Map() };
+  const categoryId = normalizeSkillCategoryId(item.kategorie_id ?? item.kategorieId);
+  const kategorieText = String(item.kategorie || "").trim();
+  if (categoryId && catalog.byId.has(categoryId)) {
+    return {
+      ...item,
+      kategorie_id: categoryId,
+      kategorie: catalog.byId.get(categoryId),
+    };
+  }
+  if (kategorieText && catalog.byName.has(kategorieText)) {
+    const fromName = catalog.byName.get(kategorieText);
+    return {
+      ...item,
+      kategorie_id: fromName,
+      kategorie: catalog.byId.get(fromName) || kategorieText,
+    };
+  }
+  return {
+    ...item,
+    kategorie_id: categoryId,
+    kategorie: kategorieText,
+  };
+}
+
+function enrichSkillEntryAssessmentLists(entry, techCatalog, softCatalog) {
+  const skills = Array.isArray(entry.skills)
+    ? entry.skills.map((item) => enrichSkillAssessmentItem(item, techCatalog))
+    : entry.skills;
+  const softSkills = Array.isArray(entry.softSkills)
+    ? entry.softSkills.map((item) => enrichSkillAssessmentItem(item, softCatalog))
+    : entry.softSkills;
+  return { ...entry, skills, softSkills };
+}
+
+async function enrichSkillEntries(entries) {
+  const roleCatalog = await fetchCatalogLookup("app_roles");
+  const positionCatalog = await fetchCatalogLookup("app_positions");
+  const techCatalog = await fetchSkillCategoryLookup("tech");
+  const softCatalog = await fetchSkillCategoryLookup("soft");
+  return entries.map((entry) => {
+    if (entry.type !== "skill") return entry;
+    let enriched = enrichSkillEntryCatalog(entry, roleCatalog, positionCatalog);
+    enriched = enrichSkillEntryAssessmentLists(enriched, techCatalog, softCatalog);
+    return enriched;
+  });
+}
+
+async function normalizeSkillEntryPayload(entry) {
+  const roleCatalog = await fetchCatalogLookup("app_roles");
+  const positionCatalog = await fetchCatalogLookup("app_positions");
+  const techCatalog = await fetchSkillCategoryLookup("tech");
+  const softCatalog = await fetchSkillCategoryLookup("soft");
+  let normalized = enrichSkillEntryCatalog(entry, roleCatalog, positionCatalog);
+  normalized = enrichSkillEntryAssessmentLists(normalized, techCatalog, softCatalog);
+  return normalized;
+}
+
+async function normalizeSkillPositionPayload(entry) {
+  return normalizeSkillEntryPayload(entry);
+}
+
+async function backfillSkillEntryPositionIds() {
+  const roleCatalog = await fetchCatalogLookup("app_roles");
+  const positionCatalog = await fetchCatalogLookup("app_positions");
+  const rows = await pool.query(`SELECT id, payload FROM entries WHERE type = 'skill'`);
+  for (const row of rows.rows) {
+    const payload = row.payload && typeof row.payload === "object" ? row.payload : {};
+    const enriched = enrichSkillEntryCatalog(payload, roleCatalog, positionCatalog);
+    const prev = JSON.stringify({
+      org_role_ids: payload.org_role_ids,
+      org_roles: payload.org_roles,
+      position_ids: payload.position_ids,
+      positions: payload.positions,
+      position_id: payload.position_id,
+      rolle: payload.rolle,
+    });
+    const next = JSON.stringify({
+      org_role_ids: enriched.org_role_ids,
+      org_roles: enriched.org_roles,
+      position_ids: enriched.position_ids,
+      positions: enriched.positions,
+      position_id: enriched.position_id,
+      rolle: enriched.rolle,
+    });
+    if (prev === next) continue;
+    await pool.query(
+      `UPDATE entries SET payload = $1::jsonb, updated_at = NOW() WHERE id = $2`,
+      [
+        {
+          ...payload,
+          org_role_ids: enriched.org_role_ids,
+          org_roles: enriched.org_roles,
+          position_ids: enriched.position_ids,
+          positions: enriched.positions,
+          position_id: enriched.position_id,
+          rolle: enriched.rolle,
+        },
+        row.id,
+      ]
+    );
+  }
+}
+
+function employeePayloadMatchesOrgRoleId(payload, roleId) {
+  const id = Number(roleId);
+  if (!Number.isInteger(id) || id <= 0) return false;
+  const ids = normalizeBigIntArray(payload.org_role_ids ?? payload.orgRoleIds);
+  return ids.includes(id);
+}
+
+function employeePayloadMatchesPositionId(payload, positionId) {
+  const id = Number(positionId);
+  if (!Number.isInteger(id) || id <= 0) return false;
+  const ids = normalizeBigIntArray(payload.position_ids ?? payload.positionIds);
+  if (ids.includes(id)) return true;
+  return normalizeSkillPositionId(payload.position_id ?? payload.positionId) === id;
+}
+
+function renameIdInArray(ids, catalogId, newId) {
+  const id = Number(catalogId);
+  const nextId = Number(newId);
+  return normalizeBigIntArray(ids).map((item) => (item === id ? nextId || item : item));
+}
+
+function renameNameInArray(names, oldName, newName) {
+  const safeOld = String(oldName || "").trim();
+  const safeNew = String(newName || "").trim();
+  return normalizeStringArray(names).map((name) => (name === safeOld ? safeNew : name));
+}
+
+async function cascadeSkillOrgRoleRenameInEmployeeEntries(catalogId, oldName, newName) {
+  if (!oldName || !newName || oldName === newName) return 0;
+  const id = Number(catalogId);
+  const rows = await pool.query(`SELECT id, payload FROM entries WHERE type = 'skill'`);
+  let updated = 0;
+  for (const row of rows.rows) {
+    const payload = row.payload && typeof row.payload === "object" ? row.payload : {};
+    const matchesId = employeePayloadMatchesOrgRoleId(payload, id);
+    const orgRoles = normalizeStringArray(payload.org_roles);
+    const matchesLegacyName = !matchesId && orgRoles.includes(oldName);
+    if (!matchesId && !matchesLegacyName) continue;
+    const nextOrgRoleIds = matchesId ? renameIdInArray(payload.org_role_ids, id, id) : normalizeBigIntArray(payload.org_role_ids);
+    const nextOrgRoles = renameNameInArray(orgRoles, oldName, newName);
+    await pool.query(
+      `UPDATE entries SET payload = $1::jsonb, updated_at = NOW() WHERE id = $2`,
+      [
+        JSON.stringify({
+          ...payload,
+          org_role_ids: nextOrgRoleIds,
+          org_roles: nextOrgRoles,
+        }),
+        row.id,
+      ]
+    );
+    updated += 1;
+  }
+  return updated;
+}
+
+async function cascadeSkillOrgRoleRemoveInEmployeeEntries(catalogId, removedName) {
+  const id = Number(catalogId);
+  if (!Number.isInteger(id) || id <= 0) return 0;
+  const safeName = removedName ? String(removedName).trim() : "";
+  const rows = await pool.query(`SELECT id, payload FROM entries WHERE type = 'skill'`);
+  let updated = 0;
+  for (const row of rows.rows) {
+    const payload = row.payload && typeof row.payload === "object" ? row.payload : {};
+    if (!employeePayloadMatchesOrgRoleId(payload, id)) continue;
+    const orgRoleIds = normalizeBigIntArray(payload.org_role_ids).filter((item) => item !== id);
+    const orgRoles = normalizeStringArray(payload.org_roles).filter(
+      (name) => name !== safeName
+    );
+    await pool.query(
+      `UPDATE entries SET payload = $1::jsonb, updated_at = NOW() WHERE id = $2`,
+      [{ ...payload, org_role_ids: orgRoleIds, org_roles: orgRoles }, row.id]
+    );
+    updated += 1;
+  }
+  return updated;
+}
+
+async function backfillSkillEntryCategoryIds() {
+  const techCatalog = await fetchSkillCategoryLookup("tech");
+  const softCatalog = await fetchSkillCategoryLookup("soft");
+  const rows = await pool.query(`SELECT id, payload FROM entries WHERE type = 'skill'`);
+  for (const row of rows.rows) {
+    const payload = row.payload && typeof row.payload === "object" ? row.payload : {};
+    const enriched = enrichSkillEntryAssessmentLists(payload, techCatalog, softCatalog);
+    const prevPayload = JSON.stringify({
+      skills: payload.skills,
+      softSkills: payload.softSkills,
+    });
+    const nextPayload = JSON.stringify({
+      skills: enriched.skills,
+      softSkills: enriched.softSkills,
+    });
+    if (prevPayload === nextPayload) continue;
+    await pool.query(
+      `UPDATE entries SET payload = $1::jsonb, updated_at = NOW() WHERE id = $2`,
+      [{ ...payload, skills: enriched.skills, softSkills: enriched.softSkills }, row.id]
+    );
+  }
+}
+
+function assessmentItemMatchesCategory(item, categoryId, oldName) {
+  const id = normalizeSkillCategoryId(item.kategorie_id ?? item.kategorieId);
+  const matchesId = Number.isInteger(categoryId) && categoryId > 0 && id === categoryId;
+  const matchesLegacyName =
+    !id && String(item.kategorie || "").trim() === oldName;
+  return matchesId || matchesLegacyName;
+}
+
+async function cascadeSkillCategoryRenameInEntries(categoryId, kind, oldName, newName) {
+  if (!oldName || !newName || oldName === newName) return 0;
+  const id = Number(categoryId);
+  const field = kind === "soft" ? "softSkills" : "skills";
+  const rows = await pool.query(`SELECT id, payload FROM entries WHERE type = 'skill'`);
+  let updated = 0;
+  for (const row of rows.rows) {
+    const payload = row.payload && typeof row.payload === "object" ? row.payload : {};
+    const list = Array.isArray(payload[field]) ? payload[field] : [];
+    let changed = false;
+    const nextList = list.map((item) => {
+      if (!assessmentItemMatchesCategory(item, id, oldName)) return item;
+      changed = true;
+      return {
+        ...item,
+        kategorie_id: id,
+        kategorie: newName,
+      };
+    });
+    if (!changed) continue;
+    await pool.query(
+      `UPDATE entries SET payload = $1::jsonb, updated_at = NOW() WHERE id = $2`,
+      [{ ...payload, [field]: nextList }, row.id]
+    );
+    updated += 1;
+  }
+  return updated;
+}
+
+async function cascadeSkillCategoryRemoveInEntries(categoryId, kind, removedName) {
+  const id = Number(categoryId);
+  if (!Number.isInteger(id) || id <= 0) return 0;
+  const safeName = removedName ? String(removedName).trim() : "";
+  const field = kind === "soft" ? "softSkills" : "skills";
+  const rows = await pool.query(`SELECT id, payload FROM entries WHERE type = 'skill'`);
+  let updated = 0;
+  for (const row of rows.rows) {
+    const payload = row.payload && typeof row.payload === "object" ? row.payload : {};
+    const list = Array.isArray(payload[field]) ? payload[field] : [];
+    let changed = false;
+    const nextList = list.map((item) => {
+      const itemId = normalizeSkillCategoryId(item.kategorie_id ?? item.kategorieId);
+      if (itemId !== id) return item;
+      changed = true;
+      const kategorie = String(item.kategorie || "").trim();
+      const nextKategorie = safeName && kategorie === safeName ? "" : kategorie;
+      return { ...item, kategorie_id: null, kategorie: nextKategorie };
+    });
+    if (!changed) continue;
+    await pool.query(
+      `UPDATE entries SET payload = $1::jsonb, updated_at = NOW() WHERE id = $2`,
+      [{ ...payload, [field]: nextList }, row.id]
+    );
+    updated += 1;
+  }
+  return updated;
+}
+
+async function cascadePositionNameInSkillEntries(catalogId, oldName, newName) {
+  if (!oldName || !newName || oldName === newName) return 0;
+  const id = Number(catalogId);
+  const rows = await pool.query(`SELECT id, payload FROM entries WHERE type = 'skill'`);
+  let updated = 0;
+  for (const row of rows.rows) {
+    const payload = row.payload && typeof row.payload === "object" ? row.payload : {};
+    const matchesId = employeePayloadMatchesPositionId(payload, id);
+    const positions = normalizeStringArray(payload.positions);
+    const matchesLegacyName =
+      !matchesId &&
+      (positions.includes(oldName) || String(payload.rolle || "").trim() === oldName);
+    if (!matchesId && !matchesLegacyName) continue;
+    const nextPositionIds = matchesId
+      ? normalizeBigIntArray(payload.position_ids).map((item) => item)
+      : normalizeBigIntArray(payload.position_ids);
+    const nextPositions = renameNameInArray(
+      positions.length ? positions : normalizeStringArray([payload.rolle]),
+      oldName,
+      newName
+    );
+    await pool.query(
+      `UPDATE entries SET payload = $1::jsonb, updated_at = NOW() WHERE id = $2`,
+      [
+        JSON.stringify({
+          ...payload,
+          position_ids: nextPositionIds.length ? nextPositionIds : matchesId ? [id] : [],
+          positions: nextPositions,
+          position_id: nextPositionIds[0] || null,
+          rolle: nextPositions[0] || "",
+        }),
+        row.id,
+      ]
+    );
+    updated += 1;
+  }
+  return updated;
+}
+
+async function cascadePositionRemoveInSkillEntries(catalogId, removedName) {
+  const id = Number(catalogId);
+  if (!Number.isInteger(id) || id <= 0) return 0;
+  const safeName = removedName ? String(removedName).trim() : "";
+  const rows = await pool.query(`SELECT id, payload FROM entries WHERE type = 'skill'`);
+  let updated = 0;
+  for (const row of rows.rows) {
+    const payload = row.payload && typeof row.payload === "object" ? row.payload : {};
+    if (!employeePayloadMatchesPositionId(payload, id)) continue;
+    const positionIds = normalizeBigIntArray(payload.position_ids).filter((item) => item !== id);
+    const positions = normalizeStringArray(payload.positions).filter((name) => name !== safeName);
+    await pool.query(
+      `UPDATE entries SET payload = $1::jsonb, updated_at = NOW() WHERE id = $2`,
+      [
+        {
+          ...payload,
+          position_ids: positionIds,
+          positions,
+          position_id: positionIds[0] || null,
+          rolle: positions[0] || "",
+        },
+        row.id,
+      ]
+    );
+    updated += 1;
+  }
+  return updated;
+}
+
+async function renameAppRoleWithCascade(id, newName) {
+  const oldName = await getCatalogNameById("app_roles", id);
+  if (!oldName) return null;
+  const safeName = String(newName).trim();
+  const result = await pool.query(
+    `UPDATE app_roles SET name = $1, updated_at = NOW() WHERE id = $2
+     RETURNING id, name, sort_order`,
+    [safeName, id]
+  );
+  if (!result.rows[0]) return null;
+  if (oldName !== safeName) {
+    await cascadeUserCatalogArrayRename("user_org_roles", oldName, safeName);
+    await cascadeOrgRoleNameInEntries(oldName, safeName);
+    await cascadeSkillOrgRoleRenameInEmployeeEntries(id, oldName, safeName);
+    await refreshUserCatalogNameArraysByCatalogId("user_org_role_ids", id);
+  }
+  return result.rows[0];
+}
+
+async function renameAppPositionWithCascade(id, newName) {
+  const oldName = await getCatalogNameById("app_positions", id);
+  if (!oldName) return null;
+  const safeName = String(newName).trim();
+  const result = await pool.query(
+    `UPDATE app_positions SET name = $1, updated_at = NOW() WHERE id = $2
+     RETURNING id, name, sort_order`,
+    [safeName, id]
+  );
+  if (!result.rows[0]) return null;
+  if (oldName !== safeName) {
+    await cascadeUserCatalogArrayRename("user_positions", oldName, safeName);
+    await cascadePositionNameInSkillEntries(id, oldName, safeName);
+    await refreshUserCatalogNameArraysByCatalogId("user_position_ids", id);
+  }
+  return result.rows[0];
+}
+
+async function migrateBeraterPositionToMitarbeiter() {
+  const beraterRow = await pool.query(`SELECT id FROM app_positions WHERE name = $1`, ["Berater"]);
+  if (!beraterRow.rows.length) return;
+
+  await cascadeUserCatalogArrayRename("user_positions", "Berater", "Mitarbeiter");
+  await cascadePositionNameInSkillEntries(
+    beraterRow.rows[0].id,
+    "Berater",
+    "Mitarbeiter"
+  );
+
+  const mitarbeiterRow = await pool.query(`SELECT id FROM app_positions WHERE name = $1`, ["Mitarbeiter"]);
+  if (mitarbeiterRow.rows.length) {
+    await pool.query(`DELETE FROM app_positions WHERE name = $1`, ["Berater"]);
+  } else {
+    await pool.query(
+      `UPDATE app_positions SET name = $1, updated_at = NOW() WHERE name = $2`,
+      ["Mitarbeiter", "Berater"]
+    );
+  }
+}
+
+async function syncAppRolesAndPositionsCatalog() {
+  await ensureAppRolesSchema();
+  await ensureAppPositionsSchema();
+
+  await upsertCatalogNames("app_positions", DEFAULT_APP_POSITIONS);
+  await migrateBeraterPositionToMitarbeiter();
+  await pool.query(`DELETE FROM app_roles WHERE name = ANY($1::text[])`, [
+    [...DEFAULT_APP_POSITIONS, ...HIERARCHY_NAMES_NOT_ORG_ROLES],
+  ]);
+
+  const roleCount = await pool.query("SELECT COUNT(*)::int AS count FROM app_roles");
+  if (roleCount.rows[0].count === 0) {
+    await upsertCatalogNames("app_roles", DEFAULT_ORG_ROLLEN);
   }
 }
 
@@ -320,13 +1894,16 @@ async function initDb() {
 
   await ensureUsersSchema();
   await ensureMasterUnitsSchema();
+  await ensureSkillCategoriesSchema();
+  await syncAppRolesAndPositionsCatalog();
 
   await ensureEntriesSchema();
+  await purgeLegacyEntryTypes();
 
   await pool.query(`
     CREATE TABLE IF NOT EXISTS entries (
       id TEXT PRIMARY KEY,
-      type TEXT NOT NULL CHECK(type IN ('status', 'team', 'skill')),
+      type TEXT NOT NULL CHECK(type IN ('skill', 'portfolio', 'organisation')),
       unit TEXT NOT NULL,
       workstream TEXT,
       payload JSONB NOT NULL,
@@ -337,25 +1914,49 @@ async function initDb() {
     );
   `);
 
+  await ensureEntriesTypeConstraint();
+  await backfillSkillEntryPositionIds();
+  await backfillSkillEntryCategoryIds();
+
   const { rows } = await pool.query("SELECT COUNT(*)::int as count FROM users");
   if (rows[0].count > 0) return;
 
   for (const user of seedUsers) {
+    const roles = normalizeUserRoles(user.roles || [user.role]);
     await pool.query(
-      `INSERT INTO users (email, name, password_hash, role, units)
-       VALUES ($1, $2, $3, $4, $5)`,
-      [user.email, user.name, bcrypt.hashSync("ChangeMe123!", 10), user.role, user.units || []]
+      `INSERT INTO users (email, name, password_hash, role, roles, units, standort)
+       VALUES ($1, $2, $3, $4, $5, $6, $7)`,
+      [
+        user.email,
+        user.name,
+        bcrypt.hashSync("ChangeMe123!", 10),
+        primaryRoleFromRoles(roles),
+        roles,
+        user.units || [],
+        user.standort || null,
+      ]
     );
   }
 }
 
 app.use(express.json());
 app.use(cookieParser());
+app.use("/vendor/xlsx", express.static(path.join(__dirname, "node_modules/xlsx/dist")));
 app.use(express.static(path.join(__dirname, "public")));
 
 function signToken(user, unit) {
+  const roles = getUserRoles(user);
+  const role = primaryRoleFromRoles(roles) || user.role;
   return jwt.sign(
-    { sub: user.id, email: user.email, name: user.name, role: user.role, unit },
+    {
+      sub: user.id,
+      email: user.email,
+      name: user.name,
+      role,
+      roles,
+      unit,
+      skillEntryId: user.skill_entry_id || null,
+    },
     JWT_SECRET,
     { expiresIn: "12h" }
   );
@@ -373,21 +1974,80 @@ function auth(req, res, next) {
 }
 
 function requireAdmin(req, res, next) {
-  if (!isAdminRole(req.user.role)) {
+  if (!isAdminRole(req.user)) {
     return res.status(403).json({ error: "Nur Admin erlaubt." });
   }
   return next();
 }
 
 function requireSuperAdmin(req, res, next) {
-  if (!isSuperAdminRole(req.user.role)) {
+  if (!isSuperAdminRole(req.user)) {
     return res.status(403).json({ error: "Nur Super Admin erlaubt." });
   }
   return next();
 }
 
 function canAccessUnit(req, entryUnit) {
-  return isAdminRole(req.user.role) || req.user.unit === entryUnit;
+  if (isMitarbeiterRole(req.user)) {
+    return req.user.unit === entryUnit;
+  }
+  return isAdminRole(req.user) || req.user.unit === entryUnit;
+}
+
+async function getUserSkillEntryId(req) {
+  if (req.user.skillEntryId) return req.user.skillEntryId;
+  const result = await pool.query("SELECT skill_entry_id FROM users WHERE id = $1", [req.user.sub]);
+  return result.rows[0]?.skill_entry_id || null;
+}
+
+async function canAccessEntry(req, entry) {
+  if (!entry) return false;
+  if (isAdminRole(req.user)) return true;
+  if (isMitarbeiterRole(req.user)) {
+    if (entry.type !== "skill") return false;
+    const skillEntryId = await getUserSkillEntryId(req);
+    return skillEntryId && entry.id === skillEntryId && req.user.unit === entry.unit;
+  }
+  return req.user.unit === entry.unit;
+}
+
+function restrictSkillEntryForMitarbeiter(existingPayload, incomingEntry) {
+  return {
+    ...existingPayload,
+    ...incomingEntry,
+    id: existingPayload.id,
+    type: "skill",
+    unit: existingPayload.unit,
+    nachname: existingPayload.nachname,
+    vorname: existingPayload.vorname,
+    name: existingPayload.name,
+    rolle: existingPayload.rolle,
+    position_id: existingPayload.position_id ?? existingPayload.positionId ?? null,
+    org_role_ids: existingPayload.org_role_ids ?? existingPayload.orgRoleIds ?? [],
+    org_roles: existingPayload.org_roles ?? [],
+    position_ids: existingPayload.position_ids ?? existingPayload.positionIds ?? [],
+    positions: existingPayload.positions ?? [],
+    mitarbeiterId: existingPayload.mitarbeiterId,
+    personalnummer: existingPayload.personalnummer,
+    email: existingPayload.email,
+    skills: incomingEntry.skills ?? existingPayload.skills ?? [],
+    softSkills: incomingEntry.softSkills ?? existingPayload.softSkills ?? [],
+  };
+}
+
+async function resolveLoginUnitForUser(user) {
+  const userUnits = normalizeUnits(user.units);
+  if (isUnitScopedRole(user)) {
+    if (!userUnits.length) return "";
+    const validated = await validateUnitsAgainstMaster(userUnits);
+    const units = validated.units || userUnits;
+    return units.sort((a, b) => a.localeCompare(b, "de"))[0] || "";
+  }
+  if (isAdminRole(user) || isOrgHierarchyRole(user)) {
+    const master = await getMasterUnitNames();
+    return master[0] || "";
+  }
+  return "";
 }
 
 app.get("/api/auth/units", async (_req, res) => {
@@ -395,37 +2055,14 @@ app.get("/api/auth/units", async (_req, res) => {
   return res.json({ units });
 });
 
-app.post("/api/auth/resolve-units", async (req, res) => {
+app.post("/api/auth/login", async (req, res) => {
   const { email, password } = req.body || {};
   if (!email || !password) {
-    return res.status(400).json({ error: "E-Mail und Passwort erforderlich." });
-  }
-  const result = await pool.query(
-    "SELECT id, email, name, role, password_hash, units FROM users WHERE email = $1",
-    [String(email).trim().toLowerCase()]
-  );
-  const user = result.rows[0];
-  if (!user || !bcrypt.compareSync(String(password), user.password_hash)) {
-    return res.status(401).json({ error: "E-Mail oder Passwort ungueltig." });
-  }
-  let units = normalizeUnits(user.units);
-  if (isAdminRole(user.role)) {
-    units = await getMasterUnitNames();
-  } else {
-    const validated = await validateUnitsAgainstMaster(units);
-    units = validated.units || [];
-  }
-  return res.json({ units, role: user.role });
-});
-
-app.post("/api/auth/login", async (req, res) => {
-  const { email, password, unit } = req.body || {};
-  if (!email || !password || !unit) {
-    return res.status(400).json({ error: "E-Mail, Passwort und Unit sind erforderlich." });
+    return res.status(400).json({ error: "E-Mail und Passwort sind erforderlich." });
   }
 
   const result = await pool.query(
-    "SELECT id, email, name, role, password_hash, units FROM users WHERE email = $1",
+    "SELECT id, email, name, role, roles, password_hash, units, skill_entry_id, personalnummer FROM users WHERE email = $1",
     [String(email).trim().toLowerCase()]
   );
   const user = result.rows[0];
@@ -434,20 +2071,18 @@ app.post("/api/auth/login", async (req, res) => {
     return res.status(401).json({ error: "Falsches Passwort." });
   }
 
-  const selectedUnit = String(unit).trim();
+  if (isMitarbeiterRole(user)) {
+    user.skill_entry_id = await ensureMitarbeiterSkillProfile(user);
+  }
+
+  const selectedUnit = await resolveLoginUnitForUser(user);
   const userUnits = normalizeUnits(user.units);
-  if (isUnitScopedRole(user.role)) {
-    if (!userUnits.includes(selectedUnit)) {
-      return res.status(403).json({ error: "Kein Zugriff auf diese Unit." });
-    }
-  } else if (isAdminRole(user.role)) {
-    const allUnits = await getMasterUnitNames();
-    if (allUnits.length && !allUnits.includes(selectedUnit)) {
-      return res.status(403).json({ error: "Unit ist nicht registriert." });
-    }
+  if (isUnitScopedRole(user) && selectedUnit && !userUnits.includes(selectedUnit)) {
+    return res.status(403).json({ error: "Kein Zugriff auf diese Unit." });
   }
 
   const token = signToken(user, selectedUnit);
+  const roles = getUserRoles(user);
   res.cookie(TOKEN_COOKIE, token, {
     httpOnly: true,
     sameSite: "lax",
@@ -457,8 +2092,11 @@ app.post("/api/auth/login", async (req, res) => {
   return res.json({
     email: user.email,
     name: user.name,
-    role: user.role,
+    role: primaryRoleFromRoles(roles) || user.role,
+    roles,
     unit: selectedUnit,
+    skillEntryId: user.skill_entry_id || null,
+    personalnummer: user.personalnummer ? String(user.personalnummer) : "",
   });
 });
 
@@ -469,19 +2107,123 @@ app.post("/api/auth/logout", (_req, res) => {
 
 app.get("/api/auth/me", auth, async (req, res) => {
   const result = await pool.query(
-    "SELECT id, email, name, role FROM users WHERE id = $1",
+    "SELECT id, email, name, role, roles, skill_entry_id, units, personalnummer FROM users WHERE id = $1",
     [req.user.sub]
   );
-  const user = result.rows[0];
+  let user = result.rows[0];
   if (!user) return res.status(401).json({ error: "Benutzer nicht gefunden." });
-  return res.json({ ...user, unit: req.user.unit });
+  if (isMitarbeiterRole(user)) {
+    const skillEntryId = await ensureMitarbeiterSkillProfile(user);
+    user = { ...user, skill_entry_id: skillEntryId };
+  }
+  const roles = getUserRoles(user);
+  const dbUnits = normalizeUnits(user.units);
+  const unit = isSuperAdminRole(user)
+    ? String(req.user.unit || "").trim()
+    : resolveSessionUnitFromDb(req.user.unit, dbUnits);
+  return res.json({
+    ...user,
+    roles,
+    role: primaryRoleFromRoles(roles) || user.role,
+    unit,
+    units: dbUnits,
+    skillEntryId: user.skill_entry_id || null,
+    personalnummer: user.personalnummer ? String(user.personalnummer) : "",
+  });
+});
+
+app.get("/api/auth/unit-context", auth, async (req, res) => {
+  const userResult = await pool.query("SELECT role, roles, units FROM users WHERE id = $1", [
+    req.user.sub,
+  ]);
+  const user = userResult.rows[0];
+  const dbUnits = normalizeUnits(user?.units);
+  let unit = isSuperAdminRole(req.user)
+    ? String(req.user.unit || "").trim()
+    : resolveSessionUnitFromDb(req.user.unit, dbUnits);
+  if (!unit && isMitarbeiterRole(req.user)) {
+    unit = dbUnits[0] || "";
+  }
+  if (isAdminRole(req.user)) {
+    const requested = String(req.query.unit || "").trim();
+    if (requested && requested !== "all") {
+      unit = requested;
+      const unitRow = await pool.query("SELECT name FROM units WHERE name = $1", [requested]);
+      if (unitRow.rows.length) {
+        unit = unitRow.rows[0].name;
+      }
+    }
+  }
+  if (!unit) {
+    return res.json({ unit: null, unitLead: null, deputyLead: null, unitLeads: [] });
+  }
+
+  const unitRow = await pool.query(
+    `SELECT u.unit_lead_id, u.deputy_lead_id,
+            ul.name AS unit_lead_name, ul.email AS unit_lead_email,
+            dl.name AS deputy_name, dl.email AS deputy_email
+     FROM units u
+     LEFT JOIN users ul ON ul.id = u.unit_lead_id
+     LEFT JOIN users dl ON dl.id = u.deputy_lead_id
+     WHERE u.name = $1`,
+    [unit]
+  );
+  const row = unitRow.rows[0];
+  let unitLead = row
+    ? mapUnitLeadPerson(row, "unit_lead_id", "unit_lead_name", "unit_lead_email")
+    : null;
+  let deputyLead = row
+    ? mapUnitLeadPerson(row, "deputy_lead_id", "deputy_name", "deputy_email")
+    : null;
+
+  if (!unitLead) {
+    const fallback = await pool.query(
+      `SELECT name, email FROM users
+       WHERE (role = 'unit_lead' OR 'unit_lead' = ANY(roles))
+         AND $1 = ANY(units)
+       ORDER BY name
+       LIMIT 1`,
+      [unit]
+    );
+    if (fallback.rows[0]) {
+      unitLead = { name: fallback.rows[0].name, email: fallback.rows[0].email };
+    }
+  }
+
+  const unitLeads = [];
+  if (unitLead) unitLeads.push({ ...unitLead, role: "Unit Leiter" });
+  if (deputyLead) unitLeads.push({ ...deputyLead, role: "Stellvertreter" });
+
+  return res.json({
+    unit,
+    unitLead,
+    deputyLead,
+    unitLeads,
+  });
 });
 
 app.get("/api/entries", auth, async (req, res) => {
-  const result =
-    isAdminRole(req.user.role)
-      ? await pool.query("SELECT * FROM entries ORDER BY updated_at DESC")
-      : await pool.query("SELECT * FROM entries WHERE unit = $1 ORDER BY updated_at DESC", [req.user.unit]);
+  let result;
+  if (isMitarbeiterRole(req.user)) {
+    const skillEntryId = await getUserSkillEntryId(req);
+    if (!skillEntryId) {
+      return res.json([]);
+    }
+    result = await pool.query(
+      "SELECT * FROM entries WHERE id = $1 AND type = 'skill' AND unit = $2",
+      [skillEntryId, req.user.unit]
+    );
+  } else if (isAdminRole(req.user)) {
+    result = await pool.query(
+      "SELECT * FROM entries WHERE type = ANY($1::text[]) ORDER BY updated_at DESC",
+      [ENTRY_TYPES]
+    );
+  } else {
+    result = await pool.query(
+      "SELECT * FROM entries WHERE unit = $1 AND type = ANY($2::text[]) ORDER BY updated_at DESC",
+      [req.user.unit, ENTRY_TYPES]
+    );
+  }
   const parsed = result.rows.map((row) => {
     const payload = row.payload || {};
     return {
@@ -495,10 +2237,122 @@ app.get("/api/entries", auth, async (req, res) => {
       updatedBy: row.updated_by_email,
     };
   });
-  return res.json(parsed);
+  const withPersonalnummer = await attachPersonalnummerToSkillEntries(parsed);
+  const enriched = await enrichSkillEntries(withPersonalnummer);
+  return res.json(enriched);
 });
 
-function normalizeEntryForSave(type, entry, reqUser) {
+app.get("/api/skill-personalnummer-lookup", auth, async (req, res) => {
+  if (isMitarbeiterRole(req.user)) {
+    return res.status(403).json({ error: "Kein Zugriff." });
+  }
+  const result = await pool.query(
+    `SELECT skill_entry_id, LOWER(TRIM(email)) AS email, name, personalnummer, units
+     FROM users
+     WHERE personalnummer IS NOT NULL AND TRIM(personalnummer) <> ''`
+  );
+  let rows = result.rows;
+  if (!isAdminRole(req.user)) {
+    const unit = String(req.user.unit || "").trim();
+    rows = rows.filter((r) => normalizeUnits(r.units).includes(unit));
+  }
+  return res.json(
+    rows.map((r) => ({
+      skillEntryId: r.skill_entry_id ? String(r.skill_entry_id) : "",
+      email: r.email ? String(r.email) : "",
+      name: r.name ? String(r.name) : "",
+      personalnummer: String(r.personalnummer).trim(),
+    }))
+  );
+});
+
+function skillEntryNameKeys(entry) {
+  const keys = [];
+  const full = String(entry.name || "").trim().toLowerCase();
+  if (full) keys.push(full);
+  const nach = String(entry.nachname || "").trim();
+  const vor = String(entry.vorname || "").trim();
+  if (nach && vor) {
+    keys.push(`${nach}, ${vor}`.toLowerCase());
+    keys.push(`${vor} ${nach}`.toLowerCase());
+  }
+  return keys;
+}
+
+async function attachPersonalnummerToSkillEntries(entries) {
+  const skillEntries = entries.filter((e) => e.type === "skill");
+  if (!skillEntries.length) return entries;
+
+  const skillIds = skillEntries.map((e) => e.id);
+  const emails = [
+    ...new Set(
+      skillEntries.map((e) => String(e.email || "").trim().toLowerCase()).filter(Boolean)
+    ),
+  ];
+
+  const userRows = [];
+  if (skillIds.length) {
+    const bySkill = await pool.query(
+      `SELECT skill_entry_id, LOWER(TRIM(email)) AS email, name, personalnummer
+       FROM users WHERE skill_entry_id = ANY($1::text[])`,
+      [skillIds]
+    );
+    userRows.push(...bySkill.rows);
+  }
+  if (emails.length) {
+    const byEmail = await pool.query(
+      `SELECT skill_entry_id, LOWER(TRIM(email)) AS email, name, personalnummer
+       FROM users
+       WHERE LOWER(TRIM(email)) = ANY($1::text[])
+         AND personalnummer IS NOT NULL AND TRIM(personalnummer) <> ''`,
+      [emails]
+    );
+    userRows.push(...byEmail.rows);
+  }
+
+  const byEntryId = new Map();
+  const byEmail = new Map();
+  const byName = new Map();
+  for (const r of userRows) {
+    const pn = r.personalnummer ? String(r.personalnummer).trim() : "";
+    if (!pn) continue;
+    if (r.skill_entry_id) byEntryId.set(r.skill_entry_id, pn);
+    if (r.email) byEmail.set(r.email, pn);
+    if (r.name) byName.set(String(r.name).trim().toLowerCase(), pn);
+  }
+
+  return entries.map((e) => {
+    if (e.type !== "skill") return e;
+    const fromPayload = String(e.personalnummer || e.mitarbeiterId || "").trim();
+    if (fromPayload) return { ...e, personalnummer: fromPayload };
+
+    let fromUser = byEntryId.get(e.id) || "";
+    if (!fromUser && e.email) {
+      fromUser = byEmail.get(String(e.email).trim().toLowerCase()) || "";
+    }
+    if (!fromUser) {
+      for (const key of skillEntryNameKeys(e)) {
+        if (byName.has(key)) {
+          fromUser = byName.get(key);
+          break;
+        }
+      }
+    }
+    if (!fromUser) return e;
+    return { ...e, personalnummer: fromUser };
+  });
+}
+
+async function resolvePersonalnummerFromUser(entryId, entry) {
+  const fromEntry = String(entry?.personalnummer || entry?.mitarbeiterId || "").trim();
+  if (fromEntry) return fromEntry;
+  const enriched = await attachPersonalnummerToSkillEntries([
+    { ...entry, id: entryId, type: "skill" },
+  ]);
+  return enriched[0]?.personalnummer ? String(enriched[0].personalnummer).trim() : "";
+}
+
+async function normalizeEntryForSave(type, entry, reqUser) {
   if (!entry || typeof entry !== "object") {
     return { error: "Eintrag fehlt." };
   }
@@ -507,11 +2361,17 @@ function normalizeEntryForSave(type, entry, reqUser) {
     return { error: "Unit fehlt. Bitte erneut anmelden." };
   }
   const workstream = String(entry.workstream || "").trim();
-  if (type !== "skill" && !workstream) {
+  if (type !== "skill" && type !== "portfolio" && type !== "organisation" && !workstream) {
     return { error: "Workstream fehlt." };
   }
+  const ws =
+    type === "portfolio" || type === "organisation" ? "" : workstream;
+  let normalizedEntry = { ...entry, unit, workstream: ws, type };
+  if (type === "skill") {
+    normalizedEntry = await normalizeSkillEntryPayload(normalizedEntry);
+  }
   return {
-    entry: { ...entry, unit, workstream, type },
+    entry: normalizedEntry,
     unit,
     workstream,
   };
@@ -519,10 +2379,13 @@ function normalizeEntryForSave(type, entry, reqUser) {
 
 app.post("/api/entries", auth, async (req, res) => {
   const { type, entry } = req.body || {};
-  if (!["status", "team", "skill"].includes(type)) {
+  if (isMitarbeiterRole(req.user)) {
+    return res.status(403).json({ error: "Mitarbeiter duerfen keine neuen Eintraege anlegen." });
+  }
+  if (!ENTRY_TYPES.includes(type)) {
     return res.status(400).json({ error: "Ungueltiger Typ." });
   }
-  const normalized = normalizeEntryForSave(type, entry, req.user);
+  const normalized = await normalizeEntryForSave(type, entry, req.user);
   if (normalized.error) {
     return res.status(400).json({ error: normalized.error });
   }
@@ -533,39 +2396,75 @@ app.post("/api/entries", auth, async (req, res) => {
 
   const id = safeEntry.id || crypto.randomUUID();
   const now = new Date().toISOString();
-  await pool.query(
-    `INSERT INTO entries (id, type, unit, workstream, payload, created_by_email, updated_by_email, created_at, updated_at)
-     VALUES ($1, $2, $3, $4, $5::jsonb, $6, $6, $7, $7)`,
-    [
-      id,
-      type,
-      unit,
-      workstream,
-      JSON.stringify({ ...safeEntry, id, type }),
-      req.user.email,
-      now,
-    ]
-  );
+  try {
+    await pool.query(
+      `INSERT INTO entries (id, type, unit, workstream, payload, created_by_email, updated_by_email, created_at, updated_at)
+       VALUES ($1, $2, $3, $4, $5::jsonb, $6, $6, $7, $7)`,
+      [
+        id,
+        type,
+        unit,
+        workstream,
+        JSON.stringify({ ...safeEntry, id, type }),
+        req.user.email,
+        now,
+      ]
+    );
+  } catch (error) {
+    if (error.code === "23514" && String(error.message || "").includes("entries_type_check")) {
+      await ensureEntriesTypeConstraint();
+      await pool.query(
+        `INSERT INTO entries (id, type, unit, workstream, payload, created_by_email, updated_by_email, created_at, updated_at)
+         VALUES ($1, $2, $3, $4, $5::jsonb, $6, $6, $7, $7)`,
+        [
+          id,
+          type,
+          unit,
+          workstream,
+          JSON.stringify({ ...safeEntry, id, type }),
+          req.user.email,
+          now,
+        ]
+      );
+    } else {
+      throw error;
+    }
+  }
   if (type === "skill") {
     await syncSkillEmployeeUser(id, safeEntry, unit);
+    const pn = await resolvePersonalnummerFromUser(id, safeEntry);
+    if (pn) {
+      const payload = { ...safeEntry, id, type, unit, personalnummer: pn };
+      await pool.query(
+        `UPDATE entries SET payload = $1::jsonb, updated_at = $2 WHERE id = $3`,
+        [JSON.stringify(payload), now, id]
+      );
+    }
   }
   return res.status(201).json({ id });
 });
 
 app.put("/api/entries/:id", auth, async (req, res) => {
   const { id } = req.params;
-  const existingResult = await pool.query("SELECT unit, type FROM entries WHERE id = $1", [id]);
+  const existingResult = await pool.query("SELECT id, unit, type, payload FROM entries WHERE id = $1", [id]);
   const existing = existingResult.rows[0];
   if (!existing) return res.status(404).json({ error: "Eintrag nicht gefunden." });
-  if (!canAccessUnit(req, existing.unit)) {
-    return res.status(403).json({ error: "Kein Zugriff auf diese Unit." });
+  if (LEGACY_ENTRY_TYPES.includes(existing.type)) {
+    return res.status(404).json({ error: "Eintrag nicht gefunden." });
+  }
+  if (!(await canAccessEntry(req, existing))) {
+    return res.status(403).json({ error: "Kein Zugriff auf diesen Eintrag." });
   }
   const { entry } = req.body || {};
-  const normalized = normalizeEntryForSave(existing.type, entry, req.user);
+  const normalized = await normalizeEntryForSave(existing.type, entry, req.user);
   if (normalized.error) {
     return res.status(400).json({ error: normalized.error });
   }
-  const { entry: safeEntry, workstream } = normalized;
+  let { entry: safeEntry, workstream } = normalized;
+  if (isMitarbeiterRole(req.user)) {
+    safeEntry = restrictSkillEntryForMitarbeiter(existing.payload || {}, safeEntry);
+    workstream = safeEntry.workstream || workstream || "";
+  }
 
   await pool.query(
     `UPDATE entries
@@ -585,6 +2484,21 @@ app.put("/api/entries/:id", auth, async (req, res) => {
 
   if (existing.type === "skill") {
     await syncSkillEmployeeUser(id, safeEntry, existing.unit);
+    const pn = await resolvePersonalnummerFromUser(id, safeEntry);
+    if (pn) {
+      const now = new Date().toISOString();
+      const payload = {
+        ...safeEntry,
+        id,
+        type: existing.type,
+        unit: existing.unit,
+        personalnummer: pn,
+      };
+      await pool.query(
+        `UPDATE entries SET payload = $1::jsonb, updated_at = $2 WHERE id = $3`,
+        [JSON.stringify(payload), now, id]
+      );
+    }
   }
 
   return res.json({ ok: true });
@@ -592,11 +2506,17 @@ app.put("/api/entries/:id", auth, async (req, res) => {
 
 app.delete("/api/entries/:id", auth, async (req, res) => {
   const { id } = req.params;
-  const existingResult = await pool.query("SELECT unit, type FROM entries WHERE id = $1", [id]);
+  const existingResult = await pool.query("SELECT id, unit, type FROM entries WHERE id = $1", [id]);
   const existing = existingResult.rows[0];
   if (!existing) return res.status(404).json({ error: "Eintrag nicht gefunden." });
-  if (!canAccessUnit(req, existing.unit)) {
-    return res.status(403).json({ error: "Kein Zugriff auf diese Unit." });
+  if (LEGACY_ENTRY_TYPES.includes(existing.type)) {
+    return res.status(404).json({ error: "Eintrag nicht gefunden." });
+  }
+  if (isMitarbeiterRole(req.user)) {
+    return res.status(403).json({ error: "Mitarbeiter duerfen keine Eintraege loeschen." });
+  }
+  if (!(await canAccessEntry(req, existing))) {
+    return res.status(403).json({ error: "Kein Zugriff auf diesen Eintrag." });
   }
   if (existing.type === "skill") {
     await deleteSkillEmployeeUser(id);
@@ -606,7 +2526,10 @@ app.delete("/api/entries/:id", auth, async (req, res) => {
 });
 
 app.delete("/api/entries", auth, async (req, res) => {
-  if (isAdminRole(req.user.role)) {
+  if (isMitarbeiterRole(req.user)) {
+    return res.status(403).json({ error: "Mitarbeiter duerfen keine Eintraege loeschen." });
+  }
+  if (isAdminRole(req.user)) {
     const skills = await pool.query("SELECT id FROM entries WHERE type = 'skill'");
     for (const row of skills.rows) {
       await deleteSkillEmployeeUser(row.id);
@@ -626,12 +2549,89 @@ app.delete("/api/entries", auth, async (req, res) => {
 });
 
 app.get("/api/admin/units", auth, requireAdmin, async (_req, res) => {
-  const result = await pool.query("SELECT id, name, created_at FROM units ORDER BY name");
-  return res.json(result.rows);
+  const result = await pool.query(
+    `SELECT u.id, u.name, u.created_at, u.unit_lead_id, u.deputy_lead_id,
+            ul.name AS unit_lead_name, ul.email AS unit_lead_email,
+            dl.name AS deputy_name, dl.email AS deputy_email
+     FROM units u
+     LEFT JOIN users ul ON ul.id = u.unit_lead_id
+     LEFT JOIN users dl ON dl.id = u.deputy_lead_id
+     ORDER BY u.name`
+  );
+  const rows = result.rows.map((unit) => {
+    const unitLead = mapUnitLeadPerson(
+      unit,
+      "unit_lead_id",
+      "unit_lead_name",
+      "unit_lead_email"
+    );
+    const deputyLead = mapUnitLeadPerson(unit, "deputy_lead_id", "deputy_name", "deputy_email");
+    return {
+      id: unit.id,
+      name: unit.name,
+      created_at: unit.created_at,
+      unitLead,
+      deputyLead,
+      unitLeads: [unitLead, deputyLead].filter(Boolean),
+    };
+  });
+  return res.json(rows);
 });
 
+function resolveSessionUnitFromDb(tokenUnit, dbUnits) {
+  const normalized = normalizeUnits(dbUnits);
+  const fromToken = String(tokenUnit || "").trim();
+  if (!normalized.length) return fromToken;
+  if (normalized.length === 1) return normalized[0];
+  if (fromToken && normalized.includes(fromToken)) return fromToken;
+  return fromToken || normalized[0];
+}
+
+async function renameMasterUnit(unitId, oldName, newName) {
+  const trimmed = String(newName || "").trim();
+  if (!trimmed || trimmed === oldName) return trimmed || oldName;
+
+  const duplicate = await pool.query("SELECT id FROM units WHERE name = $1 AND id <> $2", [
+    trimmed,
+    unitId,
+  ]);
+  if (duplicate.rows.length) {
+    throw new Error("UNIT_NAME_TAKEN");
+  }
+
+  await pool.query(
+    `UPDATE entries
+     SET unit = $1,
+         payload = jsonb_set(COALESCE(payload, '{}'::jsonb), '{unit}', to_jsonb($1::text), true),
+         updated_at = NOW()
+     WHERE unit = $2`,
+    [trimmed, oldName]
+  );
+  await pool.query(
+    `UPDATE entries
+     SET unit = $1,
+         payload = jsonb_set(COALESCE(payload, '{}'::jsonb), '{unit}', to_jsonb($1::text), true),
+         updated_at = NOW()
+     WHERE payload->>'unit' = $2 AND unit IS DISTINCT FROM $1`,
+    [trimmed, oldName]
+  );
+
+  const usersWithUnit = await pool.query("SELECT id, units FROM users WHERE $1 = ANY(units)", [
+    oldName,
+  ]);
+  for (const row of usersWithUnit.rows) {
+    const nextUnits = normalizeUnits(row.units).map((u) => (u === oldName ? trimmed : u));
+    await pool.query("UPDATE users SET units = $1, updated_at = NOW() WHERE id = $2", [
+      nextUnits,
+      row.id,
+    ]);
+  }
+  await pool.query("UPDATE units SET name = $1 WHERE id = $2", [trimmed, unitId]);
+  return trimmed;
+}
+
 app.post("/api/admin/units", auth, requireSuperAdmin, async (req, res) => {
-  const { name } = req.body || {};
+  const { name, unitLeadId, deputyLeadId } = req.body || {};
   const unitName = String(name || "").trim();
   if (!unitName) return res.status(400).json({ error: "Unit-Name fehlt." });
   try {
@@ -639,9 +2639,90 @@ app.post("/api/admin/units", auth, requireSuperAdmin, async (req, res) => {
       `INSERT INTO units (name) VALUES ($1) RETURNING id, name, created_at`,
       [unitName]
     );
-    return res.status(201).json(result.rows[0]);
+    const created = result.rows[0];
+    if (unitLeadId !== undefined) {
+      await assignUnitLeadership(created.id, unitName, { unitLeadId, deputyLeadId });
+    }
+    return res.status(201).json(created);
   } catch (error) {
+    if (error.message === "UNIT_LEAD_REQUIRED") {
+      return res.status(400).json({ error: "Unit Leiter ist erforderlich." });
+    }
+    if (error.message === "INVALID_UNIT_LEAD") {
+      return res.status(400).json({ error: "Ungueltiger Unit Leiter." });
+    }
+    if (error.message === "INVALID_DEPUTY_LEAD") {
+      return res.status(400).json({
+        error: `Ungueltiger Stellvertreter. Nur Benutzer mit Position „${DEPUTY_UNIT_LEADER_POSITION}“.`,
+      });
+    }
+    if (error.message === "DEPUTY_SAME_AS_LEAD") {
+      return res.status(400).json({ error: "Stellvertreter darf nicht identisch mit Unit Leiter sein." });
+    }
     return res.status(400).json({ error: "Unit konnte nicht angelegt werden (evtl. bereits vorhanden)." });
+  }
+});
+
+app.put("/api/admin/units/:id", auth, requireSuperAdmin, async (req, res) => {
+  const { id } = req.params;
+  const { name, unitLeadId, deputyLeadId } = req.body || {};
+  const unitResult = await pool.query("SELECT id, name FROM units WHERE id = $1", [id]);
+  const unit = unitResult.rows[0];
+  if (!unit) return res.status(404).json({ error: "Unit nicht gefunden." });
+
+  try {
+    let unitName = unit.name;
+    if (name !== undefined) {
+      const nextName = String(name).trim();
+      if (!nextName) return res.status(400).json({ error: "Unit-Name fehlt." });
+      unitName = await renameMasterUnit(unit.id, unit.name, nextName);
+    }
+    if (unitLeadId !== undefined && unitLeadId !== null) {
+      await assignUnitLeadership(unit.id, unitName, { unitLeadId, deputyLeadId });
+    }
+    const refreshed = await pool.query(
+      `SELECT u.id, u.name, u.created_at, u.unit_lead_id, u.deputy_lead_id,
+              ul.name AS unit_lead_name, ul.email AS unit_lead_email,
+              dl.name AS deputy_name, dl.email AS deputy_email
+       FROM units u
+       LEFT JOIN users ul ON ul.id = u.unit_lead_id
+       LEFT JOIN users dl ON dl.id = u.deputy_lead_id
+       WHERE u.id = $1`,
+      [unit.id]
+    );
+    const row = refreshed.rows[0];
+    const unitLead = row
+      ? mapUnitLeadPerson(row, "unit_lead_id", "unit_lead_name", "unit_lead_email")
+      : null;
+    const deputyLead = row
+      ? mapUnitLeadPerson(row, "deputy_lead_id", "deputy_name", "deputy_email")
+      : null;
+    return res.json({
+      ok: true,
+      id: unit.id,
+      name: unitName,
+      unitLead,
+      deputyLead,
+    });
+  } catch (error) {
+    if (error.message === "UNIT_NAME_TAKEN") {
+      return res.status(400).json({ error: "Unit-Name ist bereits vergeben." });
+    }
+    if (error.message === "UNIT_LEAD_REQUIRED") {
+      return res.status(400).json({ error: "Unit Leiter ist erforderlich." });
+    }
+    if (error.message === "INVALID_UNIT_LEAD") {
+      return res.status(400).json({ error: "Ungueltiger Unit Leiter." });
+    }
+    if (error.message === "INVALID_DEPUTY_LEAD") {
+      return res.status(400).json({
+        error: `Ungueltiger Stellvertreter. Nur Benutzer mit Position „${DEPUTY_UNIT_LEADER_POSITION}“.`,
+      });
+    }
+    if (error.message === "DEPUTY_SAME_AS_LEAD") {
+      return res.status(400).json({ error: "Stellvertreter darf nicht identisch mit Unit Leiter sein." });
+    }
+    throw error;
   }
 });
 
@@ -664,71 +2745,839 @@ app.delete("/api/admin/units/:id", auth, requireSuperAdmin, async (req, res) => 
   return res.json({ ok: true });
 });
 
+app.get("/api/skill-categories", auth, async (_req, res) => {
+  const result = await pool.query(
+    "SELECT id, kind, name, beschreibung, beispiel, sort_order FROM skill_categories ORDER BY kind, sort_order, name"
+  );
+  const tech = [];
+  const soft = [];
+  for (const row of result.rows) {
+    const mapped = mapSkillCategoryRow(row);
+    if (row.kind === "tech") tech.push(mapped);
+    else soft.push(mapped);
+  }
+  return res.json({ tech, soft });
+});
+
+app.get("/api/admin/skill-categories", auth, requireAdmin, async (_req, res) => {
+  const result = await pool.query(
+    "SELECT id, kind, name, beschreibung, beispiel, sort_order FROM skill_categories ORDER BY kind, sort_order, name"
+  );
+  return res.json(result.rows.map(mapSkillCategoryRow));
+});
+
+app.post("/api/admin/skill-categories", auth, requireAdmin, async (req, res) => {
+  const { kind, name, beschreibung, beispiel } = req.body || {};
+  const safeKind = kind === "soft" ? "soft" : "tech";
+  const safeName = String(name || "").trim();
+  if (!safeName) return res.status(400).json({ error: "Kategorie-Name fehlt." });
+
+  const maxOrder = await pool.query(
+    "SELECT COALESCE(MAX(sort_order), -1)::int AS max_order FROM skill_categories WHERE kind = $1",
+    [safeKind]
+  );
+  const sortOrder = maxOrder.rows[0].max_order + 1;
+
+  try {
+    const result = await pool.query(
+      `INSERT INTO skill_categories (kind, name, beschreibung, beispiel, sort_order)
+       VALUES ($1, $2, $3, $4, $5)
+       RETURNING id, kind, name, beschreibung, beispiel, sort_order`,
+      [safeKind, safeName, String(beschreibung || "").trim(), String(beispiel || "").trim(), sortOrder]
+    );
+    return res.status(201).json(mapSkillCategoryRow(result.rows[0]));
+  } catch (error) {
+    return res.status(400).json({ error: "Kategorie konnte nicht angelegt werden (evtl. bereits vorhanden)." });
+  }
+});
+
+app.put("/api/admin/skill-categories/:id", auth, requireAdmin, async (req, res) => {
+  const { id } = req.params;
+  const { name, beschreibung, beispiel } = req.body || {};
+  const existing = await pool.query("SELECT id, kind, name FROM skill_categories WHERE id = $1", [id]);
+  const row = existing.rows[0];
+  if (!row) return res.status(404).json({ error: "Kategorie nicht gefunden." });
+
+  const oldName = row.name;
+  const safeName = name !== undefined ? String(name).trim() : row.name;
+  if (!safeName) return res.status(400).json({ error: "Kategorie-Name fehlt." });
+
+  const current = await pool.query(
+    "SELECT beschreibung, beispiel FROM skill_categories WHERE id = $1",
+    [id]
+  );
+  const currentRow = current.rows[0];
+
+  try {
+    const result = await pool.query(
+      `UPDATE skill_categories
+       SET name = $1,
+           beschreibung = $2,
+           beispiel = $3,
+           updated_at = NOW()
+       WHERE id = $4
+       RETURNING id, kind, name, beschreibung, beispiel, sort_order`,
+      [
+        safeName,
+        beschreibung !== undefined ? String(beschreibung).trim() : currentRow.beschreibung,
+        beispiel !== undefined ? String(beispiel).trim() : currentRow.beispiel,
+        id,
+      ]
+    );
+    if (oldName !== safeName) {
+      await cascadeSkillCategoryRenameInEntries(id, row.kind, oldName, safeName);
+    }
+    return res.json(mapSkillCategoryRow(result.rows[0]));
+  } catch (error) {
+    return res.status(400).json({ error: "Kategorie konnte nicht aktualisiert werden (evtl. Name bereits vergeben)." });
+  }
+});
+
+app.delete("/api/admin/skill-categories/:id", auth, requireAdmin, async (req, res) => {
+  const { id } = req.params;
+  const existing = await pool.query("SELECT id, kind, name FROM skill_categories WHERE id = $1", [id]);
+  const row = existing.rows[0];
+  if (!row) return res.status(404).json({ error: "Kategorie nicht gefunden." });
+  await cascadeSkillCategoryRemoveInEntries(id, row.kind, row.name);
+  await pool.query("DELETE FROM skill_categories WHERE id = $1", [id]);
+  return res.json({ ok: true });
+});
+
+app.get("/api/app-roles", auth, async (_req, res) => {
+  const result = await pool.query(
+    "SELECT id, name, sort_order FROM app_roles ORDER BY sort_order, name"
+  );
+  return res.json(result.rows.map(mapCatalogNameRow));
+});
+
+app.get("/api/app-positions", auth, async (_req, res) => {
+  const result = await pool.query(
+    "SELECT id, name, sort_order FROM app_positions ORDER BY sort_order, name"
+  );
+  return res.json(result.rows.map(mapCatalogNameRow));
+});
+
+app.get("/api/admin/app-roles", auth, requireAdmin, async (_req, res) => {
+  const result = await pool.query(
+    "SELECT id, name, sort_order FROM app_roles ORDER BY sort_order, name"
+  );
+  return res.json(result.rows.map(mapCatalogNameRow));
+});
+
+app.post("/api/admin/app-roles", auth, requireAdmin, async (req, res) => {
+  const safeName = String(req.body?.name || "").trim();
+  if (!safeName) return res.status(400).json({ error: "Rollenname fehlt." });
+
+  const maxOrder = await pool.query("SELECT COALESCE(MAX(sort_order), -1)::int AS max_order FROM app_roles");
+  const sortOrder = maxOrder.rows[0].max_order + 1;
+
+  try {
+    const result = await pool.query(
+      `INSERT INTO app_roles (name, sort_order)
+       VALUES ($1, $2)
+       RETURNING id, name, sort_order`,
+      [safeName, sortOrder]
+    );
+    return res.status(201).json(mapCatalogNameRow(result.rows[0]));
+  } catch (error) {
+    return res.status(400).json({ error: "Rolle konnte nicht angelegt werden (evtl. bereits vorhanden)." });
+  }
+});
+
+app.put("/api/admin/app-roles/:id", auth, requireAdmin, async (req, res) => {
+  const { id } = req.params;
+  const safeName = String(req.body?.name || "").trim();
+  if (!safeName) return res.status(400).json({ error: "Rollenname fehlt." });
+
+  try {
+    const row = await renameAppRoleWithCascade(id, safeName);
+    if (!row) return res.status(404).json({ error: "Rolle nicht gefunden." });
+    return res.json(mapCatalogNameRow(row));
+  } catch (error) {
+    return res.status(400).json({ error: "Rolle konnte nicht aktualisiert werden (evtl. Name bereits vergeben)." });
+  }
+});
+
+app.delete("/api/admin/app-roles/:id", auth, requireAdmin, async (req, res) => {
+  const { id } = req.params;
+  const name = await getCatalogNameById("app_roles", id);
+  const existing = await pool.query("SELECT id FROM app_roles WHERE id = $1", [id]);
+  if (!existing.rows[0]) return res.status(404).json({ error: "Rolle nicht gefunden." });
+  await cascadeUserCatalogArrayRemoveById("user_org_role_ids", id);
+  await cascadeSkillOrgRoleRemoveInEmployeeEntries(id, name);
+  if (name) {
+    await pool.query(
+      `UPDATE users SET user_org_roles = array_remove(user_org_roles, $1)
+       WHERE $1 = ANY(user_org_roles)`,
+      [name]
+    );
+  }
+  await pool.query("DELETE FROM app_roles WHERE id = $1", [id]);
+  return res.json({ ok: true });
+});
+
+app.get("/api/admin/app-positions", auth, requireAdmin, async (_req, res) => {
+  const result = await pool.query(
+    "SELECT id, name, sort_order FROM app_positions ORDER BY sort_order, name"
+  );
+  return res.json(result.rows.map(mapCatalogNameRow));
+});
+
+app.post("/api/admin/app-positions", auth, requireAdmin, async (req, res) => {
+  const safeName = String(req.body?.name || "").trim();
+  if (!safeName) return res.status(400).json({ error: "Positionsname fehlt." });
+
+  const maxOrder = await pool.query(
+    "SELECT COALESCE(MAX(sort_order), -1)::int AS max_order FROM app_positions"
+  );
+  const sortOrder = maxOrder.rows[0].max_order + 1;
+
+  try {
+    const result = await pool.query(
+      `INSERT INTO app_positions (name, sort_order)
+       VALUES ($1, $2)
+       RETURNING id, name, sort_order`,
+      [safeName, sortOrder]
+    );
+    return res.status(201).json(mapCatalogNameRow(result.rows[0]));
+  } catch (error) {
+    return res.status(400).json({ error: "Position konnte nicht angelegt werden (evtl. bereits vorhanden)." });
+  }
+});
+
+app.put("/api/admin/app-positions/:id", auth, requireAdmin, async (req, res) => {
+  const { id } = req.params;
+  const safeName = String(req.body?.name || "").trim();
+  if (!safeName) return res.status(400).json({ error: "Positionsname fehlt." });
+
+  try {
+    const row = await renameAppPositionWithCascade(id, safeName);
+    if (!row) return res.status(404).json({ error: "Position nicht gefunden." });
+    return res.json(mapCatalogNameRow(row));
+  } catch (error) {
+    return res.status(400).json({ error: "Position konnte nicht aktualisiert werden (evtl. Name bereits vergeben)." });
+  }
+});
+
+app.delete("/api/admin/app-positions/:id", auth, requireAdmin, async (req, res) => {
+  const { id } = req.params;
+  const name = await getCatalogNameById("app_positions", id);
+  const existing = await pool.query("SELECT id FROM app_positions WHERE id = $1", [id]);
+  if (!existing.rows[0]) return res.status(404).json({ error: "Position nicht gefunden." });
+  await cascadeUserCatalogArrayRemoveById("user_position_ids", id);
+  await cascadePositionRemoveInSkillEntries(id, name);
+  if (name) {
+    await pool.query(
+      `UPDATE users SET user_positions = array_remove(user_positions, $1)
+       WHERE $1 = ANY(user_positions)`,
+      [name]
+    );
+  }
+  await pool.query("DELETE FROM app_positions WHERE id = $1", [id]);
+  return res.json({ ok: true });
+});
+
+app.get("/api/admin/org-chart", auth, requireAdmin, async (_req, res) => {
+  const usersResult = await pool.query(
+    `SELECT id, email, name, role, roles, units, standort, regionalleiter_id, geschaeftsfuehrung_id, unit_lead_id, user_positions
+     FROM users ORDER BY name`
+  );
+  const users = usersResult.rows.map((row) => ({
+    ...row,
+    roles: getUserRoles(row),
+    units: normalizeUnits(row.units),
+    standort: row.standort || "",
+    user_positions: normalizeStringArray(row.user_positions),
+  }));
+  const userById = new Map(users.map((u) => [Number(u.id), u]));
+
+  const unitsResult = await pool.query(
+    `SELECT name, unit_lead_id FROM units ORDER BY name`
+  );
+  const masterUnits = unitsResult.rows;
+
+  const mapPerson = (u) => ({
+    id: u.id,
+    name: u.name,
+    email: u.email,
+    role: primaryRoleFromRoles(getUserRoles(u)) || u.role,
+    roles: getUserRoles(u),
+  });
+
+  const isUserInRegionalSubtree = (user, rId) => {
+    if (Number(user.regionalleiter_id) === rId) return true;
+    if (user.unit_lead_id) {
+      const lead = userById.get(Number(user.unit_lead_id));
+      if (lead && Number(lead.regionalleiter_id) === rId) return true;
+    }
+    return false;
+  };
+
+  const collectUnitNamesForRegionalleiter = (r) => {
+    const rId = Number(r.id);
+    const unitNames = new Set(normalizeUnits(r.units));
+
+    for (const user of users) {
+      if (!isUserInRegionalSubtree(user, rId)) continue;
+      normalizeUnits(user.units).forEach((name) => unitNames.add(name));
+    }
+
+    const unitLeadUsers = users.filter(
+      (u) =>
+        userHasEffectiveHierarchyRole(u, "unit_lead") && Number(u.regionalleiter_id) === rId
+    );
+    const unitLeadIds = new Set(unitLeadUsers.map((u) => Number(u.id)));
+
+    for (const ul of unitLeadUsers) {
+      normalizeUnits(ul.units).forEach((name) => unitNames.add(name));
+    }
+    for (const row of masterUnits) {
+      if (row.unit_lead_id && unitLeadIds.has(Number(row.unit_lead_id))) {
+        unitNames.add(row.name);
+      }
+    }
+
+    return unitNames;
+  };
+
+  const mitarbeiterForUnitInRegionalSubtree = (unitName, rId) =>
+    users
+      .filter((m) => {
+        if (!userHasEffectiveHierarchyRole(m, "mitarbeiter")) return false;
+        if (!normalizeUnits(m.units).includes(unitName)) return false;
+        return isUserInRegionalSubtree(m, rId);
+      })
+      .map(mapPerson)
+      .sort((a, b) => a.name.localeCompare(b.name, "de"));
+
+  const unitNamesForUnitLead = (ul) => {
+    const unitNames = new Set(normalizeUnits(ul.units));
+    for (const row of masterUnits) {
+      if (Number(row.unit_lead_id) === Number(ul.id)) {
+        unitNames.add(row.name);
+      }
+    }
+    return unitNames;
+  };
+
+  const resolveUnitLeadForUnitName = (unitName, unitLeadUsers) =>
+    unitLeadUsers.find((ul) => normalizeUnits(ul.units).includes(unitName)) ||
+    unitLeadUsers.find((ul) => {
+      const masterRow = masterUnits.find(
+        (row) => row.name === unitName && Number(row.unit_lead_id) === Number(ul.id)
+      );
+      return Boolean(masterRow);
+    }) ||
+    (() => {
+      const masterRow = masterUnits.find((row) => row.name === unitName && row.unit_lead_id);
+      return masterRow
+        ? unitLeadUsers.find((ul) => Number(ul.id) === Number(masterRow.unit_lead_id))
+        : null;
+    })() ||
+    null;
+
+  const buildUnitLeadBranchesForRegionalleiter = (r) => {
+    const rId = Number(r.id);
+    const unitLeadUsers = users
+      .filter(
+        (u) =>
+          userHasEffectiveHierarchyRole(u, "unit_lead") && Number(u.regionalleiter_id) === rId
+      )
+      .sort((a, b) => a.name.localeCompare(b.name, "de"));
+
+    const branches = unitLeadUsers.map((ul) => ({
+      branchType: "unit_lead",
+      unitLead: mapPerson(ul),
+      units: [...unitNamesForUnitLead(ul)]
+        .sort((a, b) => a.localeCompare(b, "de"))
+        .map((unitName) => ({
+          name: unitName,
+          mitarbeiter: mitarbeiterForUnitInRegionalSubtree(unitName, rId),
+        })),
+    }));
+
+    const coveredUnitNames = new Set();
+    for (const branch of branches) {
+      for (const unit of branch.units) {
+        coveredUnitNames.add(unit.name);
+      }
+    }
+
+    const orphanUnits = [...collectUnitNamesForRegionalleiter(r)]
+      .filter((unitName) => !coveredUnitNames.has(unitName))
+      .sort((a, b) => a.localeCompare(b, "de"))
+      .map((unitName) => {
+        const unitLeadUser = resolveUnitLeadForUnitName(unitName, unitLeadUsers);
+        return {
+          name: unitName,
+          mitarbeiter: mitarbeiterForUnitInRegionalSubtree(unitName, rId),
+          unitLead: unitLeadUser ? mapPerson(unitLeadUser) : null,
+        };
+      });
+
+    if (orphanUnits.length) {
+      const orphansByLead = new Map();
+      const withoutLead = [];
+      for (const unit of orphanUnits) {
+        const leadId = unit.unitLead?.id;
+        if (leadId) {
+          if (!orphansByLead.has(leadId)) {
+            orphansByLead.set(leadId, {
+              branchType: "unit_lead",
+              unitLead: unit.unitLead,
+              units: [],
+            });
+          }
+          orphansByLead.get(leadId).units.push({
+            name: unit.name,
+            mitarbeiter: unit.mitarbeiter,
+          });
+        } else {
+          withoutLead.push({ name: unit.name, mitarbeiter: unit.mitarbeiter });
+        }
+      }
+
+      for (const branch of orphansByLead.values()) {
+        const existing = branches.find(
+          (b) => b.unitLead && Number(b.unitLead.id) === Number(branch.unitLead.id)
+        );
+        if (existing) {
+          existing.units.push(...branch.units);
+          existing.units.sort((a, b) => a.name.localeCompare(b.name, "de"));
+        } else {
+          branches.push(branch);
+        }
+      }
+
+      if (withoutLead.length) {
+        branches.push({
+          branchType: "orphan_units",
+          unitLead: null,
+          units: withoutLead,
+        });
+      }
+    }
+
+    return branches
+      .filter((branch) => branch.unitLead || branch.units?.length)
+      .sort((a, b) => {
+        const an = a.unitLead?.name || "";
+        const bn = b.unitLead?.name || "";
+        return an.localeCompare(bn, "de");
+      });
+  };
+
+  const buildSupervisorBranchesForRegionalleiter = (r) => {
+    const rId = Number(r.id);
+    const unitLeadUsers = users
+      .filter(
+        (u) =>
+          userHasEffectiveHierarchyRole(u, "unit_lead") && Number(u.regionalleiter_id) === rId
+      )
+      .sort((a, b) => a.name.localeCompare(b.name, "de"));
+    const unitLeadIds = new Set(unitLeadUsers.map((u) => Number(u.id)));
+
+    const branches = unitLeadUsers.map((ul) => {
+      const unitLabel = normalizeUnits(ul.units).filter(Boolean).join(", ");
+      return {
+        name: unitLabel || ul.name,
+        branchType: "unit_lead",
+        unitLead: mapPerson(ul),
+        mitarbeiter: users
+          .filter(
+            (m) =>
+              userHasEffectiveHierarchyRole(m, "mitarbeiter") &&
+              Number(m.unit_lead_id) === Number(ul.id)
+          )
+          .map(mapPerson)
+          .sort((a, b) => a.name.localeCompare(b.name, "de")),
+      };
+    });
+
+    const directMitarbeiter = users
+      .filter((m) => {
+        if (!userHasEffectiveHierarchyRole(m, "mitarbeiter")) return false;
+        if (Number(m.regionalleiter_id) !== rId) return false;
+        if (m.unit_lead_id && unitLeadIds.has(Number(m.unit_lead_id))) return false;
+        return true;
+      })
+      .map(mapPerson)
+      .sort((a, b) => a.name.localeCompare(b.name, "de"));
+
+    if (directMitarbeiter.length) {
+      branches.push({
+        name: "Direkt der Regionalleitung",
+        branchType: "direct",
+        unitLead: null,
+        mitarbeiter: directMitarbeiter,
+      });
+    }
+
+    return branches;
+  };
+
+  const buildRegionalleiterNode = (r) => {
+    const unitLeadBranches = buildUnitLeadBranchesForRegionalleiter(r);
+    const hasUnitStructure = unitLeadBranches.some((branch) => branch.units?.length);
+    if (!hasUnitStructure) {
+      return {
+        ...mapPerson(r),
+        standort: r.standort || "",
+        layout: "supervisors",
+        unitLeads: buildSupervisorBranchesForRegionalleiter(r).map((branch) => ({
+          branchType: branch.branchType,
+          unitLead: branch.unitLead,
+          units: [],
+          mitarbeiter: branch.mitarbeiter,
+          name: branch.name,
+        })),
+      };
+    }
+    return {
+      ...mapPerson(r),
+      standort: r.standort || "",
+      layout: "unit_leads",
+      unitLeads: unitLeadBranches,
+    };
+  };
+
+  const gfUsers = users.filter((u) => userHasEffectiveHierarchyRole(u, "geschaeftsfuehrung"));
+  const soleGeschaeftsfuehrungId =
+    gfUsers.length === 1 ? Number(gfUsers[0].id) : null;
+
+  const regionalleiterForGeschaeftsfuehrung = (gfId) =>
+    users
+      .filter((u) => {
+        if (!userHasEffectiveHierarchyRole(u, "regionalleiter")) return false;
+        if (Number(u.geschaeftsfuehrung_id) === Number(gfId)) return true;
+        if (!u.geschaeftsfuehrung_id && soleGeschaeftsfuehrungId === Number(gfId)) return true;
+        return false;
+      })
+      .map(buildRegionalleiterNode)
+      .sort((a, b) => a.name.localeCompare(b.name, "de"));
+
+  const geschaeftsfuehrung = gfUsers
+    .map((gf) => ({
+      ...mapPerson(gf),
+      regionalleiter: regionalleiterForGeschaeftsfuehrung(gf.id),
+    }))
+    .sort((a, b) => a.name.localeCompare(b.name, "de"));
+
+  return res.json({ geschaeftsfuehrung });
+});
+
 app.get("/api/admin/users", auth, requireAdmin, async (_req, res) => {
   const result = await pool.query(
-    "SELECT id, email, name, role, units, created_at, updated_at FROM users ORDER BY email"
+    `SELECT u.id, u.email, u.name, u.role, u.roles, u.units, u.standort,
+            u.regionalleiter_id, u.geschaeftsfuehrung_id, u.unit_lead_id, u.personalnummer,
+            u.skill_entry_id,
+            u.user_org_roles, u.user_positions, u.user_org_role_ids, u.user_position_ids,
+            u.created_at, u.updated_at,
+            rl.name AS regionalleiter_name,
+            gf.name AS geschaeftsfuehrung_name,
+            ul.name AS unit_lead_name
+     FROM users u
+     LEFT JOIN users rl ON rl.id = u.regionalleiter_id
+     LEFT JOIN users gf ON gf.id = u.geschaeftsfuehrung_id
+     LEFT JOIN users ul ON ul.id = u.unit_lead_id
+     ORDER BY u.email`
   );
-  return res.json(result.rows.map((row) => ({ ...row, units: normalizeUnits(row.units) })));
+  const users = result.rows.map((row) => mapUserRow(row));
+  return res.json(await enrichUsersCatalog(users));
 });
 
 app.post("/api/admin/users", auth, requireAdmin, async (req, res) => {
-  const { email, name, role, password, units } = req.body || {};
+  const {
+    email,
+    name,
+    role,
+    roles,
+    password,
+    units,
+    standort,
+    regionalleiterId,
+    geschaeftsfuehrungId,
+    unitLeadId,
+    superAdminGrantPassword,
+    personalnummer,
+    userOrgRoles,
+    userPositions,
+    userOrgRoleIds,
+    userPositionIds,
+    minimalAccount,
+  } = req.body || {};
   if (!email || !name || !password) return res.status(400).json({ error: "Pflichtfelder fehlen." });
-  const safeRole = normalizeAssignableRole(role);
-  const unitCheck = await validateUnitsForRole(safeRole, units);
-  if (unitCheck.error) return res.status(400).json({ error: unitCheck.error });
-  const safeUnits = unitCheck.units || [];
+  const catalog = await validateUserCatalogAssignments(
+    userOrgRoles,
+    userPositions,
+    userOrgRoleIds,
+    userPositionIds
+  );
+  const inputRoles = Array.isArray(roles) && roles.length ? roles : role ? [role] : [];
+  const mergedRoles = mergeUserRolesFromInput(inputRoles, catalog.userPositions);
+  const createMinimalAccount =
+    minimalAccount === true ||
+    (!mergedRoles.length && !catalog.userOrgRoles.length && !catalog.userPositions.length);
+
+  let validated;
+  if (createMinimalAccount) {
+    validated = {
+      role: "mitarbeiter",
+      roles: ["mitarbeiter"],
+      units: [],
+      standort: null,
+      regionalleiterId: null,
+      geschaeftsfuehrungId: null,
+      unitLeadId: null,
+    };
+  } else {
+    if (!mergedRoles.length) {
+      return res.status(400).json({
+        error: "Mindestens eine Position oder eine Administration-Rolle erforderlich.",
+      });
+    }
+    const superAdminError = validateSuperAdminGrant(mergedRoles, [], superAdminGrantPassword);
+    if (superAdminError) return res.status(400).json({ error: superAdminError });
+    validated = await validateUserRolesAndOrg(
+      mergedRoles,
+      { standort, regionalleiterId, geschaeftsfuehrungId, unitLeadId, units },
+      null
+    );
+    if (validated.error) return res.status(400).json({ error: validated.error });
+  }
   try {
     const result = await pool.query(
-      `INSERT INTO users (email, name, password_hash, role, units)
-       VALUES ($1, $2, $3, $4, $5)
+      `INSERT INTO users (email, name, password_hash, role, roles, units, standort, regionalleiter_id, geschaeftsfuehrung_id, unit_lead_id, personalnummer, user_org_roles, user_positions, user_org_role_ids, user_position_ids)
+       VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15)
        RETURNING id`,
       [
         String(email).trim().toLowerCase(),
         String(name).trim(),
         bcrypt.hashSync(String(password), 10),
-        safeRole,
-        safeUnits,
+        validated.role,
+        validated.roles,
+        validated.units,
+        validated.standort,
+        validated.regionalleiterId,
+        validated.geschaeftsfuehrungId,
+        validated.unitLeadId,
+        personalnummer !== undefined ? String(personalnummer).trim() || null : null,
+        catalog.userOrgRoles,
+        catalog.userPositions,
+        catalog.userOrgRoleIds,
+        catalog.userPositionIds,
       ]
     );
     return res.status(201).json({ id: result.rows[0].id });
   } catch (error) {
+    if (error.code === "23505") {
+      return res.status(400).json({ error: "E-Mail ist bereits vergeben." });
+    }
     return res.status(400).json({ error: "Benutzer konnte nicht angelegt werden." });
   }
 });
 
 app.put("/api/admin/users/:id", auth, requireAdmin, async (req, res) => {
   const { id } = req.params;
-  const { name, role, password, units } = req.body || {};
-  const userResult = await pool.query("SELECT id, email, role FROM users WHERE id = $1", [id]);
-  const user = userResult.rows[0];
-  if (!user) return res.status(404).json({ error: "Benutzer nicht gefunden." });
+  const {
+    name,
+    role,
+    roles,
+    password,
+    units,
+    email,
+    standort,
+    regionalleiterId,
+    geschaeftsfuehrungId,
+    unitLeadId,
+    superAdminGrantPassword,
+    personalnummer,
+    userOrgRoles,
+    userPositions,
+    userOrgRoleIds,
+    userPositionIds,
+  } = req.body || {};
+  const userFull = await pool.query(
+    `SELECT id, email, role, roles, standort, regionalleiter_id, geschaeftsfuehrung_id, unit_lead_id, units, personalnummer, user_org_roles, user_positions, user_org_role_ids, user_position_ids
+     FROM users WHERE id = $1`,
+    [id]
+  );
+  const cur = userFull.rows[0];
+  if (!cur) return res.status(404).json({ error: "Benutzer nicht gefunden." });
 
   const updates = [];
   const params = [];
+  if (email !== undefined) {
+    const newEmail = String(email).trim().toLowerCase();
+    if (!newEmail || !newEmail.includes("@")) {
+      return res.status(400).json({ error: "Gueltige E-Mail erforderlich." });
+    }
+    if (newEmail !== cur.email) {
+      const duplicate = await pool.query(
+        "SELECT id FROM users WHERE email = $1 AND id <> $2",
+        [newEmail, id]
+      );
+      if (duplicate.rows.length) {
+        return res.status(400).json({ error: "E-Mail ist bereits vergeben." });
+      }
+      params.push(newEmail);
+      updates.push(`email = $${params.length}`);
+    }
+  }
   if (name) {
     params.push(String(name).trim());
     updates.push(`name = $${params.length}`);
   }
-  if (role) {
-    const safeRole =
-      role === "super_admin" ? user.role : normalizeAssignableRole(role, user.role);
-    params.push(safeRole);
-    updates.push(`role = $${params.length}`);
+
+  if (personalnummer !== undefined) {
+    if (!isAdminRole(req.user)) {
+      return res.status(403).json({ error: "Personalnummer nur durch Admin aenderbar." });
+    }
+    params.push(String(personalnummer).trim() || null);
+    updates.push(`personalnummer = $${params.length}`);
   }
-  if (units !== undefined) {
-    const nextRole =
-      role === "super_admin"
-        ? user.role
+
+  const rolesChanged =
+    Array.isArray(roles) ||
+    role ||
+    userPositions !== undefined ||
+    userOrgRoles !== undefined ||
+    userPositionIds !== undefined ||
+    userOrgRoleIds !== undefined;
+  if (rolesChanged) {
+    const catalogForRoles =
+      userPositions !== undefined ||
+      userOrgRoles !== undefined ||
+      userPositionIds !== undefined ||
+      userOrgRoleIds !== undefined
+        ? await validateUserCatalogAssignments(
+            userOrgRoles !== undefined ? userOrgRoles : cur.user_org_roles,
+            userPositions !== undefined ? userPositions : cur.user_positions,
+            userOrgRoleIds !== undefined ? userOrgRoleIds : cur.user_org_role_ids,
+            userPositionIds !== undefined ? userPositionIds : cur.user_position_ids
+          )
+        : {
+            userOrgRoles: normalizeStringArray(cur.user_org_roles),
+            userPositions: normalizeStringArray(cur.user_positions),
+            userOrgRoleIds: normalizeBigIntArray(cur.user_org_role_ids),
+            userPositionIds: normalizeBigIntArray(cur.user_position_ids),
+          };
+    const inputRoles =
+      Array.isArray(roles) && roles.length
+        ? roles
         : role
-          ? normalizeAssignableRole(role, user.role)
-          : user.role;
-    const unitCheck = await validateUnitsForRole(nextRole, units);
-    if (unitCheck.error) return res.status(400).json({ error: unitCheck.error });
-    const safeUnits = unitCheck.units || [];
-    params.push(safeUnits);
+          ? [role]
+          : getUserRoles(cur);
+    const mergedRoles = mergeUserRolesFromInput(inputRoles, catalogForRoles.userPositions);
+    if (!mergedRoles.length) {
+      return res.status(400).json({
+        error: "Mindestens eine Position oder eine Administration-Rolle erforderlich.",
+      });
+    }
+    const superAdminError = validateSuperAdminGrant(
+      mergedRoles,
+      getUserRoles(cur),
+      superAdminGrantPassword
+    );
+    if (superAdminError) return res.status(400).json({ error: superAdminError });
+    const validated = await validateUserRolesAndOrg(
+      mergedRoles,
+      {
+        standort: standort !== undefined ? standort : cur.standort,
+        regionalleiterId:
+          regionalleiterId !== undefined ? regionalleiterId : cur.regionalleiter_id,
+        geschaeftsfuehrungId:
+          geschaeftsfuehrungId !== undefined ? geschaeftsfuehrungId : cur.geschaeftsfuehrung_id,
+        unitLeadId: unitLeadId !== undefined ? unitLeadId : cur.unit_lead_id,
+        units: units !== undefined ? units : normalizeUnits(cur.units),
+      },
+      id
+    );
+    if (validated.error) return res.status(400).json({ error: validated.error });
+    params.push(validated.role);
+    updates.push(`role = $${params.length}`);
+    params.push(validated.roles);
+    updates.push(`roles = $${params.length}`);
+    params.push(validated.units);
     updates.push(`units = $${params.length}`);
+    params.push(validated.standort);
+    updates.push(`standort = $${params.length}`);
+    params.push(validated.regionalleiterId);
+    updates.push(`regionalleiter_id = $${params.length}`);
+    params.push(validated.geschaeftsfuehrungId);
+    updates.push(`geschaeftsfuehrung_id = $${params.length}`);
+    params.push(validated.unitLeadId);
+    updates.push(`unit_lead_id = $${params.length}`);
+  } else {
+    if (units !== undefined) {
+      const validated = await validateUserRolesAndOrg(
+        getUserRoles(cur),
+        {
+          standort: cur.standort,
+          regionalleiterId: cur.regionalleiter_id,
+          geschaeftsfuehrungId: cur.geschaeftsfuehrung_id,
+          unitLeadId: cur.unit_lead_id,
+          units,
+        },
+        id
+      );
+      if (validated.error) return res.status(400).json({ error: validated.error });
+      params.push(validated.units);
+      updates.push(`units = $${params.length}`);
+    }
+    if (
+      standort !== undefined ||
+      regionalleiterId !== undefined ||
+      geschaeftsfuehrungId !== undefined ||
+      unitLeadId !== undefined
+    ) {
+      const validated = await validateUserRolesAndOrg(
+        getUserRoles(cur),
+        {
+          standort: standort !== undefined ? standort : cur.standort,
+          regionalleiterId:
+            regionalleiterId !== undefined ? regionalleiterId : cur.regionalleiter_id,
+          geschaeftsfuehrungId:
+            geschaeftsfuehrungId !== undefined ? geschaeftsfuehrungId : cur.geschaeftsfuehrung_id,
+          unitLeadId: unitLeadId !== undefined ? unitLeadId : cur.unit_lead_id,
+          units: normalizeUnits(cur.units),
+        },
+        id
+      );
+      if (validated.error) return res.status(400).json({ error: validated.error });
+      params.push(validated.standort);
+      updates.push(`standort = $${params.length}`);
+      params.push(validated.regionalleiterId);
+      updates.push(`regionalleiter_id = $${params.length}`);
+      params.push(validated.geschaeftsfuehrungId);
+      updates.push(`geschaeftsfuehrung_id = $${params.length}`);
+      params.push(validated.unitLeadId);
+      updates.push(`unit_lead_id = $${params.length}`);
+    }
   }
+
+  if (
+    userOrgRoles !== undefined ||
+    userPositions !== undefined ||
+    userOrgRoleIds !== undefined ||
+    userPositionIds !== undefined
+  ) {
+    const catalog = await validateUserCatalogAssignments(
+      userOrgRoles !== undefined ? userOrgRoles : cur.user_org_roles,
+      userPositions !== undefined ? userPositions : cur.user_positions,
+      userOrgRoleIds !== undefined ? userOrgRoleIds : cur.user_org_role_ids,
+      userPositionIds !== undefined ? userPositionIds : cur.user_position_ids
+    );
+    params.push(catalog.userOrgRoles);
+    updates.push(`user_org_roles = $${params.length}`);
+    params.push(catalog.userPositions);
+    updates.push(`user_positions = $${params.length}`);
+    params.push(catalog.userOrgRoleIds);
+    updates.push(`user_org_role_ids = $${params.length}`);
+    params.push(catalog.userPositionIds);
+    updates.push(`user_position_ids = $${params.length}`);
+  }
+
   if (password) {
     params.push(bcrypt.hashSync(String(password), 10));
     updates.push(`password_hash = $${params.length}`);
@@ -738,8 +3587,509 @@ app.put("/api/admin/users/:id", auth, requireAdmin, async (req, res) => {
   updates.push(`updated_at = $${params.length}`);
   params.push(id);
 
-  await pool.query(`UPDATE users SET ${updates.join(", ")} WHERE id = $${params.length}`, params);
+  try {
+    await pool.query(`UPDATE users SET ${updates.join(", ")} WHERE id = $${params.length}`, params);
+  } catch (error) {
+    if (error.code === "23505") {
+      return res.status(400).json({ error: "E-Mail ist bereits vergeben." });
+    }
+    throw error;
+  }
   return res.json({ ok: true });
+});
+
+function parseImportList(value) {
+  return String(value || "")
+    .split(/[;|]/)
+    .map((part) => part.trim())
+    .filter(Boolean);
+}
+
+async function lookupUserIdByEmail(email) {
+  const safeEmail = String(email || "").trim().toLowerCase();
+  if (!safeEmail || !safeEmail.includes("@")) return null;
+  const result = await pool.query("SELECT id FROM users WHERE email = $1", [safeEmail]);
+  const id = result.rows[0]?.id;
+  return id != null ? Number(id) : null;
+}
+
+function isFullUserImportRow(row) {
+  return !!(
+    row.positionen?.length ||
+    row.rollenOrganisation?.length ||
+    row.units?.length ||
+    row.administration?.length ||
+    row.standort ||
+    row.regionalleiterEmail ||
+    row.geschaeftsfuehrungEmail
+  );
+}
+
+async function applyLegacyUserImportRow(row, results) {
+  const rowNum = row.rowNum;
+  const email = row.email;
+  const vorname = row.vorname;
+  const nachname = row.nachname;
+  const personalnummer = row.personalnummer || null;
+  const name = `${nachname}, ${vorname}`;
+
+  const existing = await pool.query("SELECT id FROM users WHERE email = $1", [email]);
+  if (existing.rows[0]) {
+    await pool.query(
+      `UPDATE users SET name = $1, personalnummer = $2, updated_at = $3 WHERE id = $4`,
+      [name, personalnummer, new Date().toISOString(), existing.rows[0].id]
+    );
+    results.updated += 1;
+    return;
+  }
+  await pool.query(
+    `INSERT INTO users (email, name, password_hash, role, roles, units, personalnummer)
+     VALUES ($1, $2, $3, 'mitarbeiter', ARRAY['mitarbeiter']::text[], '{}', $4)`,
+    [email, name, bcrypt.hashSync(DEFAULT_MITARBEITER_PASSWORD, 10), personalnummer]
+  );
+  results.created += 1;
+}
+
+async function applyFullUserImportRow(row, results) {
+  const rowNum = row.rowNum;
+  const email = row.email;
+  const vorname = row.vorname;
+  const nachname = row.nachname;
+  const personalnummer = row.personalnummer || null;
+  const name = `${nachname}, ${vorname}`;
+  const units = row.units || [];
+  const userOrgRoles = row.rollenOrganisation || [];
+  const userPositions = row.positionen || [];
+  const administration = (row.administration || []).filter((role) =>
+    ["admin", "super_admin"].includes(role)
+  );
+
+  if (administration.includes("super_admin")) {
+    const existingCheck = await pool.query(
+      `SELECT roles FROM users WHERE email = $1`,
+      [email]
+    );
+    const existingRoles = getUserRoles(existingCheck.rows[0] || {});
+    if (!existingRoles.includes("super_admin")) {
+      results.errors.push({
+        row: rowNum,
+        email,
+        message: "Super Admin nur in der Oberflaeche vergeben (Freischalt-Passwort).",
+      });
+      return;
+    }
+  }
+
+  const catalog = await validateUserCatalogAssignments(
+    userOrgRoles,
+    userPositions,
+    null,
+    null
+  );
+  const mergedRoles = mergeUserRolesFromInput(administration, catalog.userPositions);
+  if (!mergedRoles.length) {
+    results.errors.push({
+      row: rowNum,
+      email,
+      message: "Mindestens eine Position oder Administration-Rolle erforderlich.",
+    });
+    return;
+  }
+
+  const regionalleiterId = await lookupUserIdByEmail(row.regionalleiterEmail);
+  const geschaeftsfuehrungId = await lookupUserIdByEmail(row.geschaeftsfuehrungEmail);
+  const existing = await pool.query(
+    `SELECT id, roles FROM users WHERE email = $1`,
+    [email]
+  );
+  const userId = existing.rows[0]?.id || null;
+
+  const validated = await validateUserRolesAndOrg(
+    mergedRoles,
+    {
+      standort: row.standort || "",
+      regionalleiterId,
+      geschaeftsfuehrungId,
+      unitLeadId: null,
+      units,
+    },
+    userId
+  );
+  if (validated.error) {
+    results.errors.push({ row: rowNum, email, message: validated.error });
+    return;
+  }
+
+  const now = new Date().toISOString();
+  if (userId) {
+    await pool.query(
+      `UPDATE users SET
+         name = $1,
+         role = $2,
+         roles = $3,
+         units = $4,
+         standort = $5,
+         regionalleiter_id = $6,
+         geschaeftsfuehrung_id = $7,
+         unit_lead_id = $8,
+         personalnummer = $9,
+         user_org_roles = $10,
+         user_positions = $11,
+         user_org_role_ids = $12,
+         user_position_ids = $13,
+         updated_at = $14
+       WHERE id = $15`,
+      [
+        name,
+        validated.role,
+        validated.roles,
+        validated.units,
+        validated.standort,
+        validated.regionalleiterId,
+        validated.geschaeftsfuehrungId,
+        validated.unitLeadId,
+        personalnummer,
+        catalog.userOrgRoles,
+        catalog.userPositions,
+        catalog.userOrgRoleIds,
+        catalog.userPositionIds,
+        now,
+        userId,
+      ]
+    );
+    results.updated += 1;
+    return;
+  }
+
+  await pool.query(
+    `INSERT INTO users (email, name, password_hash, role, roles, units, standort, regionalleiter_id, geschaeftsfuehrung_id, unit_lead_id, personalnummer, user_org_roles, user_positions, user_org_role_ids, user_position_ids)
+     VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15)`,
+    [
+      email,
+      name,
+      bcrypt.hashSync(DEFAULT_MITARBEITER_PASSWORD, 10),
+      validated.role,
+      validated.roles,
+      validated.units,
+      validated.standort,
+      validated.regionalleiterId,
+      validated.geschaeftsfuehrungId,
+      validated.unitLeadId,
+      personalnummer,
+      catalog.userOrgRoles,
+      catalog.userPositions,
+      catalog.userOrgRoleIds,
+      catalog.userPositionIds,
+    ]
+  );
+  results.created += 1;
+}
+
+async function importSkillCategoriesFromRows(rows) {
+  const results = { created: 0, updated: 0, errors: [] };
+  for (let i = 0; i < rows.length; i += 1) {
+    const row = rows[i] || {};
+    const rowNum = Number(row.rowNum) || i + 2;
+    const kind = row.kind === "soft" ? "soft" : "tech";
+    const name = String(row.name || "").trim();
+    const beschreibung = String(row.beschreibung || "").trim();
+    const beispiel = String(row.beispiel || "").trim();
+    const rawSort = row.sort_order;
+    const sortOrder =
+      rawSort !== undefined && rawSort !== null && String(rawSort).trim() !== ""
+        ? Number(rawSort)
+        : null;
+
+    if (!name) {
+      results.errors.push({ row: rowNum, name: "", message: "Kategorie-Name fehlt." });
+      continue;
+    }
+
+    const rawId = row.id;
+    const id =
+      rawId !== undefined && rawId !== null && String(rawId).trim() !== "" ? Number(rawId) : null;
+
+    try {
+      let existing = null;
+      if (Number.isFinite(id) && id > 0) {
+        const byId = await pool.query(
+          "SELECT id, kind, name FROM skill_categories WHERE id = $1",
+          [id]
+        );
+        existing = byId.rows[0] || null;
+      }
+      if (!existing) {
+        const byName = await pool.query(
+          "SELECT id, kind, name FROM skill_categories WHERE kind = $1 AND name = $2",
+          [kind, name]
+        );
+        existing = byName.rows[0] || null;
+      }
+
+      if (existing) {
+        const oldName = existing.name;
+        const current = await pool.query(
+          "SELECT beschreibung, beispiel, sort_order FROM skill_categories WHERE id = $1",
+          [existing.id]
+        );
+        const currentRow = current.rows[0];
+        const nextSort =
+          sortOrder !== null && Number.isFinite(sortOrder)
+            ? sortOrder
+            : currentRow.sort_order;
+        await pool.query(
+          `UPDATE skill_categories
+           SET name = $1,
+               beschreibung = $2,
+               beispiel = $3,
+               sort_order = $4,
+               updated_at = NOW()
+           WHERE id = $5`,
+          [
+            name,
+            beschreibung || currentRow.beschreibung,
+            beispiel || currentRow.beispiel,
+            nextSort,
+            existing.id,
+          ]
+        );
+        if (oldName !== name) {
+          await cascadeSkillCategoryRenameInEntries(
+            existing.id,
+            existing.kind,
+            oldName,
+            name
+          );
+        }
+        results.updated += 1;
+      } else {
+        const maxOrder = await pool.query(
+          "SELECT COALESCE(MAX(sort_order), -1)::int AS max_order FROM skill_categories WHERE kind = $1",
+          [kind]
+        );
+        const nextSort =
+          sortOrder !== null && Number.isFinite(sortOrder)
+            ? sortOrder
+            : maxOrder.rows[0].max_order + 1;
+        await pool.query(
+          `INSERT INTO skill_categories (kind, name, beschreibung, beispiel, sort_order)
+           VALUES ($1, $2, $3, $4, $5)`,
+          [kind, name, beschreibung, beispiel, nextSort]
+        );
+        results.created += 1;
+      }
+    } catch (error) {
+      if (error.code === "23505") {
+        results.errors.push({
+          row: rowNum,
+          name,
+          message: "Kategorie existiert bereits (kind+name).",
+        });
+      } else {
+        results.errors.push({
+          row: rowNum,
+          name,
+          message: error.message || "Import fehlgeschlagen.",
+        });
+      }
+    }
+  }
+  return results;
+}
+
+async function importCatalogNameRows(table, rows, renameWithCascade) {
+  const results = { created: 0, updated: 0, errors: [] };
+  const safeTable = table === "app_positions" ? "app_positions" : "app_roles";
+
+  for (let i = 0; i < rows.length; i += 1) {
+    const row = rows[i] || {};
+    const rowNum = Number(row.rowNum) || i + 2;
+    const name = String(row.name || "").trim();
+    const rawSort = row.sort_order;
+    const sortOrder =
+      rawSort !== undefined && rawSort !== null && String(rawSort).trim() !== ""
+        ? Number(rawSort)
+        : null;
+    const rawId = row.id;
+    const id =
+      rawId !== undefined && rawId !== null && String(rawId).trim() !== "" ? Number(rawId) : null;
+
+    if (!name) {
+      results.errors.push({ row: rowNum, name: "", message: "Name fehlt." });
+      continue;
+    }
+
+    try {
+      let existing = null;
+      if (Number.isFinite(id) && id > 0) {
+        const byId = await pool.query(
+          `SELECT id, name, sort_order FROM ${safeTable} WHERE id = $1`,
+          [id]
+        );
+        existing = byId.rows[0] || null;
+      }
+      if (!existing) {
+        const byName = await pool.query(
+          `SELECT id, name, sort_order FROM ${safeTable} WHERE name = $1`,
+          [name]
+        );
+        existing = byName.rows[0] || null;
+      }
+
+      if (existing) {
+        if (existing.name !== name) {
+          const renamed = await renameWithCascade(existing.id, name);
+          if (!renamed) {
+            results.errors.push({ row: rowNum, name, message: "Eintrag nicht gefunden." });
+            continue;
+          }
+        }
+        if (sortOrder !== null && Number.isFinite(sortOrder) && sortOrder !== existing.sort_order) {
+          await pool.query(
+            `UPDATE ${safeTable} SET sort_order = $1, updated_at = NOW() WHERE id = $2`,
+            [sortOrder, existing.id]
+          );
+        }
+        results.updated += 1;
+      } else {
+        const maxOrder = await pool.query(
+          `SELECT COALESCE(MAX(sort_order), -1)::int AS max_order FROM ${safeTable}`
+        );
+        const nextSort =
+          sortOrder !== null && Number.isFinite(sortOrder)
+            ? sortOrder
+            : maxOrder.rows[0].max_order + 1;
+        await pool.query(
+          `INSERT INTO ${safeTable} (name, sort_order) VALUES ($1, $2)`,
+          [name, nextSort]
+        );
+        results.created += 1;
+      }
+    } catch (error) {
+      if (error.code === "23505") {
+        results.errors.push({
+          row: rowNum,
+          name,
+          message: "Name ist bereits vergeben.",
+        });
+      } else {
+        results.errors.push({
+          row: rowNum,
+          name,
+          message: error.message || "Import fehlgeschlagen.",
+        });
+      }
+    }
+  }
+  return results;
+}
+
+app.post("/api/admin/skill-categories/import", auth, requireAdmin, async (req, res) => {
+  const { rows } = req.body || {};
+  if (!Array.isArray(rows) || !rows.length) {
+    return res.status(400).json({ error: "Keine Importdaten vorhanden." });
+  }
+  const results = await importSkillCategoriesFromRows(rows);
+  return res.json(results);
+});
+
+app.post("/api/admin/catalogs/import", auth, requireAdmin, async (req, res) => {
+  const { roles, positions } = req.body || {};
+  const roleRows = Array.isArray(roles) ? roles : [];
+  const positionRows = Array.isArray(positions) ? positions : [];
+  if (!roleRows.length && !positionRows.length) {
+    return res.status(400).json({ error: "Keine Importdaten vorhanden." });
+  }
+  const roleResults = roleRows.length
+    ? await importCatalogNameRows("app_roles", roleRows, renameAppRoleWithCascade)
+    : { created: 0, updated: 0, errors: [] };
+  const positionResults = positionRows.length
+    ? await importCatalogNameRows("app_positions", positionRows, renameAppPositionWithCascade)
+    : { created: 0, updated: 0, errors: [] };
+  return res.json({
+    roles: roleResults,
+    positions: positionResults,
+    created: roleResults.created + positionResults.created,
+    updated: roleResults.updated + positionResults.updated,
+    errors: [...roleResults.errors, ...positionResults.errors],
+  });
+});
+
+async function importAdminUsersFromRows(rows) {
+  const results = { created: 0, updated: 0, errors: [] };
+  for (let i = 0; i < rows.length; i += 1) {
+    const row = rows[i] || {};
+    const rowNum = Number(row.rowNum) || i + 2;
+    const email = String(row.email || "")
+      .trim()
+      .toLowerCase();
+    const vorname = String(row.vorname || "").trim();
+    const nachname = String(row.nachname || "").trim();
+    const personalnummer = String(row.personalnummer || "").trim() || null;
+
+    if (!email || !email.includes("@")) {
+      results.errors.push({ row: rowNum, email, message: "Ungueltige E-Mail." });
+      continue;
+    }
+    if (!nachname || !vorname) {
+      results.errors.push({ row: rowNum, email, message: "Nachname und Vorname erforderlich." });
+      continue;
+    }
+
+    const normalizedRow = {
+      rowNum,
+      email,
+      vorname,
+      nachname,
+      personalnummer,
+      positionen: parseImportList(row.positionen),
+      rollenOrganisation: parseImportList(row.rollenOrganisation),
+      units: parseImportList(row.units),
+      standort: normalizeUserStandort(row.standort),
+      regionalleiterEmail: String(row.regionalleiterEmail || "").trim().toLowerCase(),
+      geschaeftsfuehrungEmail: String(row.geschaeftsfuehrungEmail || "").trim().toLowerCase(),
+      administration: parseImportList(row.administration)
+        .map((role) => role.toLowerCase().replace(/\s+/g, "_"))
+        .filter((role) => role === "admin" || role === "super_admin"),
+    };
+
+    try {
+      if (isFullUserImportRow(normalizedRow)) {
+        await applyFullUserImportRow(normalizedRow, results);
+      } else {
+        await applyLegacyUserImportRow(normalizedRow, results);
+      }
+    } catch (error) {
+      if (error.code === "23505") {
+        results.errors.push({ row: rowNum, email, message: "E-Mail ist bereits vergeben." });
+      } else {
+        results.errors.push({
+          row: rowNum,
+          email,
+          message: error.message || "Import fehlgeschlagen.",
+        });
+      }
+    }
+  }
+  return results;
+}
+
+app.post("/api/admin/users/import", auth, requireAdmin, async (req, res) => {
+  const { rows } = req.body || {};
+  if (!Array.isArray(rows) || !rows.length) {
+    return res.status(400).json({ error: "Keine Importdaten vorhanden." });
+  }
+  const results = await importAdminUsersFromRows(rows);
+  return res.json(results);
+});
+
+app.post("/api/admin/users/import-mitarbeiter", auth, requireAdmin, async (req, res) => {
+  const { rows } = req.body || {};
+  if (!Array.isArray(rows) || !rows.length) {
+    return res.status(400).json({ error: "Keine Importdaten vorhanden." });
+  }
+  const results = await importAdminUsersFromRows(rows);
+  return res.json(results);
 });
 
 app.delete("/api/admin/users/:id", auth, requireAdmin, async (req, res) => {

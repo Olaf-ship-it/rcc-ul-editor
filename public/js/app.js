@@ -1,82 +1,201 @@
-// ===== CATEGORIES =====
-const KATEGORIE_ALIASES = {
-  "Ergebnisse / Artefakte": "Produkte / Services / Lösungen",
-  "Messbare KPIs / Markterfolg": "Verteilung / Anteile / KPIs",
-};
-function displayKategorie(k) {
-  return KATEGORIE_ALIASES[k] || k;
-}
-
-const CATS = [
-  {k:"Produkte / Services / Lösungen", q:"Welche Produkte, Services, Loesungen, Strukturen oder Programme existieren bereits?",
-   info:"Erfassen Sie alle bestehenden Produkte, Services, Tools, Prozesse und Programme. Auch Teilresultate und Piloten zaehlen.",
-   ex_pm:"SAP S/4HANA Retail (CAR, POSDM) ist Kernprodukt. AMS-Managed-Services fuer 15+ Retailkunden aktiv. Erste KI-PoCs (AMS Copilot) in Pilotphase.",
-   ex_sm:"SAP BTP Einfuehrungskurse fuer 2 Teams durchgefuehrt. Lernplattform in Pilotphase (50 TN). Change Story v1 kommuniziert.",
-   ex_or:"KI Integration Hub in Gruendungsphase (2 MA). Open Source Guild: Charter v1 verabschiedet. CoP Retail monatlich, 15 TN.",
-   ex_pe:"SAP Diamant-Partnerschaft Retail aktiv. Microsoft Gold-Partnerschaft aktiv. Co-Sell Draft mit SAP unterzeichnet."},
-  {k:"Verteilung / Anteile / KPIs", q:"Welche Verteilungen, Anteile und messbaren Kennzahlen liegen aktuell vor?",
-   info:"Nennen Sie konkrete Zahlen und Anteile: Umsatzverteilung, Conversion Rates, Nutzerzahlen, Pipeline-Werte, NPS etc.",
-   ex_pm:"70% Umsatz aus klassischen SAP-Projekten. 25% aus AMS. 2 aktive KI-Piloten, Pipeline 200T EUR.",
-   ex_sm:"150 MA mit mind. 1 Training. Lernzeit 2h/Monat (Ziel: 4h). Employee NPS: +32.",
-   ex_or:"6 offene Rollen (2 kritisch). 70% Projekte Cross-Unit. RACI-Abdeckung ~50%.",
-   ex_pe:"2 strategische Partnergespraeche/Quartal. 0 Co-Sell-Deals. 0 Marketplace Listings."},
-  {k:"Voraussetzungen / Ressourcen", q:"Welche organisatorischen, technischen oder finanziellen Voraussetzungen bestehen?",
-   info:"Budget, Personal, Tools, Infrastruktur, Lizenzen – alles was als Grundlage vorhanden ist oder fehlt.",
-   ex_pm:"SAP Diamant-Partner Retail (einziger DACH). MS Gold-Partner. Product Owner benannt. Budget in Pruefung.",
-   ex_sm:"Trainingsbudget 80T EUR genehmigt. 2 externe Trainer. Zeitfreigabe nur in 3/8 Teams. Kein Learning Manager.",
-   ex_or:"Rollenprofile 80% definiert. Collaboration-Tools aktiv. Budget fuer Hub in GF-Diskussion.",
-   ex_pe:"Partnervertraege aktiv. 1 Alliance Manager (50%). Marketing-Material in Erstellung."},
-  {k:"Abhaengigkeiten (intern / extern)", q:"Von welchen anderen Bereichen, Teams oder externen Partnern haengt der Fortschritt ab?",
-   info:"Identifizieren Sie Abhaengigkeiten zu anderen Units, Workstreams, externen Partnern, Freigaben etc.",
-   ex_pm:"Skills: API-/KI-Expertise fehlt teilweise. Org: Product-Team nicht vollstaendig. Partner: SAP Co-Sell ausstehend.",
-   ex_sm:"Org: Rollenbeschreibungen nicht aktualisiert. HR: Karrierepfade nicht mit Skills verknuepft.",
-   ex_or:"Skills: KI-Integratoren fehlen. Portfolio: Pilotprojekte als Praxis. HR: Recruiting-Kapazitaet begrenzt.",
-   ex_pe:"Portfolio: Module muessen marktreif sein. Org: Alliance-Rolle muss Vollzeit werden."},
-  {k:"Risiken / Blocker", q:"Welche konkreten Hindernisse oder Verzoegerungen bestehen aktuell?",
-   info:"Benennen Sie konkrete Risiken, Blocker, Verzoegerungen – intern wie extern.",
-   ex_pm:"Kein standardisiertes Pricing fuer KI-Module. Legal-Prozess >6 Wochen. Konkurrenz durch SAP-eigene KI-Features.",
-   ex_sm:"Hohe Delivery-Auslastung (>90%) verhindert Lernzeit. KI-Skepsis bei erfahrenen Beratern.",
-   ex_or:"Silodenken zwischen Delivery und Innovation. Widerstand mittleres Management.",
-   ex_pe:"SAP Partner-Team wechselt Ansprechpartner haeufig. Kein lokaler Referenzcase."},
-  {k:"Verantwortliche / Team", q:"Wer treibt das Thema aktuell? Welche Rollen sind beteiligt?",
-   info:"Nennen Sie Rollen und ggf. Namen der Verantwortlichen. Identifizieren Sie fehlende Rollen.",
-   ex_pm:"Portfolio Lead KI, Sales Lead Retail, Product Owner AMS Copilot, CTO als Sponsor.",
-   ex_sm:"People & Culture Lead, Change Coach (extern), HR Director als Sponsor, 12 Teamleads als Mentoren.",
-   ex_or:"COO: Hub-Setup. CTO: Governance. HR: Recruiting. Transformation PMO (0,5 FTE).",
-   ex_pe:"Alliance Manager (50%), Sales Lead Retail, Marketing Lead, COO: Sign-off."},
-  {k:"Staerken / Best Practices", q:"Was laeuft besonders gut? Was koennen andere Bereiche uebernehmen?",
-   info:"Heben Sie hervor, was funktioniert – als Basis fuer Skalierung und Wissenstransfer.",
-   ex_pm:"Einziger SAP Diamant-Partner Retail DACH. Tiefe Branchenexpertise. AMS-Delivery als Vertrauensbasis.",
-   ex_sm:"Hohe Lernbereitschaft bei Junioren. SAP-Expertise auf hohem Niveau. Peer-Learning gut angenommen.",
-   ex_or:"Flache Hierarchien, kurze Entscheidungswege. CoP Retail als funktionierendes Format.",
-   ex_pe:"Diamant-Status oeffnet Tueren. Persoenliche SAP-Kontakte. Langjahrige Branchenreputation."},
-  {k:"Handlungsfelder (0-6 Monate)", q:"Welche konkreten naechsten Schritte sind aus Ihrer Sicht notwendig?",
-   info:"Definieren Sie 3-5 konkrete Massnahmen fuer die naechsten 6 Monate mit klarer Prioritaet.",
-   ex_pm:"AMS Copilot Pilot finalisieren. Pricing Blueprint erstellen. SAP Co-Sell Antrag einreichen. 3 Pilotkunden ansprechen.",
-   ex_sm:"Learning Manager einstellen. Zeitfreigabe durchsetzen. Badge-System pilotieren. KI-Basics als Pflichttraining.",
-   ex_or:"KI-Manager einstellen (Prio 1). Hub-Budget freigeben. RACI erstellen. Guild Output steigern.",
-   ex_pe:"Alliance Manager auf 100%. SAP Co-Sell Meeting organisieren. Referenzcase dokumentieren. Marketplace Listing."}
-];
-
-const WS_KEYS = ["Portfolio & Markt", "Skills & Mindset", "Organisation & Rollen", "Partner & Ecosystem"];
-const WS_ICONS = {"Portfolio & Markt":"📊","Skills & Mindset":"🧠","Organisation & Rollen":"🏗️","Partner & Ecosystem":"🤝"};
-const EX_KEYS = {
-  "Portfolio & Markt":"ex_pm","Skills & Mindset":"ex_sm",
-  "Organisation & Rollen":"ex_or","Partner & Ecosystem":"ex_pe"
-};
-
 // ===== SESSION + API =====
 let currentUnit = "";
 let currentName = "";
 let currentEmail = "";
 let isAdmin = false;
 let isSuperAdmin = false;
+let isMitarbeiter = false;
+let currentSkillEntryId = null;
+let currentPersonalnummer = "";
+let skillPersonalnummerRows = [];
+let unitContextPanelFetchGen = 0;
+let headerUnitSwitcherBound = false;
 let superAdminViewUnit = "all";
 let masterUnitsCache = [];
-let entryStore = { status: [], team: [], skill: [] };
+let unitLeadCandidatesCache = [];
+let deputyCandidatesCache = [];
+const DEPUTY_UNIT_LEADER_POSITION = "Stellv. Unit Leiter";
+let entryStore = { portfolio: [], organisation: [], skill: [] };
 
 function today(){return new Date().toISOString().slice(0,10)}
 function toast(m,c,ms){const t=document.getElementById('toast');if(!t)return;t.textContent=m;t.style.background=c||'#27ae60';t.classList.add('show');clearTimeout(t._toastTimer);t._toastTimer=setTimeout(()=>t.classList.remove('show'),ms||2500)}
+
+const SAVE_BTN_LABEL_DEFAULT = "💾 Speichern";
+const SAVE_BTN_LABEL_SUCCESS = "✓ Gespeichert";
+
+function getSaveButtonFromForm(form) {
+  if (!form) return null;
+  return (
+    form.querySelector('button[type="submit"].org-form-save-btn') ||
+    form.querySelector('button[type="submit"].btn-primary') ||
+    form.querySelector('button[type="submit"]')
+  );
+}
+
+function getSaveButtonsFromForm(form) {
+  if (!form) return [];
+  const marked = [...form.querySelectorAll('button[type="submit"].org-form-save-btn')];
+  if (marked.length) return marked;
+  const one = getSaveButtonFromForm(form);
+  return one ? [one] : [];
+}
+
+function captureElementsSnapshot(container) {
+  if (!container) return "";
+  const parts = [];
+  container.querySelectorAll("input, select, textarea").forEach((el) => {
+    if (el.type === "button" || el.type === "submit" || el.type === "file") return;
+    if (el.type === "radio" && !el.checked) return;
+    const key = el.id || el.name || el.className.split(/\s+/)[0] || "field";
+    let val = el.type === "checkbox" ? (el.checked ? "1" : "0") : el.value;
+    parts.push(`${key}=${String(val)}`);
+  });
+  return parts.sort().join("\n");
+}
+
+function setSaveButtonVisualState(btn, state) {
+  if (!btn) return;
+  btn.classList.remove("btn-save-dirty", "btn-save-success");
+  clearTimeout(btn._saveSuccessTimer);
+  const defaultLabel = btn.dataset.saveLabelDefault || SAVE_BTN_LABEL_DEFAULT;
+  if (state === "dirty") {
+    btn.classList.add("btn-save-dirty");
+    btn.textContent = defaultLabel;
+  } else if (state === "saved") {
+    btn.classList.add("btn-save-success");
+    btn.textContent = SAVE_BTN_LABEL_SUCCESS;
+    btn._saveSuccessTimer = setTimeout(() => {
+      if (btn._saveTracker) btn._saveTracker.commitBaseline(false);
+      else setSaveButtonVisualState(btn, "default");
+    }, 3500);
+  } else {
+    btn.textContent = defaultLabel;
+  }
+}
+
+function initFormSaveButtonTracker(root, options = {}) {
+  const container = root;
+  const buttons =
+    options.buttons ||
+    (root?.tagName === "FORM" ? getSaveButtonsFromForm(root) : options.button ? [options.button] : []);
+  const btn = buttons[0] || null;
+  if (!container || !btn) return null;
+  if (btn._saveTracker) {
+    btn._saveTracker.resetBaseline();
+    return btn._saveTracker;
+  }
+  buttons.forEach((b) => {
+    if (!b.dataset.saveLabelDefault) {
+      b.dataset.saveLabelDefault = b.textContent.trim() || SAVE_BTN_LABEL_DEFAULT;
+    }
+  });
+  const watchContainers = options.watchContainers || [];
+  const getSnapshot = () => {
+    let snap = captureElementsSnapshot(container);
+    watchContainers.forEach((c) => {
+      if (c) snap += "\n" + captureElementsSnapshot(c);
+    });
+    return snap;
+  };
+  let baseline = getSnapshot();
+  const syncButtons = (state) => {
+    buttons.forEach((b) => setSaveButtonVisualState(b, state));
+  };
+  const update = () => {
+    syncButtons(getSnapshot() === baseline ? "default" : "dirty");
+  };
+  const tracker = {
+    container,
+    btn,
+    buttons,
+    commitBaseline(showSaved) {
+      baseline = getSnapshot();
+      syncButtons(showSaved ? "saved" : "default");
+    },
+    resetBaseline() {
+      baseline = getSnapshot();
+      syncButtons("default");
+    },
+    markDirty() {
+      syncButtons("dirty");
+    },
+  };
+  buttons.forEach((b) => {
+    b._saveTracker = tracker;
+  });
+  container.addEventListener("input", update);
+  container.addEventListener("change", update);
+  watchContainers.forEach((c) => {
+    if (!c) return;
+    c.addEventListener("input", update);
+    c.addEventListener("change", update);
+  });
+  if (watchContainers.length) {
+    const mo = new MutationObserver(() => update());
+    watchContainers.forEach((c) => {
+      if (c) mo.observe(c, { childList: true, subtree: true });
+    });
+    tracker._observer = mo;
+  }
+  setSaveButtonVisualState(btn, "default");
+  return tracker;
+}
+
+function resetFormSaveButtonTracker(formOrContainer) {
+  const tracker =
+    formOrContainer?._saveTracker ||
+    (formOrContainer?.tagName === "FORM" ? getSaveButtonFromForm(formOrContainer)?._saveTracker : null);
+  tracker?.resetBaseline();
+}
+
+function notifyFormSaveSuccess(formOrBtn, message) {
+  const btn =
+    formOrBtn?._saveTracker?.btn ||
+    (formOrBtn?.tagName === "FORM" ? getSaveButtonFromForm(formOrBtn) : formOrBtn);
+  const tracker = btn?._saveTracker;
+  if (tracker) tracker.commitBaseline(true);
+  else if (btn) setSaveButtonVisualState(btn, "saved");
+  if (message) toast(`✓ ${message}`, "#27ae60", 4000);
+}
+
+function initAllSaveButtonTrackers() {
+  initFormSaveButtonTracker(document.getElementById("skillForm"), {
+    watchContainers: [
+      document.getElementById("sk_assessment_rows"),
+      document.getElementById("ss_assessment_rows"),
+    ],
+  });
+  initFormSaveButtonTracker(document.getElementById("organisationForm"), {
+    watchContainers: [
+      document.getElementById("org_gliederung_rows"),
+      document.getElementById("org_rollen_rows"),
+    ],
+  });
+  [
+    "portfolioProdukteForm",
+    "portfolioServicesForm",
+    "portfolioLoesungenForm",
+    "portfolioPartnergeschaeftForm",
+    "portfolioProjektgeschaeftForm",
+  ].forEach((id) => initFormSaveButtonTracker(document.getElementById(id)));
+  const adminUserCard = document.getElementById("adm_email")?.closest(".card");
+  const adminAddBtn = document.getElementById("btnAdminAddUser");
+  if (adminUserCard && adminAddBtn) {
+    initFormSaveButtonTracker(adminUserCard, { button: adminAddBtn });
+  }
+}
+
+function initModalSaveButtonTracker(modalOverlayId, saveButtonId) {
+  const overlay = document.getElementById(modalOverlayId);
+  const btn = document.getElementById(saveButtonId);
+  const box = overlay?.querySelector(".login-box");
+  if (!box || !btn) return null;
+  if (btn._saveTracker && btn._saveTracker.container === box) {
+    btn._saveTracker.resetBaseline();
+    return btn._saveTracker;
+  }
+  return initFormSaveButtonTracker(box, { button: btn });
+}
 
 function isElementVisible(el) {
   if (!el) return false;
@@ -121,9 +240,24 @@ function clearFormFieldErrors(form) {
   (form || document).querySelectorAll(".field-invalid").forEach((el) => el.classList.remove("field-invalid"));
 }
 
+function openSkillDetailsForField(el) {
+  if (!el) return;
+  if (el.closest("#sk_assessment_rows")) {
+    const details = document.getElementById("skillDetailsTech");
+    if (details && !details.open) details.open = true;
+    setSkillKind("tech");
+  }
+  if (el.closest("#ss_assessment_rows")) {
+    const details = document.getElementById("skillDetailsSoft");
+    if (details && !details.open) details.open = true;
+    setSkillKind("soft");
+  }
+}
+
 function reportFieldError(el, message) {
   if (el?.form) clearFormFieldErrors(el.form);
   else clearFormFieldErrors();
+  openSkillDetailsForField(el);
   if (el) {
     el.classList.add("field-invalid");
     el.focus({ preventScroll: false });
@@ -131,6 +265,89 @@ function reportFieldError(el, message) {
   }
   toast(message || `Bitte „${getFieldLabel(el)}“ ausfüllen.`, "#e74c3c", 4000);
   return false;
+}
+
+function getSkillEntryPersonalnummer(entry) {
+  if (!entry) return "";
+  return String(entry.personalnummer || entry.mitarbeiterId || "").trim();
+}
+
+function lookupPersonalnummerFromUsers(entry) {
+  if (!entry) return "";
+  const entryId = entry.id ? String(entry.id) : "";
+  const email = String(entry.email || currentEmail || "")
+    .trim()
+    .toLowerCase();
+  const nameKeys = new Set();
+  const full = String(entry.name || "").trim().toLowerCase();
+  if (full) nameKeys.add(full);
+  const nach = String(entry.nachname || "").trim();
+  const vor = String(entry.vorname || "").trim();
+  if (nach && vor) {
+    nameKeys.add(`${nach}, ${vor}`.toLowerCase());
+    nameKeys.add(`${vor} ${nach}`.toLowerCase());
+  }
+  const sources = [
+    ...adminUsersCache,
+    ...skillPersonalnummerRows.map((r) => ({
+      personalnummer: r.personalnummer,
+      skill_entry_id: r.skillEntryId,
+      email: r.email,
+      name: r.name,
+    })),
+  ];
+  for (const u of sources) {
+    const pn = String(u.personalnummer || "").trim();
+    if (!pn) continue;
+    const skillId = u.skill_entry_id || u.skillEntryId;
+    if (entryId && skillId && String(skillId) === entryId) return pn;
+    if (email && String(u.email || "").trim().toLowerCase() === email) return pn;
+    const uname = String(u.name || "").trim().toLowerCase();
+    if (uname && nameKeys.has(uname)) return pn;
+  }
+  return "";
+}
+
+async function loadSkillPersonalnummerLookup() {
+  if (isMitarbeiter) return;
+  try {
+    skillPersonalnummerRows = await api("/api/skill-personalnummer-lookup");
+  } catch (_e) {
+    skillPersonalnummerRows = [];
+  }
+}
+
+async function fillSkillEmployeeFieldsWithLookup(entry) {
+  if (!isMitarbeiter && !resolveSkillFormPersonalnummer(entry)) {
+    await loadSkillPersonalnummerLookup();
+  }
+  await ensureSkillEmployeeCatalogsLoaded();
+  let data = entry;
+  if (
+    !resolveSkillEntryOrgRoleIds(data).length &&
+    !resolveSkillEntryPositionIds(data).length
+  ) {
+    const user = findUserForSkillEntry(data);
+    if (user) {
+      data = {
+        ...data,
+        org_role_ids: resolveUserOrgRoleIds(user),
+        org_roles: user.userOrgRoles || [],
+        position_ids: resolveUserPositionIds(user),
+        positions: user.userPositions || [],
+      };
+    }
+  }
+  fillSkillEmployeeFields(data);
+}
+
+function resolveSkillFormPersonalnummer(entry) {
+  return (
+    getSkillEntryPersonalnummer(entry) ||
+    lookupPersonalnummerFromUsers(entry) ||
+    currentPersonalnummer ||
+    ""
+  );
 }
 
 function validateFormRequired(form) {
@@ -145,19 +362,216 @@ function validateFormRequired(form) {
   return true;
 }
 
-function isAssessmentRowEmpty(row, prefix) {
-  if (prefix === "sk") {
-    const kategorie = readSelectWithOther(row, ".sk-kategorie", ".sk-kategorie-other");
-    const technologie = row.querySelector(".sk-technologie")?.value.trim() || "";
-    const levelSel = row.querySelector(".sk-level")?.value || "";
-    const levelOther = row.querySelector(".sk-level-other")?.value.trim() || "";
-    return !kategorie && !technologie && !levelSel && !levelOther;
+function isSkillRowEditing(row) {
+  return row?.classList.contains("skill-assessment-row--editing");
+}
+
+function isTechSkillPayloadEmpty(data) {
+  if (!data) return true;
+  return !data.kategorie && data.level == null && !data.levelCustom;
+}
+
+function isSoftSkillPayloadEmpty(data) {
+  if (!data) return true;
+  return !data.kategorie && data.level == null && !data.levelCustom;
+}
+
+function readSkillCategoryFromRow(row, kind) {
+  const isSoft = kind === "soft";
+  const sel = row.querySelector(isSoft ? ".ss-kategorie" : ".sk-kategorie");
+  const other = row.querySelector(isSoft ? ".ss-kategorie-other" : ".sk-kategorie-other");
+  if (!sel) return { kategorie_id: null, kategorie: "" };
+  if (sel.value === SELECT_SONSTIGES) {
+    return { kategorie_id: null, kategorie: other?.value.trim() || "" };
   }
-  const kategorie = readSelectWithOther(row, ".ss-kategorie", ".ss-kategorie-other");
+  const id = Number(sel.value);
+  if (Number.isInteger(id) && id > 0) {
+    const cat = isSoft ? getSoftCategoryById(id) : getCategoryById(id);
+    return { kategorie_id: id, kategorie: cat?.name || "" };
+  }
+  const legacyName = String(sel.value || "").trim();
+  const cat = isSoft ? getSoftCategoryByName(legacyName) : getCategoryByName(legacyName);
+  if (cat) return { kategorie_id: Number(cat.id), kategorie: cat.name };
+  return { kategorie_id: null, kategorie: legacyName };
+}
+
+function skillItemCategoryId(data) {
+  return Number(data?.kategorie_id ?? data?.kategorieId);
+}
+
+function enrichTechSkillItemClient(data) {
+  const base = data && typeof data === "object" ? { ...data } : {};
+  const id = skillItemCategoryId(base);
+  if (Number.isInteger(id) && id > 0) {
+    const cat = getCategoryById(id);
+    if (cat) return { ...base, kategorie_id: id, kategorie: cat.name };
+  }
+  const byName = getCategoryByName(base.kategorie);
+  if (byName) {
+    return { ...base, kategorie_id: Number(byName.id), kategorie: byName.name };
+  }
+  return base;
+}
+
+function enrichSoftSkillItemClient(data) {
+  const base = data && typeof data === "object" ? { ...data } : {};
+  const id = skillItemCategoryId(base);
+  if (Number.isInteger(id) && id > 0) {
+    const cat = getSoftCategoryById(id);
+    if (cat) return { ...base, kategorie_id: id, kategorie: cat.name };
+  }
+  const byName = getSoftCategoryByName(base.kategorie);
+  if (byName) {
+    return { ...base, kategorie_id: Number(byName.id), kategorie: byName.name };
+  }
+  return base;
+}
+
+function enrichTechSkillList(skills) {
+  return (Array.isArray(skills) ? skills : []).map((s) => enrichTechSkillItemClient(s));
+}
+
+function enrichSoftSkillList(softSkills) {
+  return (Array.isArray(softSkills) ? softSkills : []).map((s) => enrichSoftSkillItemClient(s));
+}
+
+function upsertSkillEntryInStore(entry) {
+  if (!entry || entry.type !== "skill") return;
+  if (!entryStore.skill) entryStore.skill = [];
+  const idx = entryStore.skill.findIndex((e) => String(e.id) === String(entry.id));
+  if (idx >= 0) entryStore.skill[idx] = entry;
+  else entryStore.skill.push(entry);
+}
+
+async function resolveSkillEmployeeEntry(entry) {
+  if (!entry?.id) return entry;
+  try {
+    const all = await api("/api/entries");
+    const fresh = all.find((e) => e.type === "skill" && String(e.id) === String(entry.id));
+    if (fresh) {
+      upsertSkillEntryInStore(fresh);
+      return fresh;
+    }
+  } catch (_e) {
+    /* lokaler Cache als Fallback */
+  }
+  return entry;
+}
+
+function readTechSkillPayloadFromForm(row) {
+  const category = readSkillCategoryFromRow(row, "tech");
+  const technologie = row.querySelector(".sk-technologie")?.value.trim() || "";
+  const levelSel = row.querySelector(".sk-level")?.value || "";
+  const levelOther = row.querySelector(".sk-level-other")?.value.trim() || "";
+  let level = null;
+  let levelCustom = "";
+  if (levelSel === SELECT_SONSTIGES) {
+    levelCustom = levelOther;
+    const parsed = parseInt(levelOther, 10);
+    if (parsed >= 1 && parsed <= 5) level = parsed;
+  } else if (levelSel) {
+    level = parseInt(levelSel, 10);
+  }
+  return {
+    kategorie: category.kategorie,
+    kategorie_id: category.kategorie_id,
+    technologie,
+    level,
+    levelCustom,
+    bemerkungen: row.querySelector(".sk-bemerkung")?.value.trim() || "",
+  };
+}
+
+function readSoftSkillPayloadFromForm(row) {
+  const category = readSkillCategoryFromRow(row, "soft");
   const kompetenz = row.querySelector(".ss-kompetenz")?.value.trim() || "";
   const levelSel = row.querySelector(".ss-level")?.value || "";
   const levelOther = row.querySelector(".ss-level-other")?.value.trim() || "";
-  return !kategorie && !kompetenz && !levelSel && !levelOther;
+  let level = null;
+  let levelCustom = "";
+  if (levelSel === SELECT_SONSTIGES) {
+    levelCustom = levelOther;
+    const parsed = parseInt(levelOther, 10);
+    if (parsed >= 1 && parsed <= 5) level = parsed;
+  } else if (levelSel) {
+    level = parseInt(levelSel, 10);
+  }
+  return {
+    kategorie: category.kategorie,
+    kategorie_id: category.kategorie_id,
+    kompetenz,
+    level,
+    levelCustom,
+    bemerkungen: row.querySelector(".ss-bemerkung")?.value.trim() || "",
+  };
+}
+
+function readTechSkillPayloadFromRow(row) {
+  if (isSkillRowEditing(row)) return readTechSkillPayloadFromForm(row);
+  try {
+    return enrichTechSkillItemClient(JSON.parse(row.dataset.skillPayload || "{}"));
+  } catch (_e) {
+    return {};
+  }
+}
+
+function readSoftSkillPayloadFromRow(row) {
+  if (isSkillRowEditing(row)) return readSoftSkillPayloadFromForm(row);
+  try {
+    return enrichSoftSkillItemClient(JSON.parse(row.dataset.skillPayload || "{}"));
+  } catch (_e) {
+    return {};
+  }
+}
+
+function storeTechSkillPayloadOnRow(row, data) {
+  row.dataset.skillPayload = JSON.stringify(data || {});
+}
+
+function storeSoftSkillPayloadOnRow(row, data) {
+  row.dataset.skillPayload = JSON.stringify(data || {});
+}
+
+function formatTechSkillListTitle(data) {
+  return data.kategorie || "Ohne Kategorie";
+}
+
+function formatTechSkillListMeta(data) {
+  const parts = [];
+  if (data.technologie) parts.push(data.technologie);
+  const lvl = formatSkillLevel(data);
+  if (lvl && lvl !== "–") parts.push(`Level ${lvl}`);
+  const bem = data.bemerkungen || data.bemerkung;
+  if (bem) parts.push(bem);
+  return parts.join(" · ") || "–";
+}
+
+function formatSoftSkillListTitle(data) {
+  return data.kategorie || "Ohne Kategorie";
+}
+
+function formatSoftSkillListMeta(data) {
+  const parts = [];
+  if (data.kompetenz) parts.push(data.kompetenz);
+  const lvl = formatSoftSkillLevel(data);
+  if (lvl && lvl !== "–") parts.push(`Level ${lvl}`);
+  const bem = data.bemerkungen || data.bemerkung;
+  if (bem) parts.push(bem);
+  return parts.join(" · ") || "–";
+}
+
+function updateSkillAssessmentListEmptyState(kind) {
+  const isTech = kind !== "soft";
+  const list = document.getElementById(isTech ? "sk_assessment_rows" : "ss_assessment_rows");
+  const empty = document.getElementById(isTech ? "sk_assessment_empty" : "ss_assessment_empty");
+  if (!list || !empty) return;
+  const hasItems = list.querySelectorAll(".skill-assessment-row").length > 0;
+  empty.style.display = hasItems ? "none" : "block";
+}
+
+function isAssessmentRowEmpty(row, prefix) {
+  if (prefix === "sk") return isTechSkillPayloadEmpty(readTechSkillPayloadFromRow(row));
+  return isSoftSkillPayloadEmpty(readSoftSkillPayloadFromRow(row));
 }
 
 function focusSelectOrOther(row, selectClass, otherClass) {
@@ -189,70 +603,318 @@ function isLevelFieldEmpty(row, levelClass, levelOtherClass) {
   return false;
 }
 
-function validateTechSkillRowsDOM() {
-  const rows = document.querySelectorAll("#sk_assessment_rows .skill-assessment-row");
-  for (let i = 0; i < rows.length; i++) {
-    const row = rows[i];
-    if (isAssessmentRowEmpty(row, "sk")) continue;
-    setSkillKind("tech");
-    const suffix = rows.length > 1 ? ` (Fachskill-Zeile ${i + 1})` : "";
-    if (isSelectOrOtherEmpty(row, ".sk-kategorie", ".sk-kategorie-other")) {
-      return reportFieldError(
-        focusSelectOrOther(row, ".sk-kategorie", ".sk-kategorie-other"),
-        `Bitte „${getFieldLabel(row.querySelector(".sk-kategorie"))}“${suffix} ausfüllen.`
-      );
+function commitTechSkillRow(row, options = {}) {
+  if (!row) return "Zeile nicht gefunden.";
+  const data = readTechSkillPayloadFromForm(row);
+  if (isTechSkillPayloadEmpty(data)) {
+    if (options.allowEmpty) {
+      row.remove();
+      updateSkillAssessmentListEmptyState("tech");
+      refreshSkillInfoPanel();
+      return null;
     }
-    if (!row.querySelector(".sk-technologie")?.value.trim()) {
-      return reportFieldError(
-        row.querySelector(".sk-technologie"),
-        `Bitte „${getFieldLabel(row.querySelector(".sk-technologie"))}“${suffix} ausfüllen.`
-      );
+    return "Bitte Kategorie und Level ausfüllen.";
+  }
+  setSkillKind("tech");
+  if (isSelectOrOtherEmpty(row, ".sk-kategorie", ".sk-kategorie-other")) {
+    return "Bitte Skill-Kategorie ausfüllen.";
+  }
+  if (isLevelFieldEmpty(row, ".sk-level", ".sk-level-other")) {
+    return "Bitte Level ausfüllen (Liste oder Sonstiges).";
+  }
+  storeTechSkillPayloadOnRow(row, data);
+  renderTechSkillRowView(row, data);
+  updateSkillAssessmentListEmptyState("tech");
+  refreshSkillInfoPanel();
+  return null;
+}
+
+function commitSoftSkillRow(row, options = {}) {
+  if (!row) return "Zeile nicht gefunden.";
+  const data = readSoftSkillPayloadFromForm(row);
+  if (isSoftSkillPayloadEmpty(data)) {
+    if (options.allowEmpty) {
+      row.remove();
+      updateSkillAssessmentListEmptyState("soft");
+      refreshSkillInfoPanel();
+      return null;
     }
-    if (isLevelFieldEmpty(row, ".sk-level", ".sk-level-other")) {
-      const el = focusSelectOrOther(row, ".sk-level", ".sk-level-other");
-      return reportFieldError(el, `Bitte „Level“${suffix} ausfüllen (Liste oder Sonstiges).`);
+    return "Bitte Kategorie und Level ausfüllen.";
+  }
+  setSkillKind("soft");
+  if (isSelectOrOtherEmpty(row, ".ss-kategorie", ".ss-kategorie-other")) {
+    return "Bitte Soft-Skill-Kategorie ausfüllen.";
+  }
+  if (isLevelFieldEmpty(row, ".ss-level", ".ss-level-other")) {
+    return "Bitte Level ausfüllen (Liste oder Sonstiges).";
+  }
+  storeSoftSkillPayloadOnRow(row, data);
+  renderSoftSkillRowView(row, data);
+  updateSkillAssessmentListEmptyState("soft");
+  refreshSkillInfoPanel();
+  return null;
+}
+
+function commitAllEditingSkillRows() {
+  const techRows = [...document.querySelectorAll("#sk_assessment_rows .skill-assessment-row--editing")];
+  for (const row of techRows) {
+    const err = commitTechSkillRow(row);
+    if (err) {
+      setSkillKind("tech");
+      openSkillDetailsSection("tech");
+      const el = focusSelectOrOther(row, ".sk-kategorie", ".sk-kategorie-other");
+      if (el) reportFieldError(el, err);
+      return err;
     }
   }
-  return true;
+  const softRows = [...document.querySelectorAll("#ss_assessment_rows .skill-assessment-row--editing")];
+  for (const row of softRows) {
+    const err = commitSoftSkillRow(row);
+    if (err) {
+      setSkillKind("soft");
+      openSkillDetailsSection("soft");
+      const el = focusSelectOrOther(row, ".ss-kategorie", ".ss-kategorie-other");
+      if (el) reportFieldError(el, err);
+      return err;
+    }
+  }
+  return null;
+}
+
+function validateTechSkillRowsDOM() {
+  return !commitAllEditingSkillRows();
 }
 
 function validateSoftSkillRowsDOM() {
-  const rows = document.querySelectorAll("#ss_assessment_rows .skill-assessment-row");
-  for (let i = 0; i < rows.length; i++) {
-    const row = rows[i];
-    if (isAssessmentRowEmpty(row, "ss")) continue;
-    setSkillKind("soft");
-    const suffix = rows.length > 1 ? ` (Soft-Skill-Zeile ${i + 1})` : "";
-    if (isSelectOrOtherEmpty(row, ".ss-kategorie", ".ss-kategorie-other")) {
-      return reportFieldError(
-        focusSelectOrOther(row, ".ss-kategorie", ".ss-kategorie-other"),
-        `Bitte „${getFieldLabel(row.querySelector(".ss-kategorie"))}“${suffix} ausfüllen.`
-      );
-    }
-    if (!row.querySelector(".ss-kompetenz")?.value.trim()) {
-      return reportFieldError(
-        row.querySelector(".ss-kompetenz"),
-        `Bitte „${getFieldLabel(row.querySelector(".ss-kompetenz"))}“${suffix} ausfüllen.`
-      );
-    }
-    if (isLevelFieldEmpty(row, ".ss-level", ".ss-level-other")) {
-      const el = focusSelectOrOther(row, ".ss-level", ".ss-level-other");
-      return reportFieldError(el, `Bitte „Level“${suffix} ausfüllen (Liste oder Sonstiges).`);
-    }
+  return !commitAllEditingSkillRows();
+}
+
+let appPositionsCatalog = [];
+let appRolesCatalog = [];
+
+function getSkillOrgRolesCatalog() {
+  if (adminAppRolesCache.length) return adminAppRolesCache;
+  if (appRolesCatalog.length) return appRolesCatalog;
+  return [];
+}
+
+function getSkillPositionsCatalog() {
+  if (adminAppPositionsCache.length) {
+    return adminAppPositionsCache
+      .map((p) => ({ id: Number(p.id), name: p.name }))
+      .filter((p) => Number.isInteger(p.id) && p.id > 0);
   }
-  return true;
+  if (appPositionsCatalog.length) return appPositionsCatalog;
+  return (APP_POSITIONS || []).map((name, index) => ({ id: index + 1, name }));
+}
+
+function resolveSkillEntryOrgRoleIds(entry) {
+  const ids = normalizeBigIntArrayClient(entry?.org_role_ids ?? entry?.orgRoleIds);
+  if (ids.length) return ids;
+  const names = entry?.org_roles || [];
+  const catalog = getSkillOrgRolesCatalog();
+  return [
+    ...new Set(
+      names
+        .map((name) => catalog.find((r) => r.name === name)?.id)
+        .map((id) => Number(id))
+        .filter((id) => Number.isInteger(id) && id > 0)
+    ),
+  ];
+}
+
+function resolveSkillEntryPositionIds(entry) {
+  const ids = normalizeBigIntArrayClient(entry?.position_ids ?? entry?.positionIds);
+  if (ids.length) return ids;
+  const legacyId = normalizeBigIntArrayClient([entry?.position_id ?? entry?.positionId])[0];
+  if (legacyId) return [legacyId];
+  const names = entry?.positions || [];
+  const catalog = getSkillPositionsCatalog();
+  const fromNames = names
+    .map((name) => catalog.find((p) => p.name === name)?.id)
+    .map((id) => Number(id))
+    .filter((id) => Number.isInteger(id) && id > 0);
+  if (fromNames.length) return [...new Set(fromNames)];
+  const legacyRolle = String(entry?.rolle || "").trim();
+  if (legacyRolle) {
+    const byName = catalog.find((p) => p.name === legacyRolle);
+    if (byName) return [Number(byName.id)].filter((id) => Number.isInteger(id) && id > 0);
+  }
+  return [];
+}
+
+function skillEmployeeCatalogSummary(entry) {
+  if (!entry || typeof entry !== "object") return "–";
+  const roles = entry.org_roles || [];
+  const positions = entry.positions || [];
+  const parts = [];
+  if (roles.length) parts.push(roles.join(", "));
+  if (positions.length) parts.push(positions.join(", "));
+  if (!parts.length && entry.rolle) return String(entry.rolle);
+  return parts.join(" · ") || "–";
+}
+
+function updateSkillUnitDisplay(entry) {
+  const el = document.getElementById("sk_unit_display");
+  if (!el) return;
+  const unit = resolveSkillEntryUnit(entry) || "";
+  el.textContent = unit || "–";
+}
+
+function setSkillEmployeeCatalogFields(orgRoleIds, positionIds) {
+  const orgSet = new Set(normalizeBigIntArrayClient(orgRoleIds).map((id) => String(id)));
+  const posSet = new Set(normalizeBigIntArrayClient(positionIds).map((id) => String(id)));
+  document
+    .getElementById("sk_org_roles")
+    ?.querySelectorAll("input[data-skill-org-role-id]")
+    .forEach((el) => {
+      el.checked = orgSet.has(el.getAttribute("data-skill-org-role-id"));
+    });
+  document
+    .getElementById("sk_positions")
+    ?.querySelectorAll("input[data-skill-position-id]")
+    .forEach((el) => {
+      el.checked = posSet.has(el.getAttribute("data-skill-position-id"));
+    });
+}
+
+function renderSkillEmployeeCatalogCheckboxes(entry) {
+  const roles = getSkillOrgRolesCatalog();
+  const positions = getSkillPositionsCatalog();
+  const orgRoleIds = entry ? resolveSkillEntryOrgRoleIds(entry) : [];
+  const positionIds = entry ? resolveSkillEntryPositionIds(entry) : [];
+  const orgBox = document.getElementById("sk_org_roles");
+  const posBox = document.getElementById("sk_positions");
+  if (orgBox) {
+    orgBox.innerHTML = roles.length
+      ? roles
+          .map((item) => {
+            const id = Number(item.id);
+            const name = item.name || "";
+            if (!Number.isInteger(id) || id <= 0) return "";
+            return `<label class="unit-checkbox-item"><input type="checkbox" data-skill-org-role-id="${id}"> ${esc(name)}</label>`;
+          })
+          .join("")
+      : '<p style="color:var(--rc-muted);font-size:.75rem;margin:0">Keine Rollen im Katalog.</p>';
+  }
+  if (posBox) {
+    posBox.innerHTML = positions.length
+      ? positions
+          .map((item) => {
+            const id = Number(item.id);
+            const name = item.name || "";
+            if (!Number.isInteger(id) || id <= 0) return "";
+            return `<label class="unit-checkbox-item"><input type="checkbox" data-skill-position-id="${id}"> ${esc(name)}</label>`;
+          })
+          .join("")
+      : '<p style="color:var(--rc-muted);font-size:.75rem;margin:0">Keine Positionen im Katalog.</p>';
+  }
+  setSkillEmployeeCatalogFields(orgRoleIds, positionIds);
+  applySkillEmployeeCatalogReadonly();
+}
+
+function getSkillFormOrgRoleIds() {
+  return getCheckedFromContainer("sk_org_roles", "data-skill-org-role-id")
+    .map((id) => Number(id))
+    .filter((n) => Number.isInteger(n) && n > 0);
+}
+
+function getSkillFormPositionIds() {
+  return getCheckedFromContainer("sk_positions", "data-skill-position-id")
+    .map((id) => Number(id))
+    .filter((n) => Number.isInteger(n) && n > 0);
+}
+
+function getSkillFormCatalogData() {
+  const org_role_ids = getSkillFormOrgRoleIds();
+  const position_ids = getSkillFormPositionIds();
+  const rolesCatalog = getSkillOrgRolesCatalog();
+  const posCatalog = getSkillPositionsCatalog();
+  const org_roles = org_role_ids
+    .map((id) => rolesCatalog.find((r) => Number(r.id) === id)?.name)
+    .filter(Boolean);
+  const positions = position_ids
+    .map((id) => posCatalog.find((p) => Number(p.id) === id)?.name)
+    .filter(Boolean);
+  return {
+    org_role_ids,
+    org_roles,
+    position_ids,
+    positions,
+    rolle: positions[0] || org_roles[0] || "",
+    position_id: position_ids[0] || null,
+  };
+}
+
+function applySkillEmployeeCatalogReadonly() {
+  const readonly = isMitarbeiter;
+  ["sk_org_roles", "sk_positions"].forEach((id) => {
+    document.getElementById(id)?.querySelectorAll("input[type=checkbox]").forEach((el) => {
+      el.disabled = readonly;
+    });
+  });
+}
+
+async function ensureSkillEmployeeCatalogsLoaded() {
+  if (!getSkillOrgRolesCatalog().length || !getSkillPositionsCatalog().length) {
+    await loadAppRolePositionCatalogFromApi();
+  }
+}
+
+function findUserForSkillEntry(entry) {
+  if (!entry) return null;
+  const email = String(entry.email || currentEmail || "")
+    .trim()
+    .toLowerCase();
+  const entryId = entry.id ? String(entry.id) : "";
+  const nameKeys = new Set();
+  const full = String(entry.name || "").trim().toLowerCase();
+  if (full) nameKeys.add(full);
+  const nach = String(entry.nachname || "").trim();
+  const vor = String(entry.vorname || "").trim();
+  if (nach && vor) {
+    nameKeys.add(`${nach}, ${vor}`.toLowerCase());
+    nameKeys.add(`${vor} ${nach}`.toLowerCase());
+  }
+  for (const u of adminUsersCache) {
+    if (entryId && u.skillEntryId && String(u.skillEntryId) === entryId) return u;
+    if (email && String(u.email || "").trim().toLowerCase() === email) return u;
+    const uname = String(u.name || "").trim().toLowerCase();
+    if (uname && nameKeys.has(uname)) return u;
+  }
+  return null;
+}
+
+function refreshOrgRolleSelects() {
+  document.querySelectorAll("#org_rollen_rows .org-rolle-row").forEach((row) => {
+    const current = readSelectWithOther(row, ".org-rol-select", ".org-rol-other");
+    const resolved = resolveOrgSelect(current, ORG_ROLLEN);
+    const sel = row.querySelector(".org-rol-select");
+    if (!sel) return;
+    sel.innerHTML = buildOrgSelectOptions(ORG_ROLLEN, resolved.value);
+    const other = row.querySelector(".org-rol-other");
+    if (resolved.value === SELECT_SONSTIGES) {
+      sel.value = SELECT_SONSTIGES;
+      if (other) other.value = resolved.other || "";
+    } else if (resolved.value) {
+      sel.value = resolved.value;
+    }
+    syncOrgSonstigesInRow(row, "org-rol");
+    updateOrgRolleRowSummary(row);
+  });
 }
 
 function validateSkillEmployeeFields() {
-  const fields = [
-    document.getElementById("sk_nachname"),
-    document.getElementById("sk_vorname"),
-    document.getElementById("sk_rolle"),
-  ];
+  const fields = [document.getElementById("sk_nachname"), document.getElementById("sk_vorname")];
   for (const el of fields) {
     if (isRequiredFieldEmpty(el)) {
       return reportFieldError(el, `Bitte „${getFieldLabel(el)}“ ausfüllen.`);
     }
+  }
+  const catalogData = getSkillFormCatalogData();
+  if (!catalogData.org_role_ids.length && !catalogData.position_ids.length) {
+    const el = document.getElementById("sk_org_roles") || document.getElementById("sk_positions");
+    return reportFieldError(el, "Bitte mindestens eine Rolle oder eine Position auswählen.");
   }
   clearFormFieldErrors(document.getElementById("skillForm"));
   return true;
@@ -337,6 +999,128 @@ function userMatchesSuperAdminView(u) {
   return false;
 }
 
+function getAdminUserListFilters() {
+  return {
+    name: document.getElementById("admUserFilterName")?.value.trim().toLowerCase() || "",
+    unit: document.getElementById("admUserFilterUnit")?.value || "",
+  };
+}
+
+function userMatchesAdminUserFilters(u, filters) {
+  if (filters.name) {
+    const haystack = String(u.name || "").toLowerCase();
+    if (!haystack.includes(filters.name)) return false;
+  }
+  if (filters.unit) {
+    const units = Array.isArray(u.units) ? u.units : [];
+    if (!units.includes(filters.unit)) return false;
+  }
+  return true;
+}
+
+function populateAdminUserUnitFilterOptions() {
+  const select = document.getElementById("admUserFilterUnit");
+  if (!select) return;
+  const current = select.value;
+  const unitNames = new Set();
+  masterUnitsCache.forEach((u) => {
+    if (u?.name) unitNames.add(u.name);
+  });
+  adminUsersCache.forEach((u) => {
+    (Array.isArray(u.units) ? u.units : []).forEach((name) => {
+      if (name) unitNames.add(name);
+    });
+  });
+  const sorted = [...unitNames].sort((a, b) => a.localeCompare(b, "de"));
+  select.innerHTML =
+    '<option value="">Alle Units</option>' +
+    sorted
+      .map(
+        (name) =>
+          `<option value="${escAttr(name)}"${current === name ? " selected" : ""}>${esc(name)}</option>`
+      )
+      .join("");
+}
+
+function renderAdminUsersTableBody() {
+  const filters = getAdminUserListFilters();
+  const users = adminUsersCache
+    .filter(userMatchesSuperAdminView)
+    .filter((u) => userMatchesAdminUserFilters(u, filters));
+  const countEl = document.getElementById("admUserCount");
+  if (countEl) {
+    const total = adminUsersCache.filter(userMatchesSuperAdminView).length;
+    countEl.textContent =
+      users.length === total ? String(total) : `${users.length} / ${total}`;
+  }
+  const tbody = document.getElementById("admUsersBody");
+  if (!tbody) return;
+  if (!users.length) {
+    const hasFilters = Boolean(filters.name || filters.unit);
+    tbody.innerHTML =
+      '<tr><td colspan="9" style="color:var(--rc-muted);font-style:italic">' +
+      (hasFilters
+        ? "Keine Benutzer passen zu den Filterkriterien."
+        : "Keine Benutzer vorhanden.") +
+      "</td></tr>";
+    return;
+  }
+  tbody.innerHTML = users
+    .map((u) => {
+      const isProtected = u.email === currentEmail;
+      const unitsLabel = Array.isArray(u.units) && u.units.length ? esc(u.units.join(", ")) : "–";
+      return (
+        "<tr>" +
+        "<td>" +
+        (u.personalnummer ? esc(u.personalnummer) : "-") +
+        "</td>" +
+        "<td>" +
+        esc(u.email) +
+        "</td>" +
+        "<td>" +
+        esc(u.name) +
+        "</td>" +
+        "<td>" +
+        esc(userPositionsLabel(u)) +
+        "</td>" +
+        "<td>" +
+        esc(systemPrivilegeRolesLabel(u)) +
+        "</td>" +
+        "<td>" +
+        esc(userOrgRolesLabel(u)) +
+        "</td>" +
+        "<td>" +
+        userSupervisorLabel(u, adminUsersCache) +
+        "</td>" +
+        "<td>" +
+        unitsLabel +
+        "</td>" +
+        '<td style="white-space:nowrap">' +
+        '<button type="button" class="btn btn-sm btn-outline" data-action="edit" data-user-id="' +
+        u.id +
+        '" title="Bearbeiten">✏️ Bearbeiten</button> ' +
+        (isProtected
+          ? ""
+          : '<button class="btn btn-sm btn-danger" data-action="delete" data-user-id="' +
+            u.id +
+            '">🗑️</button>') +
+        "</td></tr>"
+      );
+    })
+    .join("");
+  tbody.querySelectorAll('[data-action="edit"]').forEach((btn) => {
+    btn.addEventListener("click", () => {
+      const user = adminUsersCache.find(
+        (u) => String(u.id) === String(btn.getAttribute("data-user-id"))
+      );
+      if (user) adminEditUser(user);
+    });
+  });
+  tbody.querySelectorAll('[data-action="delete"]').forEach((btn) => {
+    btn.addEventListener("click", () => adminDeleteUser(btn.getAttribute("data-user-id")));
+  });
+}
+
 function updateHeaderUnitDisplay() {
   const label = getViewUnitLabel();
   const badge = document.getElementById("headerUnit");
@@ -349,14 +1133,48 @@ function updateSuperAdminFormMode() {
   const block = isSuperAdminViewAll();
   const hint = document.getElementById("superAdminViewHint");
   if (hint) hint.style.display = block ? "" : "none";
+  document.querySelectorAll("#page-portfolio .unit-save-notice, #page-organisation .unit-save-notice").forEach((el) => {
+    el.style.display = block ? "" : "none";
+  });
   document
-    .querySelectorAll(
-      "#statusForm button[type=submit], #teamForm button[type=submit], #skillForm button[type=submit], #btnSkillExamplesLoad"
-    )
+    .querySelectorAll("#organisationForm button[type=submit]")
     .forEach((btn) => {
       btn.disabled = block;
       btn.title = block ? "Bitte zuerst eine Unit oben auswählen" : "";
     });
+}
+
+function resolveSkillEntryUnit(entry) {
+  const editId = entry?.id || document.getElementById("sk_editId")?.value || "";
+  if (editId) {
+    const existing = (entryStore.skill || []).find((e) => String(e.id) === String(editId));
+    if (existing?.unit) return String(existing.unit).trim();
+  }
+  if (entry?.unit) return String(entry.unit).trim();
+  const fromView = getSaveUnit();
+  if (fromView) return fromView;
+  const email = String(entry?.email || document.getElementById("sk_email")?.value || "")
+    .trim()
+    .toLowerCase();
+  if (email && adminUsersCache.length) {
+    const u = adminUsersCache.find((x) => String(x.email || "").trim().toLowerCase() === email);
+    const units = Array.isArray(u?.units) ? u.units : [];
+    if (units.length) return String(units[0]).trim();
+  }
+  return String(currentUnit || "").trim();
+}
+
+function initHeaderUnitSwitcher() {
+  if (headerUnitSwitcherBound) return;
+  const tabs = document.getElementById("headerUnitTabs");
+  if (!tabs) return;
+  tabs.addEventListener("click", (e) => {
+    const btn = e.target.closest("[data-unit]");
+    if (!btn) return;
+    e.preventDefault();
+    setSuperAdminViewUnit(btn.getAttribute("data-unit"));
+  });
+  headerUnitSwitcherBound = true;
 }
 
 async function renderHeaderUnitSwitcher() {
@@ -374,21 +1192,19 @@ async function renderHeaderUnitSwitcher() {
   tabs.innerHTML = items
     .map(
       (item) =>
-        `<button type="button" class="header-unit-tab${superAdminViewUnit === item.id ? " active" : ""}" data-unit="${esc(item.id)}" role="tab" aria-selected="${superAdminViewUnit === item.id}">${esc(item.label)}</button>`
+        `<button type="button" class="header-unit-tab${superAdminViewUnit === item.id ? " active" : ""}" data-unit="${escAttr(item.id)}" role="tab" aria-selected="${superAdminViewUnit === item.id}">${esc(item.label)}</button>`
     )
     .join("");
-  tabs.querySelectorAll("[data-unit]").forEach((btn) => {
-    btn.addEventListener("click", () => setSuperAdminViewUnit(btn.getAttribute("data-unit")));
-  });
 }
 
 function refreshSuperAdminViews() {
   updateHeaderUnitDisplay();
   updateSuperAdminFormMode();
-  renderNavStatus();
-  renderNavTeam();
+  refreshUnitContextPanels();
   renderSkillEmployeeNav();
   updateSkillDeleteButton();
+  renderPortfolio();
+  renderOrganisation();
   renderOverview();
   renderExportStats();
   if (isAdmin) renderAdminUsers();
@@ -396,14 +1212,24 @@ function refreshSuperAdminViews() {
 
 function setSuperAdminViewUnit(unit) {
   superAdminViewUnit = unit || "all";
-  renderHeaderUnitSwitcher();
-  refreshSuperAdminViews();
+  updateHeaderUnitDisplay();
+  updateSuperAdminFormMode();
+  void refreshUnitContextPanels();
+  void renderHeaderUnitSwitcher();
+  renderSkillEmployeeNav();
+  updateSkillDeleteButton();
+  renderPortfolio();
+  renderOrganisation();
+  renderOverview();
+  renderExportStats();
+  if (isAdmin) renderAdminUsers();
 }
 
 function requireSaveUnit() {
   const unit = getSaveUnit();
   if (!unit) {
-    toast("Bitte oben eine Unit auswählen, um Daten zu erfassen.", "#e74c3c", 4000);
+    toast("Bitte oben eine konkrete Unit wählen (nicht „Alle Units“), um zu speichern.", "#e74c3c", 5000);
+    document.getElementById("headerUnitSwitcher")?.scrollIntoView?.({ behavior: "smooth", block: "nearest" });
     return false;
   }
   return true;
@@ -411,7 +1237,7 @@ function requireSaveUnit() {
 
 async function refreshEntries() {
   const all = await api("/api/entries");
-  entryStore = { status: [], team: [], skill: [] };
+  entryStore = { portfolio: [], organisation: [], skill: [] };
   all.forEach((e) => {
     if (entryStore[e.type]) entryStore[e.type].push(e);
   });
@@ -419,16 +1245,27 @@ async function refreshEntries() {
 }
 
 async function saveEntry(type, entry) {
+  if (isMitarbeiter && type !== "skill") {
+    throw new Error("Kein Zugriff.");
+  }
+  if (isMitarbeiter && type === "skill" && entry.id && currentSkillEntryId && entry.id !== currentSkillEntryId) {
+    throw new Error("Sie duerfen nur Ihr eigenes Skill-Profil bearbeiten.");
+  }
   const payload = {
     ...entry,
     type,
-    unit: String(entry.unit || getSaveUnit() || "").trim(),
+    unit: String(
+      (type === "skill" ? resolveSkillEntryUnit(entry) : "") || entry.unit || getSaveUnit() || ""
+    ).trim(),
   };
   if (!payload.unit) {
     throw new Error("Unit fehlt – bitte erneut anmelden.");
   }
-  if (type !== "skill" && !String(payload.workstream || "").trim()) {
+  if (type !== "skill" && type !== "portfolio" && type !== "organisation" && !String(payload.workstream || "").trim()) {
     throw new Error("Workstream fehlt.");
+  }
+  if (type === "portfolio" || type === "organisation") {
+    payload.workstream = "";
   }
   if (payload.id) {
     await api(`/api/entries/${payload.id}`, {
@@ -436,6 +1273,9 @@ async function saveEntry(type, entry) {
       body: JSON.stringify({ entry: payload }),
     });
     return payload.id;
+  }
+  if (isMitarbeiter) {
+    throw new Error("Kein Skill-Profil zum Speichern vorhanden.");
   }
   const result = await api("/api/entries", {
     method: "POST",
@@ -447,6 +1287,20 @@ async function saveEntry(type, entry) {
   return result.id;
 }
 
+function canEditPersonalnummer() {
+  return isAdmin;
+}
+
+function setPersonalnummerFieldEditable(editable) {
+  const el = document.getElementById("adm_edit_personalnummer");
+  const hint = document.getElementById("adm_edit_personalnummer_hint");
+  if (el) {
+    el.readOnly = !editable;
+    el.classList.toggle("field-readonly", !editable);
+  }
+  if (hint) hint.style.display = editable ? "none" : "";
+}
+
 function isAdminSession(role) {
   return role === "admin" || role === "super_admin";
 }
@@ -455,25 +1309,807 @@ function isUnitScopedSession(role) {
   return role === "unit_lead" || role === "mitarbeiter";
 }
 
+function isMitarbeiterSession(role) {
+  return role === "mitarbeiter";
+}
+
+function applyMitarbeiterLayout() {
+  document.body.classList.toggle("mitarbeiter-mode", isMitarbeiter);
+
+  const tabs = document.getElementById("tabs");
+  if (tabs) tabs.style.display = isMitarbeiter ? "none" : "flex";
+
+  const titleEl = document.querySelector(".header .title");
+  if (titleEl) {
+    titleEl.textContent = isMitarbeiter ? "Meine Skills" : "Unitleiter-Erfassung";
+  }
+
+  const readonlyFields = ["sk_personalnummer", "sk_nachname", "sk_vorname", "sk_email"];
+  readonlyFields.forEach((id) => {
+    const el = document.getElementById(id);
+    if (!el) return;
+    el.readOnly = isMitarbeiter;
+    el.classList.toggle("field-readonly", isMitarbeiter);
+  });
+  applySkillEmployeeCatalogReadonly();
+
+  const skillCardText = document.querySelector("#skillPanelErfassung .card > p");
+  if (skillCardText) {
+    skillCardText.textContent = isMitarbeiter
+      ? "Pflegen Sie hier Ihre Fachskills und Soft Skills. Stammdaten werden von Ihrem Unit Lead gepflegt."
+      : "Pro Mitarbeiter Fachskills und Soft Skills (1:n) gemaess den Assessment-Vorlagen erfassen.";
+  }
+
+  if (isMitarbeiter) {
+    activateSkillsPageOnly();
+  } else {
+    const unitPanel = document.getElementById("navPanelMitarbeiterUnit");
+    if (unitPanel) unitPanel.style.display = "none";
+  }
+}
+
+function activateSkillsPageOnly() {
+  document.querySelectorAll(".tab").forEach((tab) => {
+    tab.classList.toggle("active", tab.dataset.page === "skills");
+  });
+  document.querySelectorAll(".page").forEach((page) => {
+    page.classList.toggle("active", page.id === "page-skills");
+  });
+  collapseSkillDetailsSections();
+}
+
+function buildUnitContextPanelHtml(unitName, unitLead, deputyLead) {
+  let html = `<div class="unit-context-name">${unitName ? esc(unitName) : "Kein Unit zugewiesen"}</div>`;
+  html += '<div class="unit-context-label">Unit Leiter</div>';
+  if (!unitLead?.name) {
+    html += '<p class="nav-empty-hint">Kein Unit Leiter zugewiesen</p>';
+  } else {
+    html +=
+      '<p class="unit-lead-line"><span class="unit-lead-name">' +
+      esc(unitLead.name) +
+      '</span><span class="unit-lead-email">' +
+      esc(unitLead.email || "") +
+      "</span></p>";
+  }
+  html += '<div class="unit-context-label" style="margin-top:.45rem">Stellvertreter</div>';
+  if (!deputyLead?.name) {
+    html += '<p class="nav-empty-hint">Kein Stellvertreter zugewiesen</p>';
+  } else {
+    html +=
+      '<p class="unit-lead-line"><span class="unit-lead-name">' +
+      esc(deputyLead.name) +
+      '</span><span class="unit-lead-email">' +
+      esc(deputyLead.email || "") +
+      "</span></p>";
+  }
+  return html;
+}
+
+async function fetchUnitContextForViewUnit() {
+  const unit = getSaveUnit();
+  if (!unit) return null;
+  return api(`/api/auth/unit-context?unit=${encodeURIComponent(unit)}`);
+}
+
+function getUnitLeadershipFromCache(unitName) {
+  const name = String(unitName || "").trim();
+  if (!name) return { unitLead: null, deputyLead: null };
+  const row = masterUnitsCache.find((u) => String(u.name || "") === name);
+  if (!row) return { unitLead: null, deputyLead: null };
+  return {
+    unitLead: row.unitLead || null,
+    deputyLead: row.deputyLead || null,
+  };
+}
+
+const UNIT_CONTEXT_PANEL_IDS = ["portfolioUnitContext", "orgUnitContext"];
+
+function setAllUnitContextPanelsHtml(html) {
+  UNIT_CONTEXT_PANEL_IDS.forEach((id) => {
+    const box = document.getElementById(id);
+    if (box) box.innerHTML = html;
+  });
+}
+
+async function refreshUnitContextPanels() {
+  const fetchGen = ++unitContextPanelFetchGen;
+  const unitLabel = getViewUnitLabel();
+
+  if (isSuperAdminViewAll()) {
+    setAllUnitContextPanelsHtml(
+      '<p class="nav-empty-hint">Bitte oben im Bereich <strong>Unit-Ansicht</strong> eine konkrete Unit wählen.</p>'
+    );
+    return;
+  }
+
+  const saveUnit = getSaveUnit();
+
+  if (isAdmin) {
+    await loadMasterUnitsCache();
+    if (fetchGen !== unitContextPanelFetchGen) return;
+    const { unitLead, deputyLead } = getUnitLeadershipFromCache(saveUnit);
+    setAllUnitContextPanelsHtml(buildUnitContextPanelHtml(unitLabel, unitLead, deputyLead));
+    return;
+  }
+
+  setAllUnitContextPanelsHtml('<p class="nav-empty-hint">Wird geladen…</p>');
+
+  try {
+    const data = (await fetchUnitContextForViewUnit()) || {};
+    if (fetchGen !== unitContextPanelFetchGen) return;
+    setAllUnitContextPanelsHtml(
+      buildUnitContextPanelHtml(unitLabel, data.unitLead, data.deputyLead)
+    );
+  } catch (_error) {
+    if (fetchGen !== unitContextPanelFetchGen) return;
+    setAllUnitContextPanelsHtml(buildUnitContextPanelHtml(unitLabel, null, null));
+  }
+}
+
+function renderOrganisationUnitPanel() {
+  return refreshUnitContextPanels();
+}
+
+function renderPortfolioUnitPanel() {
+  return refreshUnitContextPanels();
+}
+
+async function renderMitarbeiterUnitPanel() {
+  const box = document.getElementById("mitarbeiterUnitContext");
+  const panel = document.getElementById("navPanelMitarbeiterUnit");
+  if (!box || !panel || !isMitarbeiter) return;
+  panel.style.display = "";
+  box.innerHTML = '<p class="nav-empty-hint">Wird geladen…</p>';
+  try {
+    const data = await api("/api/auth/unit-context");
+    const unitName = String(data.unit || currentUnit || "").trim();
+    box.innerHTML = buildUnitContextPanelHtml(unitName, data.unitLead, data.deputyLead);
+  } catch (error) {
+    box.innerHTML =
+      '<div class="unit-context-name">Kein Unit zugewiesen</div>' +
+      '<div class="unit-context-label">Unit Lead</div>' +
+      '<p class="nav-empty-hint">Kein Unit Leiter zugewiesen</p>';
+  }
+}
+
+async function initMitarbeiterSkillView() {
+  if (!isMitarbeiter) return;
+  activateSkillsPageOnly();
+  await renderMitarbeiterUnitPanel();
+  const skills = load("skill");
+  if (skills.length >= 1) {
+    loadSkillEmployeeEntry(skills[0]);
+  } else {
+    await refreshEntries();
+    const refreshed = load("skill");
+    if (refreshed.length >= 1) {
+      loadSkillEmployeeEntry(refreshed[0]);
+    } else {
+      toast("Kein Skill-Profil zugeordnet. Bitte Ihren Unit Lead kontaktieren.", "#e74c3c", 6000);
+      resetSkillForm();
+      updateSkillDeleteButton();
+    }
+  }
+}
+
 function roleLabel(role) {
   const labels = {
     super_admin: "Super Admin",
     admin: "Admin",
+    geschaeftsfuehrung: "Geschaeftsfuehrung",
+    regionalleiter: "Regionalleiter",
     unit_lead: "Unit Lead",
     mitarbeiter: "Mitarbeiter",
   };
   return labels[role] || role;
 }
 
-function updateAdminUnitsFieldVisibility() {
-  const role = document.getElementById("adm_role")?.value || "unit_lead";
-  const needsUnits = isUnitScopedSession(role);
-  const label = document.getElementById("adm_units_label");
-  const hint = document.getElementById("adm_units_hint");
-  const box = document.getElementById("adm_units_select");
+let editingUserUnits = [];
+let adminUsersCache = [];
+let editingUserHadSuperAdmin = false;
+let editingUserSnapshot = null;
+
+function getUserRolesList(user) {
+  if (!user) return [];
+  if (Array.isArray(user.roles) && user.roles.length) return user.roles;
+  return user.role ? [user.role] : [];
+}
+
+function userHasRoleClient(user, role) {
+  return getUserRolesList(user).includes(role);
+}
+
+function userIsUnitLeaderCandidate(user) {
+  if (!user) return false;
+  if (userHasRoleClient(user, "unit_lead")) return true;
+  const key = normalizePositionKey("Unit Leiter");
+  return (user.userPositions || []).some((position) => normalizePositionKey(position) === key);
+}
+
+const SYSTEM_HIERARCHY_ROLES = ["geschaeftsfuehrung", "regionalleiter", "unit_lead", "mitarbeiter"];
+const SYSTEM_PRIVILEGE_ROLES = ["admin", "super_admin"];
+const USER_STANDORTE = ["Essen", "Bremen"];
+
+function normalizeUserStandort(value) {
+  const trimmed = String(value || "").trim();
+  if (!trimmed) return "";
+  return USER_STANDORTE.find((s) => s.toLowerCase() === trimmed.toLowerCase()) || "";
+}
+
+function setAdminStandortSelect(selectId, value) {
+  const el = document.getElementById(selectId);
+  if (!el) return;
+  el.value = normalizeUserStandort(value);
+}
+
+const POSITION_TO_HIERARCHY_ROLE = {
+  geschaeftsfuehrer: "geschaeftsfuehrung",
+  "regional leiter": "regionalleiter",
+  "unit leiter": "unit_lead",
+  mitarbeiter: "mitarbeiter",
+  berater: "mitarbeiter",
+  "cc leiter": "unit_lead",
+};
+
+const HIERARCHY_ROLE_TO_POSITION = {
+  geschaeftsfuehrung: "Geschäftsführer",
+  regionalleiter: "Regional Leiter",
+  unit_lead: "Unit Leiter",
+  mitarbeiter: "Mitarbeiter",
+};
+
+function defaultPositionsForUser(user) {
+  const fromCatalog = user?.userPositions || [];
+  if (fromCatalog.length) return fromCatalog;
+  const inferred = [];
+  for (const role of getUserRolesList(user)) {
+    const position = HIERARCHY_ROLE_TO_POSITION[role];
+    if (position && !inferred.includes(position)) inferred.push(position);
+  }
+  return inferred;
+}
+
+function normalizePositionKey(name) {
+  return String(name || "")
+    .trim()
+    .toLowerCase()
+    .replace(/\s+/g, " ")
+    .replace(/ä/g, "ae")
+    .replace(/ö/g, "oe")
+    .replace(/ü/g, "ue")
+    .replace(/ß/g, "ss");
+}
+
+function deriveHierarchyRolesFromPositions(positions) {
+  const roles = [];
+  for (const position of positions || []) {
+    const role = POSITION_TO_HIERARCHY_ROLE[normalizePositionKey(position)];
+    if (role && !roles.includes(role)) roles.push(role);
+  }
+  return roles;
+}
+
+function getEffectiveHierarchyRolesForUser(user) {
+  const fromPositions = deriveHierarchyRolesFromPositions(user?.userPositions || []);
+  const fromRoles = getUserRolesList(user).filter((role) => SYSTEM_HIERARCHY_ROLES.includes(role));
+  return [...new Set([...fromPositions, ...fromRoles])];
+}
+
+function userHasEffectiveHierarchyRole(user, hierarchyRole) {
+  return getEffectiveHierarchyRolesForUser(user).includes(hierarchyRole);
+}
+
+function rolesLabelForUser(user) {
+  const labels = getUserRolesList(user).map(roleLabel);
+  return labels.length ? labels.join(", ") : "–";
+}
+
+function systemPrivilegeRolesLabel(user) {
+  const labels = getUserRolesList(user)
+    .filter((role) => SYSTEM_PRIVILEGE_ROLES.includes(role))
+    .map(roleLabel);
+  return labels.length ? labels.join(", ") : "–";
+}
+
+function userOrgRolesLabel(user) {
+  const list = user?.userOrgRoles || [];
+  return list.length ? list.join(", ") : "–";
+}
+
+function userPositionsLabel(user) {
+  const list = user?.userPositions || [];
+  return list.length ? list.join(", ") : "–";
+}
+
+function adminPrivilegeRolesContainerId(prefix) {
+  return prefix === "adm_" ? "adm_privilege_roles_select" : "adm_edit_privilege_roles_select";
+}
+
+function adminUserOrgRolesContainerId(prefix) {
+  return prefix === "adm_" ? "adm_user_org_roles_select" : "adm_edit_user_org_roles_select";
+}
+
+function adminUserPositionsContainerId(prefix) {
+  return prefix === "adm_" ? "adm_user_positions_select" : "adm_edit_user_positions_select";
+}
+
+function getCheckedFromContainer(containerId, dataAttr) {
+  const box = document.getElementById(containerId);
+  if (!box) return [];
+  return [...box.querySelectorAll(`input[${dataAttr}]:checked`)]
+    .map((el) => el.getAttribute(dataAttr))
+    .filter(Boolean);
+}
+
+function getAdminPrivilegeRoles(prefix) {
+  return getCheckedFromContainer(adminPrivilegeRolesContainerId(prefix), "data-admin-role");
+}
+
+function getAdminFormRoles(prefix) {
+  const privilege = getAdminPrivilegeRoles(prefix);
+  const hierarchy = deriveHierarchyRolesFromPositions(getAdminUserPositionNames(prefix));
+  return [...hierarchy, ...privilege];
+}
+
+function resolveUserOrgRoleIds(user) {
+  const ids = normalizeBigIntArrayClient(user?.userOrgRoleIds);
+  if (ids.length) return ids;
+  return (user?.userOrgRoles || [])
+    .map((name) => adminAppRolesCache.find((r) => r.name === name)?.id)
+    .map((id) => Number(id))
+    .filter((id) => Number.isInteger(id) && id > 0);
+}
+
+function resolveUserPositionIds(user) {
+  const ids = normalizeBigIntArrayClient(user?.userPositionIds);
+  if (ids.length) return ids;
+  return (user?.userPositions || [])
+    .map((name) => adminAppPositionsCache.find((p) => p.name === name)?.id)
+    .map((id) => Number(id))
+    .filter((id) => Number.isInteger(id) && id > 0);
+}
+
+function normalizeBigIntArrayClient(values) {
+  if (!values) return [];
+  const list = Array.isArray(values) ? values : [values];
+  return [
+    ...new Set(
+      list
+        .map((v) => Number(v))
+        .filter((n) => Number.isInteger(n) && n > 0)
+    ),
+  ];
+}
+
+function getAdminRolesCatalogForForm() {
+  if (adminAppRolesCache.length) return adminAppRolesCache;
+  if (appRolesCatalog.length) return appRolesCatalog;
+  return getCatalogRoleNamesForUserForm().map((name) => ({ id: name, name }));
+}
+
+function getAdminPositionsCatalogForForm() {
+  if (adminAppPositionsCache.length) return adminAppPositionsCache;
+  if (appPositionsCatalog.length) return appPositionsCatalog;
+  return getCatalogPositionNamesForUserForm().map((name) => ({ id: name, name }));
+}
+
+function resolveAdminOrgRoleIdsFromNames(names) {
+  const catalog = getAdminRolesCatalogForForm();
+  return [
+    ...new Set(
+      (names || [])
+        .map((name) => {
+          const item = catalog.find((r) => (r.name || r) === name);
+          return Number(item?.id);
+        })
+        .filter((n) => Number.isInteger(n) && n > 0)
+    ),
+  ];
+}
+
+function resolveAdminPositionIdsFromNames(names) {
+  const catalog = getAdminPositionsCatalogForForm();
+  return [
+    ...new Set(
+      (names || [])
+        .map((name) => {
+          const item = catalog.find((p) => (p.name || p) === name);
+          return Number(item?.id);
+        })
+        .filter((n) => Number.isInteger(n) && n > 0)
+    ),
+  ];
+}
+
+function getAdminUserOrgRoleIds(prefix) {
+  const containerId = adminUserOrgRolesContainerId(prefix);
+  const fromIds = getCheckedFromContainer(containerId, "data-user-org-role-id")
+    .map((id) => Number(id))
+    .filter((n) => Number.isInteger(n) && n > 0);
+  if (fromIds.length) return fromIds;
+  return resolveAdminOrgRoleIdsFromNames(
+    getCheckedFromContainer(containerId, "data-user-org-role")
+  );
+}
+
+function getAdminUserPositionIds(prefix) {
+  const containerId = adminUserPositionsContainerId(prefix);
+  const fromIds = getCheckedFromContainer(containerId, "data-user-position-id")
+    .map((id) => Number(id))
+    .filter((n) => Number.isInteger(n) && n > 0);
+  if (fromIds.length) return fromIds;
+  return resolveAdminPositionIdsFromNames(
+    getCheckedFromContainer(containerId, "data-user-position")
+  );
+}
+
+function getAdminUserPositionNames(prefix) {
+  const ids = getAdminUserPositionIds(prefix);
+  return ids
+    .map((id) => getAdminPositionsCatalogForForm().find((p) => Number(p.id) === id)?.name)
+    .filter(Boolean);
+}
+
+function getAdminUserOrgRoleNames(prefix) {
+  const ids = getAdminUserOrgRoleIds(prefix);
+  return ids
+    .map((id) => getAdminRolesCatalogForForm().find((r) => Number(r.id) === id)?.name)
+    .filter(Boolean);
+}
+
+function hasMitarbeiterPosition(prefix) {
+  return getAdminUserPositionNames(prefix).some(
+    (position) => POSITION_TO_HIERARCHY_ROLE[normalizePositionKey(position)] === "mitarbeiter"
+  );
+}
+
+function hasUnitLeadPosition(prefix) {
+  return getAdminUserPositionNames(prefix).some(
+    (position) => POSITION_TO_HIERARCHY_ROLE[normalizePositionKey(position)] === "unit_lead"
+  );
+}
+
+function hasRegionalleiterPosition(prefix) {
+  return getAdminUserPositionNames(prefix).some(
+    (position) => POSITION_TO_HIERARCHY_ROLE[normalizePositionKey(position)] === "regionalleiter"
+  );
+}
+
+function adminFormRequiresRegionalleiter(prefix) {
+  const roles = getAdminFormRoles(prefix);
+  return roles.includes("unit_lead") || hasUnitLeadPosition(prefix);
+}
+
+function adminFormRequiresRegionalleiterFields(prefix) {
+  const roles = getAdminFormRoles(prefix);
+  return roles.includes("regionalleiter") || hasRegionalleiterPosition(prefix);
+}
+
+function resolveUnitLeadFromMasterUnit(unitName) {
+  if (!unitName) return { id: null, name: null };
+  const row = masterUnitsCache.find((u) => u.name === unitName);
+  const lead = row?.unitLead;
+  return { id: lead?.id || null, name: lead?.name || null };
+}
+
+function updateMitarbeiterUnitLeadAutoHint(prefix) {
+  const hint = document.getElementById(
+    prefix === "adm_edit_" ? "adm_edit_unit_lead_auto_hint" : "adm_unit_lead_auto_hint"
+  );
+  if (!hint) return;
+  const isMitarbeiter =
+    getAdminFormRoles(prefix).includes("mitarbeiter") || hasMitarbeiterPosition(prefix);
+  if (!isMitarbeiter) {
+    hint.style.display = "none";
+    return;
+  }
+  const units = getSelectedAdminUnits(
+    prefix === "adm_edit_" ? "adm_edit_units_select" : "adm_units_select"
+  );
+  const unitName = units[0] || "";
+  hint.style.display = "";
+  if (!unitName) {
+    hint.textContent =
+      "Vorgesetzter (Unit Leiter) wird automatisch aus der gewaehlten Unit übernommen.";
+    return;
+  }
+  const { name } = resolveUnitLeadFromMasterUnit(unitName);
+  hint.textContent = name
+    ? `Vorgesetzter (Unit Leiter): ${name} (automatisch aus Unit „${unitName}“)`
+    : `Fuer Unit „${unitName}“ ist noch kein Unit Leiter hinterlegt (unter Units verwalten).`;
+}
+
+function resolveMitarbeiterUnitLeadId(prefix, units) {
+  const manual =
+    document.getElementById(prefix === "adm_edit_" ? "adm_edit_unit_lead_id" : "adm_unit_lead_id")
+      ?.value || "";
+  if (manual) return Number(manual);
+  const unitName = Array.isArray(units) && units.length ? units[0] : "";
+  return resolveUnitLeadFromMasterUnit(unitName).id;
+}
+
+function needsSuperAdminGrantPassword(prefix, hadSuperAdmin = false) {
+  return getAdminFormRoles(prefix).includes("super_admin") && !hadSuperAdmin;
+}
+
+function getSuperAdminGrantPassword(prefix) {
+  const id = prefix === "adm_" ? "adm_super_admin_pw" : "adm_edit_super_admin_pw";
+  return document.getElementById(id)?.value || "";
+}
+
+function updateSuperAdminPasswordField(prefix, hadSuperAdmin = false) {
+  const wrapId = prefix === "adm_" ? "adm_super_admin_pw_wrap" : "adm_edit_super_admin_pw_wrap";
+  const inputId = prefix === "adm_" ? "adm_super_admin_pw" : "adm_edit_super_admin_pw";
+  const wrap = document.getElementById(wrapId);
+  const input = document.getElementById(inputId);
+  const needsPassword = needsSuperAdminGrantPassword(prefix, hadSuperAdmin);
+  if (wrap) wrap.style.display = needsPassword ? "" : "none";
+  if (input && !needsPassword) input.value = "";
+}
+
+function validateSuperAdminGrantPassword(prefix, hadSuperAdmin, errEl) {
+  if (!needsSuperAdminGrantPassword(prefix, hadSuperAdmin)) return true;
+  if (getSuperAdminGrantPassword(prefix) !== "234") {
+    if (errEl) {
+      errEl.textContent = "Super Admin erfordert das korrekte Freischalt-Passwort.";
+      errEl.style.display = "block";
+    }
+    return false;
+  }
+  return true;
+}
+
+function setAdminSystemRoles(prefix, roles) {
+  const list = new Set(Array.isArray(roles) ? roles : []);
+  const box = document.getElementById(adminPrivilegeRolesContainerId(prefix));
+  box?.querySelectorAll("input[data-admin-role]").forEach((el) => {
+    el.checked = list.has(el.getAttribute("data-admin-role"));
+    el.disabled = false;
+  });
+  updateSuperAdminPasswordField(prefix, prefix === "adm_edit_" ? editingUserHadSuperAdmin : false);
+}
+
+function setAdminFormRoles(prefix, roles) {
+  setAdminSystemRoles(prefix, roles);
+}
+
+function setAdminUserCatalogFields(prefix, userOrgRoleIds, userPositionIds) {
+  const orgIds = normalizeBigIntArrayClient(userOrgRoleIds);
+  const posIds = normalizeBigIntArrayClient(userPositionIds);
+  const orgSet = new Set(orgIds.map((id) => String(id)));
+  const posSet = new Set(posIds.map((id) => String(id)));
+  const orgNames = new Set(
+    orgIds
+      .map((id) => getAdminRolesCatalogForForm().find((r) => Number(r.id) === id)?.name)
+      .filter(Boolean)
+  );
+  const posNames = new Set(
+    posIds
+      .map((id) => getAdminPositionsCatalogForForm().find((p) => Number(p.id) === id)?.name)
+      .filter(Boolean)
+  );
+  const orgBox = document.getElementById(adminUserOrgRolesContainerId(prefix));
+  const posBox = document.getElementById(adminUserPositionsContainerId(prefix));
+  orgBox?.querySelectorAll("input[data-user-org-role-id]").forEach((el) => {
+    el.checked = orgSet.has(el.getAttribute("data-user-org-role-id"));
+  });
+  orgBox?.querySelectorAll("input[data-user-org-role]").forEach((el) => {
+    el.checked = orgNames.has(el.getAttribute("data-user-org-role"));
+  });
+  posBox?.querySelectorAll("input[data-user-position-id]").forEach((el) => {
+    el.checked = posSet.has(el.getAttribute("data-user-position-id"));
+  });
+  posBox?.querySelectorAll("input[data-user-position]").forEach((el) => {
+    el.checked = posNames.has(el.getAttribute("data-user-position"));
+  });
+}
+
+function getCatalogRoleNamesForUserForm() {
+  if (adminAppRolesCache.length) return adminAppRolesCache.map((r) => r.name);
+  return typeof ORG_ROLLEN !== "undefined" ? ORG_ROLLEN : [];
+}
+
+function getCatalogPositionNamesForUserForm() {
+  if (adminAppPositionsCache.length) return adminAppPositionsCache.map((p) => p.name);
+  return typeof APP_POSITIONS !== "undefined" ? APP_POSITIONS : [];
+}
+
+async function ensureAdminUserFormCatalogs() {
+  if (!appRolesCatalog.length || !appPositionsCatalog.length) {
+    await loadAppRolePositionCatalogFromApi();
+  }
+  if (!adminAppRolesCache.length || !adminAppPositionsCache.length) {
+    await Promise.all([loadAdminAppRolesCache(), loadAdminAppPositionsCache()]);
+  }
+}
+
+function renderAdminUserCatalogCheckboxes(prefix, selectedOrgRoleIds = null, selectedPositionIds = null) {
+  const roles = getAdminRolesCatalogForForm();
+  const positions = getAdminPositionsCatalogForForm();
+  const orgId = adminUserOrgRolesContainerId(prefix);
+  const posId = adminUserPositionsContainerId(prefix);
+  const orgSelected =
+    selectedOrgRoleIds !== null
+      ? normalizeBigIntArrayClient(selectedOrgRoleIds)
+      : getAdminUserOrgRoleIds(prefix);
+  const posSelected =
+    selectedPositionIds !== null
+      ? normalizeBigIntArrayClient(selectedPositionIds)
+      : getAdminUserPositionIds(prefix);
+  const orgBox = document.getElementById(orgId);
+  const posBox = document.getElementById(posId);
+  if (orgBox) {
+    orgBox.innerHTML = roles.length
+      ? roles
+          .map((item) => {
+            const id = Number(item.id);
+            const name = item.name || item;
+            if (!Number.isInteger(id) || id <= 0) {
+              return `<label class="unit-checkbox-item"><input type="checkbox" data-user-org-role="${escAttr(name)}"> ${esc(name)}</label>`;
+            }
+            return `<label class="unit-checkbox-item"><input type="checkbox" data-user-org-role-id="${id}"> ${esc(name)}</label>`;
+          })
+          .join("")
+      : '<p style="color:var(--rc-muted);font-size:.75rem;margin:0">Keine Rollen im Katalog.</p>';
+  }
+  if (posBox) {
+    posBox.innerHTML = positions.length
+      ? positions
+          .map((item) => {
+            const id = Number(item.id);
+            const name = item.name || item;
+            if (!Number.isInteger(id) || id <= 0) {
+              return `<label class="unit-checkbox-item"><input type="checkbox" data-user-position="${escAttr(name)}"> ${esc(name)}</label>`;
+            }
+            return `<label class="unit-checkbox-item"><input type="checkbox" data-user-position-id="${id}"> ${esc(name)}</label>`;
+          })
+          .join("")
+      : '<p style="color:var(--rc-muted);font-size:.75rem;margin:0">Keine Positionen im Katalog.</p>';
+  }
+  setAdminUserCatalogFields(prefix, orgSelected, posSelected);
+}
+
+function renderGeschaeftsfuehrungSelect(selectId, selectedId, excludeUserId) {
+  const sel = document.getElementById(selectId);
+  if (!sel) return;
+  const options = adminUsersCache.filter(
+    (u) =>
+      userHasEffectiveHierarchyRole(u, "geschaeftsfuehrung") &&
+      String(u.id) !== String(excludeUserId || "")
+  );
+  const selected = selectedId ? String(selectedId) : "";
+  sel.innerHTML =
+    '<option value="">– optional –</option>' +
+    options
+      .map(
+        (gf) =>
+          `<option value="${gf.id}"${
+            String(gf.id) === selected ? " selected" : ""
+          }>${esc(gf.name)}</option>`
+      )
+      .join("");
+}
+
+function renderRegionalleiterSelect(selectId, selectedId) {
+  const sel = document.getElementById(selectId);
+  if (!sel) return;
+  const options = adminUsersCache.filter((u) => userHasEffectiveHierarchyRole(u, "regionalleiter"));
+  const selected = selectedId ? String(selectedId) : "";
+  sel.innerHTML =
+    '<option value="">– Regionalleiter waehlen –</option>' +
+    options
+      .map((r) => {
+        const label = r.standort ? `${r.name} (${r.standort})` : r.name;
+        return `<option value="${r.id}"${
+          String(r.id) === selected ? " selected" : ""
+        }>${esc(label)}</option>`;
+      })
+      .join("");
+}
+
+function renderUnitLeadSelect(selectId, selectedId, preferredUnits = []) {
+  const sel = document.getElementById(selectId);
+  if (!sel) return;
+  const units = Array.isArray(preferredUnits) ? preferredUnits.filter(Boolean) : [];
+  let options = adminUsersCache.filter((u) => userHasEffectiveHierarchyRole(u, "unit_lead"));
+  if (units.length) {
+    const matched = options.filter((ul) =>
+      (ul.units || []).some((unit) => units.includes(unit))
+    );
+    if (matched.length) options = matched;
+  }
+  const selected = selectedId ? String(selectedId) : "";
+  sel.innerHTML =
+    '<option value="">– Unit Lead waehlen –</option>' +
+    options
+      .map((ul) => {
+        const unitLabel = (ul.units || []).join(", ") || "ohne Unit";
+        const rl = adminUsersCache.find((u) => String(u.id) === String(ul.regionalleiter_id));
+        const region = rl?.standort ? `, Region ${rl.standort}` : "";
+        const label = `${ul.name} (${unitLabel}${region})`;
+        return `<option value="${ul.id}"${
+          String(ul.id) === selected ? " selected" : ""
+        }>${esc(label)}</option>`;
+      })
+      .join("");
+}
+
+function userSupervisorLabel(user, allUsers) {
+  const roles = getEffectiveHierarchyRolesForUser(user);
+  const users = Array.isArray(allUsers) ? allUsers : [];
+
+  if (roles.includes("mitarbeiter")) {
+    if (user.unitLeadName) return esc(user.unitLeadName);
+    const lead = users.find((u) => String(u.id) === String(user.unit_lead_id));
+    return lead?.name ? esc(lead.name) : "–";
+  }
+
+  if (roles.includes("unit_lead")) {
+    if (user.regionalleiterName) return esc(user.regionalleiterName);
+    const rl = users.find((u) => String(u.id) === String(user.regionalleiter_id));
+    return rl?.name ? esc(rl.name) : "–";
+  }
+
+  if (roles.includes("regionalleiter")) {
+    if (user.geschaeftsfuehrungName) return esc(user.geschaeftsfuehrungName);
+    const gf = users.find((u) => String(u.id) === String(user.geschaeftsfuehrung_id));
+    return gf?.name ? esc(gf.name) : "–";
+  }
+
+  return "–";
+}
+
+function updateAdminRoleFieldsVisibility(prefix = "adm_") {
+  const roles = getAdminFormRoles(prefix);
+  const needsUnits = roles.some((role) => isUnitScopedSession(role));
+  const label = document.getElementById(prefix === "adm_" ? "adm_units_label" : "adm_edit_units_label");
+  const hint = document.getElementById(prefix === "adm_" ? "adm_units_hint" : "adm_edit_units_hint");
+  const box = document.getElementById(prefix === "adm_" ? "adm_units_select" : "adm_edit_units_select");
+  const standortWrap = document.getElementById(prefix === "adm_" ? "adm_standort_wrap" : "adm_edit_standort_wrap");
+  const gfWrap = document.getElementById(
+    prefix === "adm_" ? "adm_geschaeftsfuehrung_wrap" : "adm_edit_geschaeftsfuehrung_wrap"
+  );
+  const regionalWrap = document.getElementById(
+    prefix === "adm_" ? "adm_regionalleiter_wrap" : "adm_edit_regionalleiter_wrap"
+  );
+  const unitLeadWrap = document.getElementById(
+    prefix === "adm_" ? "adm_unit_lead_wrap" : "adm_edit_unit_lead_wrap"
+  );
   if (label) label.style.display = needsUnits ? "" : "none";
-  if (hint) hint.style.display = needsUnits ? "" : "none";
+  if (hint) {
+    hint.style.display = needsUnits ? "" : "none";
+    if (needsUnits) {
+      hint.textContent = roles.includes("mitarbeiter")
+        ? "Genau eine Unit auswaehlen."
+        : "Mehrere Units auswaehlen. Pro Unit kann es mehrere Unit Leads und Mitarbeiter geben.";
+    }
+  }
   if (box) box.style.display = needsUnits ? "" : "none";
+  if (standortWrap) standortWrap.style.display = adminFormRequiresRegionalleiterFields(prefix) ? "" : "none";
+  if (gfWrap) gfWrap.style.display = adminFormRequiresRegionalleiterFields(prefix) ? "" : "none";
+  if (regionalWrap) regionalWrap.style.display = adminFormRequiresRegionalleiter(prefix) ? "" : "none";
+  if (unitLeadWrap) unitLeadWrap.style.display = "none";
+}
+
+function updateAdminUnitsFieldVisibility() {
+  updateAdminRoleFieldsVisibility("adm_");
+}
+
+async function onAdminAddRolesChange() {
+  const roles = getAdminFormRoles("adm_");
+  const preserved = getSelectedAdminUnits("adm_units_select");
+  updateAdminRoleFieldsVisibility("adm_");
+  updateSuperAdminPasswordField("adm_", false);
+  if (adminFormRequiresRegionalleiterFields("adm_")) {
+    renderGeschaeftsfuehrungSelect("adm_geschaeftsfuehrung_id", null, null);
+  }
+  if (adminFormRequiresRegionalleiter("adm_")) {
+    renderRegionalleiterSelect("adm_regionalleiter_id", null);
+  }
+  updateMitarbeiterUnitLeadAutoHint("adm_");
+  if (!roles.some((role) => isUnitScopedSession(role))) return;
+  const pick = roles.includes("mitarbeiter") && preserved.length > 1 ? [preserved[0]] : preserved;
+  await refreshAdminUnitCheckboxes("adm_units_select", pick);
 }
 
 function renderAdminUnitCheckboxes(containerId, selected) {
@@ -500,6 +2136,13 @@ function getSelectedAdminUnits(containerId) {
   return [...box.querySelectorAll('input[type="checkbox"]:checked')].map((el) => el.value);
 }
 
+function onAdminUnitsSelectionChange(event) {
+  const box = event.target.closest("#adm_units_select, #adm_edit_units_select");
+  if (!box || event.target.type !== "checkbox") return;
+  if (box.id === "adm_units_select") updateMitarbeiterUnitLeadAutoHint("adm_");
+  if (box.id === "adm_edit_units_select") updateMitarbeiterUnitLeadAutoHint("adm_edit_");
+}
+
 async function loadMasterUnitsCache() {
   try {
     if (isAdmin) {
@@ -512,7 +2155,11 @@ async function loadMasterUnitsCache() {
   } catch (_e) {
     masterUnitsCache = [];
   }
-  renderAdminUnitCheckboxes("adm_units_select", []);
+}
+
+async function refreshAdminUnitCheckboxes(containerId, selected) {
+  await loadMasterUnitsCache();
+  renderAdminUnitCheckboxes(containerId, selected || []);
 }
 
 function pickUnitsFromMaster(preselected) {
@@ -539,104 +2186,22 @@ function pickUnitsFromMaster(preselected) {
   });
 }
 
-function populateLoginUnitSelect(units, selected) {
-  const sel = document.getElementById("loginUnit");
-  if (!sel) return;
-  const list = [...new Set((units || []).map((u) => String(u).trim()).filter(Boolean))].sort((a, b) =>
-    a.localeCompare(b, "de")
-  );
-  sel.innerHTML = "";
-  const placeholder = document.createElement("option");
-  placeholder.value = "";
-  if (!list.length) {
-    sel.disabled = true;
-    placeholder.textContent = "– Keine Units verfügbar –";
-    sel.appendChild(placeholder);
-    return;
-  }
-  sel.disabled = false;
-  placeholder.textContent = "– bitte wählen –";
-  sel.appendChild(placeholder);
-  list.forEach((u) => {
-    const opt = document.createElement("option");
-    opt.value = u;
-    opt.textContent = u;
-    sel.appendChild(opt);
-  });
-  if (selected && list.includes(selected)) sel.value = selected;
-  else if (list.length === 1) sel.value = list[0];
-}
-
-async function loadPublicLoginUnits() {
-  try {
-    const res = await fetch("/api/auth/units");
-    if (!res.ok) return;
-    const data = await res.json();
-    populateLoginUnitSelect(data.units || []);
-  } catch (_e) {}
-}
-
-async function resolveLoginUnits() {
-  const email = document.getElementById("loginEmail").value.trim().toLowerCase();
-  const password = document.getElementById("loginPassword").value;
-  const hint = document.getElementById("loginUnitHint");
-  if (!email || !password) {
-    populateLoginUnitSelect([]);
-    if (hint) hint.textContent = "Units werden nach Eingabe der Zugangsdaten geladen.";
-    return;
-  }
-  try {
-    const res = await fetch("/api/auth/resolve-units", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ email, password }),
-    });
-    const data = await res.json();
-    if (!res.ok) {
-      populateLoginUnitSelect([]);
-      if (hint) hint.textContent = data.error || "Zugangsdaten prüfen.";
-      return;
-    }
-    populateLoginUnitSelect(data.units || []);
-    if (hint) {
-      hint.textContent =
-        data.units.length === 1
-          ? "Ihre Unit wurde automatisch ausgewählt."
-          : `${data.units.length} Units verfügbar (distinct).`;
-    }
-  } catch (_e) {
-    populateLoginUnitSelect([]);
-    if (hint) hint.textContent = "Units konnten nicht geladen werden.";
-  }
-}
-
 async function doLogin(){
   const email=document.getElementById('loginEmail').value.trim().toLowerCase();
   const password=document.getElementById('loginPassword').value;
-  let unit=document.getElementById('loginUnit').value;
   const errEl=document.getElementById('loginError');
   errEl.style.display='none';
-  if (email && password && !unit) {
-    await resolveLoginUnits();
-    unit = document.getElementById("loginUnit").value;
-  }
-  if(!email||!password||!unit){errEl.textContent='Bitte alle Felder ausfuellen.';errEl.style.display='block';return}
-  if (document.getElementById("loginUnit").disabled) {
-    await resolveLoginUnits();
-    unit = document.getElementById('loginUnit').value;
-    if (!unit) {
-      errEl.textContent = 'Bitte zuerst gültige Zugangsdaten eingeben und Unit wählen.';
-      errEl.style.display = 'block';
-      return;
-    }
-  }
+  if(!email||!password){errEl.textContent='Bitte E-Mail und Passwort ausfuellen.';errEl.style.display='block';return}
   try {
-    const session = await api("/api/auth/login", { method: "POST", body: JSON.stringify({ email, password, unit }) });
+    const session = await api("/api/auth/login", { method: "POST", body: JSON.stringify({ email, password }) });
     currentUnit = session.unit;
     currentName = session.name;
     currentEmail = session.email;
     isAdmin = isAdminSession(session.role);
     isSuperAdmin = session.role === "super_admin";
+    isMitarbeiter = isMitarbeiterSession(session.role);
+    currentSkillEntryId = session.skillEntryId || null;
+    currentPersonalnummer = session.personalnummer || "";
     await showApp();
   } catch (error) {
     errEl.textContent = error.message;
@@ -646,22 +2211,45 @@ async function doLogin(){
 
 async function doLogout(){
   try { await api("/api/auth/logout", { method: "POST" }); } catch (_e) {}
-  currentUnit='';currentName='';currentEmail='';isAdmin=false;isSuperAdmin=false;superAdminViewUnit='all';
-  entryStore = { status: [], team: [], skill: [] };
+  currentUnit='';currentName='';currentEmail='';isAdmin=false;isSuperAdmin=false;isMitarbeiter=false;currentSkillEntryId=null;currentPersonalnummer='';superAdminViewUnit='all';
+  document.body.classList.remove("mitarbeiter-mode");
+  entryStore = { portfolio: [], organisation: [], skill: [] };
   document.getElementById('loginOverlay').style.display='flex';document.getElementById('appHeader').style.display='none';
   document.getElementById('tabs').style.display='none';document.getElementById('appMain').style.display='none';
 }
 
 async function showApp(){
+  await loadSkillCategoriesFromApi();
+  await loadAppRolePositionCatalogFromApi();
   await refreshEntries();
-  document.getElementById('loginOverlay').style.display='none';document.getElementById('appHeader').style.display='flex';
-  document.getElementById('tabs').style.display='flex';document.getElementById('appMain').style.display='block';
+  if (!isMitarbeiter) await loadSkillPersonalnummerLookup();
+  document.getElementById('loginOverlay').style.display='none';
+  document.getElementById('appHeader').style.display='flex';
+  document.getElementById('appMain').style.display='block';
   document.getElementById('headerName').textContent=currentName+' ('+currentEmail+')';
   if (isSuperAdmin) superAdminViewUnit = "all";
+  applyMitarbeiterLayout();
+  if (!isMitarbeiter) {
+    document.getElementById('tabs').style.display='flex';
+  }
+  initHeaderUnitSwitcher();
   await renderHeaderUnitSwitcher();
   updateHeaderUnitDisplay();
   updateSuperAdminFormMode();
-  checkAdmin();renderNavStatus();renderNavTeam();renderSkillEmployeeNav();updateSkillDeleteButton();renderOverview();if(isAdmin){await loadMasterUnitsCache();await renderAdminUsers();if(isSuperAdmin)await renderSuperAdminUnits();}
+  checkAdmin();
+  if (isMitarbeiter) {
+    await initMitarbeiterSkillView();
+  } else {
+    renderPortfolio();
+    renderOrganisation();
+    initAllSaveButtonTrackers();
+    renderSkillEmployeeNav();
+    updateSkillDeleteButton();
+    renderOverview();
+  }
+  if (isAdmin) await initAdminPage();
+  if (!isMitarbeiter) await refreshUnitContextPanels();
+  collapseAllCollapsibleSections(document.getElementById("appMain"));
 }
 
 async function bootSession() {
@@ -672,291 +2260,817 @@ async function bootSession() {
     currentEmail = me.email;
     isAdmin = isAdminSession(me.role);
     isSuperAdmin = me.role === "super_admin";
+    isMitarbeiter = isMitarbeiterSession(me.role);
+    currentSkillEntryId = me.skillEntryId || null;
+    currentPersonalnummer = me.personalnummer || "";
     await showApp();
   } catch (_e) {}
 }
 
 // ===== TABS =====
 document.querySelectorAll('.tab').forEach(t=>{t.addEventListener('click',()=>{
-  document.querySelectorAll('.tab').forEach(x=>x.classList.remove('active'));
-  document.querySelectorAll('.page').forEach(x=>x.classList.remove('active'));
-  t.classList.add('active');document.getElementById('page-'+t.dataset.page).classList.add('active');
-  if(t.dataset.page==='overview')renderOverview();if(t.dataset.page==='export')renderExportStats();if(t.dataset.page==='admin'){loadMasterUnitsCache().then(()=>{renderAdminUsers();if(isSuperAdmin)renderSuperAdminUnits();});}
-  if(t.dataset.page==='skills'){renderSkillEmployeeNav();updateSkillDeleteButton();}
+  if (isMitarbeiter && t.dataset.page !== "skills") return;
+  const p = t.dataset.page;
+  switchTab(p);
+  if (p === "overview") renderOverview();
+  if (p === "export") renderExportStats();
+  if (p === "admin") initAdminPage();
+  if (p === "portfolio") {
+    renderPortfolio();
+    refreshUnitContextPanels();
+  }
+  if (p === "organisation") {
+    renderOrganisation();
+    refreshUnitContextPanels();
+  }
+  if (p === "skills") {
+    loadSkillPersonalnummerLookup().then(() => {
+      renderSkillEmployeeNav();
+      updateSkillDeleteButton();
+    });
+  }
 })});
 
-function switchTab(p){document.querySelectorAll('.tab').forEach(t=>t.classList.toggle('active',t.dataset.page===p));
-  document.querySelectorAll('.page').forEach(pg=>pg.classList.toggle('active',pg.id==='page-'+p));}
-
-// ===== NAV PANELS =====
-function renderNavStatus(){
-  const ws=document.getElementById('s_workstream').value;
-  const kat=document.getElementById('s_kategorie').value;
-  let h='';
-  WS_KEYS.forEach(w=>{const cls=w===ws?'nav-pill ws-active':(ws?'nav-pill dim':'nav-pill');
-    h+=`<div class="${cls}" onclick="document.getElementById('s_workstream').value='${w}';document.getElementById('s_workstream').dispatchEvent(new Event('change'))">${WS_ICONS[w]} ${w}</div>`;
-  });
-  document.getElementById('navWS_status').innerHTML=h;
-  let kh='';
-  if(ws){CATS.forEach(c=>{const cls=c.k===kat?'nav-pill active':(kat?'nav-pill dim':'nav-pill');
-    kh+=`<div class="${cls}" onclick="document.getElementById('s_kategorie').value='${c.k}';document.getElementById('s_kategorie').dispatchEvent(new Event('change'))">${c.k}</div>`;
-  })}else{kh='<div style="color:var(--rc-muted);font-size:.75rem;font-style:italic">Erst Workstream waehlen</div>'}
-  document.getElementById('navKat_status').innerHTML=kh;
+function switchTab(p){
+  if (isMitarbeiter && p !== "skills") return;
+  document.querySelectorAll('.tab').forEach(t=>t.classList.toggle('active',t.dataset.page===p));
+  document.querySelectorAll('.page').forEach(pg=>pg.classList.toggle('active',pg.id==='page-'+p));
+  const page = document.getElementById("page-" + p);
+  if (page) collapseAllCollapsibleSections(page);
 }
 
-function renderNavTeam(){
-  const ws=document.getElementById('t_workstream').value;let h='';
-  WS_KEYS.forEach(w=>{const cls=w===ws?'nav-pill ws-active':'nav-pill';
-    h+=`<div class="${cls}" onclick="document.getElementById('t_workstream').value='${w}';document.getElementById('t_workstream').dispatchEvent(new Event('change'))">${WS_ICONS[w]} ${w}</div>`;
-  });document.getElementById('navWS_team').innerHTML=h;
-}
-// ===== INFO PANEL =====
-function renderInfoStatus(){
-  const ws=document.getElementById('s_workstream').value;
-  const kat=document.getElementById('s_kategorie').value;
-  const box=document.getElementById('infoContentStatus');
-  if(!ws||!kat){box.innerHTML='<p style="font-style:italic">Waehlen Sie Workstream + Kategorie fuer Erlaeuterungen und Beispiele.</p>';return}
-  const c=CATS.find(x=>x.k===kat);if(!c)return;
-  const exKey=EX_KEYS[ws];
-  box.innerHTML=`
-    <div class="info-title">${esc(c.k)}</div>
-    <p>${esc(c.info)}</p>
-    <div class="info-hint">💡 <strong>Leitfrage:</strong> ${esc(c.q)}</div>
-    <div class="info-example"><strong>Beispiel – ${WS_ICONS[ws]} ${esc(ws)}:</strong><br>${esc(c[exKey]||'')}</div>
-    <table>
-      <tr><th>Ampel</th><th>Bedeutung</th></tr>
-      <tr><td>🟩</td><td>Etabliert / funktioniert</td></tr>
-      <tr><td>🟧</td><td>Begonnen / teilweise</td></tr>
-      <tr><td>🟦</td><td>In Planung</td></tr>
-      <tr><td>🟥</td><td>Fehlt / kritisch</td></tr>
-    </table>
-  `;
-}
-
-// ===== IST-STATUS BEISPIELDATEN =====
-let statusSubtabMode = "erfassung";
-
-function formatStandBullets(stand) {
-  const items = Array.isArray(stand) ? stand : stand ? [stand] : [];
-  if (!items.length) return "";
-  return "<ul>" + items.map((t) => `<li>${esc(t)}</li>`).join("") + "</ul>";
-}
-
-function renderStatusExamples() {
-  const ws = document.getElementById("statusExamplesWS").value;
-  const box = document.getElementById("statusExamplesContent");
-  if (!box) return;
-  const data = STATUS_EXAMPLES_BY_WS[ws];
-  if (!data || !data.rows || !data.rows.length) {
-    box.innerHTML =
-      '<p class="status-examples-empty">Fuer diesen Workstream liegen noch keine Beispieldaten vor.</p>';
-    return;
+// ===== PORTFOLIO =====
+function portfolioDomForCategory(category) {
+  if (category === "produkte") {
+    return {
+      formId: "portfolioProdukteForm",
+      editId: "pf_prod_editId",
+      bezeichnung: "pf_prod_bezeichnung",
+      beschreibung: "pf_prod_beschreibung",
+      hinweis: "pf_prod_hinweis",
+      jahresumsatz: "pf_prod_jahresumsatz",
+      ampel: "pf_prod_ampel",
+      cancelBtn: "btnPfProdCancel",
+      list: "pf_prod_list",
+      empty: "pf_prod_empty",
+    };
   }
-  const theme = data.headerTheme || "blue";
-  let html = `<p class="status-examples-disclaimer">${esc(STATUS_EXAMPLES_DISCLAIMER)}</p>`;
-  if (data.title) html += `<p style="font-weight:700;color:var(--rc-accent2);margin-bottom:.6rem;font-size:.85rem">${esc(data.title)}</p>`;
-  html += '<div class="tbl-wrap"><table class="status-examples-table"><thead class="theme-' + theme + '"><tr>';
-  html +=
-    "<th>Kategorie</th><th>Beispiel: Aktueller Stand (realcore)</th><th class=\"col-ampel\">Ampel</th><th>Beispiel: Kommentar / Nachweis</th></tr></thead><tbody>";
-  data.rows.forEach((row) => {
-    html += "<tr>";
-    html += `<td><strong>${esc(displayKategorie(row.kategorie))}</strong></td>`;
-    html += `<td>${formatStandBullets(row.stand)}</td>`;
-    html += `<td class="col-ampel">${ampelHTML(row.ampel)}</td>`;
-    html += `<td>${esc(row.kommentar || "")}</td>`;
-    html += "</tr>";
-  });
-  html += "</tbody></table></div>";
-  box.innerHTML = html;
-}
-
-function setStatusSubtab(mode) {
-  statusSubtabMode = mode;
-  const isBeispiele = mode === "beispiele";
-  document.getElementById("statusPanelErfassung").style.display = isBeispiele ? "none" : "";
-  document.getElementById("statusPanelBeispiele").style.display = isBeispiele ? "" : "none";
-  document.getElementById("btnStatusSubtabErfassung").classList.toggle("active", !isBeispiele);
-  document.getElementById("btnStatusSubtabBeispiele").classList.toggle("active", isBeispiele);
-  document.getElementById("page-status").classList.toggle("status-examples-mode", isBeispiele);
-  if (isBeispiele) renderStatusExamples();
-}
-
-document.getElementById("btnStatusSubtabErfassung").addEventListener("click", () => setStatusSubtab("erfassung"));
-document.getElementById("btnStatusSubtabBeispiele").addEventListener("click", () => setStatusSubtab("beispiele"));
-document.getElementById("statusExamplesWS").addEventListener("change", renderStatusExamples);
-
-// ===== STATUS FORM =====
-const sWS=document.getElementById('s_workstream'),sKat=document.getElementById('s_kategorie');
-sWS.addEventListener('change',()=>{
-  sKat.innerHTML='<option value="">– waehlen –</option>';
-  if(sWS.value){CATS.forEach(c=>{sKat.innerHTML+=`<option value="${c.k}">${c.k}</option>`})}
-  document.getElementById('s_leitfrageBox').style.display='none';
-  renderNavStatus();renderInfoStatus();
-});
-sKat.addEventListener('change',()=>{
-  const c=CATS.find(x=>x.k===sKat.value);
-  if(c){document.getElementById('s_leitfrage').textContent=c.q;document.getElementById('s_leitfrageBox').style.display='block'}
-  else{document.getElementById('s_leitfrageBox').style.display='none'}
-  renderNavStatus();renderInfoStatus();
-});
-document.getElementById('t_workstream').addEventListener('change',renderNavTeam);
-
-// ===== TEAM BEISPIELDATEN =====
-function formatRollenmixBullets(rollenmix) {
-  return formatStandBullets(rollenmix);
-}
-
-function renderTeamExamples() {
-  const box = document.getElementById("teamExamplesContent");
-  if (!box) return;
-  const data = TEAM_EXAMPLES;
-  if (!data || !data.rows || !data.rows.length) {
-    box.innerHTML =
-      '<p class="status-examples-empty">Noch keine Beispieldaten vorhanden.</p>';
-    return;
+  if (category === "services") {
+    return {
+      formId: "portfolioServicesForm",
+      editId: "pf_srv_editId",
+      bezeichnung: "pf_srv_bezeichnung",
+      beschreibung: "pf_srv_beschreibung",
+      hinweis: "pf_srv_hinweis",
+      jahresumsatz: "pf_srv_jahresumsatz",
+      ampel: "pf_srv_ampel",
+      cancelBtn: "btnPfSrvCancel",
+      list: "pf_srv_list",
+      empty: "pf_srv_empty",
+    };
   }
-  const theme = data.headerTheme || "blue";
-  let html = `<p class="status-examples-disclaimer">${esc(TEAM_EXAMPLES_DISCLAIMER)}</p>`;
-  if (data.title) {
-    html += `<p style="font-weight:700;color:var(--rc-accent2);margin-bottom:.6rem;font-size:.85rem">${esc(data.title)}</p>`;
+  if (category === "loesungen") {
+    return {
+      formId: "portfolioLoesungenForm",
+      editId: "pf_sol_editId",
+      bezeichnung: "pf_sol_bezeichnung",
+      beschreibung: "pf_sol_beschreibung",
+      hinweis: "pf_sol_hinweis",
+      jahresumsatz: "pf_sol_jahresumsatz",
+      ampel: "pf_sol_ampel",
+      cancelBtn: "btnPfSolCancel",
+      list: "pf_sol_list",
+      empty: "pf_sol_empty",
+    };
   }
-  html += '<div class="tbl-wrap"><table class="status-examples-table"><thead class="theme-' + theme + '"><tr>';
-  html +=
-    "<th>Bereich / Team</th><th>Headcount (aktuell)</th><th>Rollenmix (% Verteilung)</th><th>Schwerpunkt / Hauptfokus</th><th>Offene Stellen</th><th>Geplanter Ausbau +12M</th><th class=\"col-ampel\">Status</th><th>Bemerkungen</th></tr></thead><tbody>";
-  data.rows.forEach((row) => {
-    html += "<tr>";
-    html += `<td><strong>${esc(row.bereich)}</strong></td>`;
-    html += `<td>${esc(String(row.headcount ?? ""))}</td>`;
-    html += `<td>${formatRollenmixBullets(row.rollenmix)}</td>`;
-    html += `<td>${esc(row.schwerpunkt || "")}</td>`;
-    html += `<td>${esc(String(row.offen ?? "–"))}</td>`;
-    html += `<td>${esc(row.ausbau || "–")}</td>`;
-    html += `<td class="col-ampel">${ampelHTML(row.status)}</td>`;
-    html += `<td>${esc(row.bemerkung || "")}</td>`;
-    html += "</tr>";
-  });
-  html += "</tbody></table></div>";
-  box.innerHTML = html;
-}
-
-function setTeamSubtab(mode) {
-  const isBeispiele = mode === "beispiele";
-  document.getElementById("teamPanelErfassung").style.display = isBeispiele ? "none" : "";
-  document.getElementById("teamPanelBeispiele").style.display = isBeispiele ? "" : "none";
-  document.getElementById("btnTeamSubtabErfassung").classList.toggle("active", !isBeispiele);
-  document.getElementById("btnTeamSubtabBeispiele").classList.toggle("active", isBeispiele);
-  document.getElementById("page-team").classList.toggle("team-examples-mode", isBeispiele);
-  if (isBeispiele) renderTeamExamples();
-}
-
-document.getElementById("btnTeamSubtabErfassung").addEventListener("click", () => setTeamSubtab("erfassung"));
-document.getElementById("btnTeamSubtabBeispiele").addEventListener("click", () => setTeamSubtab("beispiele"));
-
-// ===== SKILL-MATRIX BEISPIELDATEN =====
-let skillMatrixExampleKind = "technologie";
-
-function formatSkillCellLines(lines) {
-  return formatStandBullets(lines);
-}
-
-function renderSkillMatrixExamples() {
-  const box = document.getElementById("skillMatrixExamplesContent");
-  if (!box) return;
-  const data = SKILL_MATRIX_EXAMPLES_BY_KIND[skillMatrixExampleKind];
-  if (!data || !data.rows || !data.rows.length) {
-    box.innerHTML = '<p class="status-examples-empty">Noch keine Beispieldaten vorhanden.</p>';
-    return;
+  if (category === "partnergeschaeft") {
+    return {
+      formId: "portfolioPartnergeschaeftForm",
+      editId: "pf_pgs_editId",
+      bezeichnung: "pf_pgs_bezeichnung",
+      beschreibung: "pf_pgs_beschreibung",
+      hinweis: "pf_pgs_hinweis",
+      jahresumsatz: "pf_pgs_jahresumsatz",
+      ampel: "pf_pgs_ampel",
+      cancelBtn: "btnPfPgsCancel",
+      list: "pf_pgs_list",
+      empty: "pf_pgs_empty",
+    };
   }
-  const theme = data.headerTheme || "blue";
-  let html = `<p class="status-examples-disclaimer">${esc(SKILL_MATRIX_EXAMPLES_DISCLAIMER)}</p>`;
-  if (data.title) {
-    html += `<p style="font-weight:700;color:var(--rc-accent2);margin-bottom:.6rem;font-size:.85rem">${esc(data.title)}</p>`;
-  }
-  html += '<div class="tbl-wrap"><table class="status-examples-table"><thead class="theme-' + theme + '"><tr>';
-  html +=
-    "<th>Mitarbeiter (Name)</th><th>Rolle / Team</th><th>Technologie-Skills<br><span style=\"font-weight:400;font-size:.7rem\">(Thema + Stufe 1–5)</span></th><th>Prozess / Methodik<br><span style=\"font-weight:400;font-size:.7rem\">(Thema + Stufe 1–5)</span></th><th>Soft Skills<br><span style=\"font-weight:400;font-size:.7rem\">(Thema + Stufe 1–5)</span></th><th>Zertifikate / Nachweise</th><th>Entwicklungsziel 2026</th></tr></thead><tbody>";
-  data.rows.forEach((row) => {
-    html += "<tr>";
-    html += `<td><strong>${esc(row.name)}</strong></td>`;
-    html += `<td>${esc(row.rolle)}</td>`;
-    html += `<td>${formatSkillCellLines(row.technologie)}</td>`;
-    html += `<td>${formatSkillCellLines(row.methodik)}</td>`;
-    html += `<td>${formatSkillCellLines(row.soft)}</td>`;
-    html += `<td>${esc(row.zertifikate || "")}</td>`;
-    html += `<td>${esc(row.ziel || "")}</td>`;
-    html += "</tr>";
-  });
-  html += "</tbody></table></div>";
-  box.innerHTML = html;
+  return {
+    formId: "portfolioProjektgeschaeftForm",
+    editId: "pf_pjg_editId",
+    bezeichnung: "pf_pjg_bezeichnung",
+    beschreibung: "pf_pjg_beschreibung",
+    hinweis: "pf_pjg_hinweis",
+    jahresumsatz: "pf_pjg_jahresumsatz",
+    ampel: "pf_pjg_ampel",
+    cancelBtn: "btnPfPjgCancel",
+    list: "pf_pjg_list",
+    empty: "pf_pjg_empty",
+  };
 }
 
-function setSkillMatrixExampleKind(kind) {
-  skillMatrixExampleKind = kind;
-  document.getElementById("btnSkillExampleTech").classList.toggle("active", kind === "technologie");
-  document.getElementById("btnSkillExampleSoft").classList.toggle("active", kind === "softskill");
-  renderSkillMatrixExamples();
+function resetPortfolioForm(category) {
+  const dom = portfolioDomForCategory(category);
+  const form = document.getElementById(dom.formId);
+  if (form) form.reset();
+  const idEl = document.getElementById(dom.editId);
+  if (idEl) idEl.value = "";
+  const cancel = document.getElementById(dom.cancelBtn);
+  if (cancel) cancel.style.display = "none";
+  resetFormSaveButtonTracker(form);
 }
 
-function setSkillSubtab(mode) {
-  const isBeispiele = mode === "beispiele";
-  document.getElementById("skillPanelErfassung").style.display = isBeispiele ? "none" : "";
-  document.getElementById("skillPanelBeispiele").style.display = isBeispiele ? "" : "none";
-  document.getElementById("btnSkillSubtabErfassung").classList.toggle("active", !isBeispiele);
-  document.getElementById("btnSkillSubtabBeispiele").classList.toggle("active", isBeispiele);
-  document.getElementById("page-skills").classList.toggle("skills-examples-mode", isBeispiele);
-  if (isBeispiele) renderSkillMatrixExamples();
-}
+async function onSubmitPortfolio(category, event) {
+  event?.preventDefault?.();
+  if (!requireSaveUnit()) return;
+  const dom = portfolioDomForCategory(category);
+  const form = document.getElementById(dom.formId);
+  if (!validateFormRequired(form)) return;
 
-document.getElementById("btnSkillSubtabErfassung").addEventListener("click", () => setSkillSubtab("erfassung"));
-document.getElementById("btnSkillSubtabBeispiele").addEventListener("click", () => setSkillSubtab("beispiele"));
-document.getElementById("btnSkillExampleTech").addEventListener("click", () => setSkillMatrixExampleKind("technologie"));
-document.getElementById("btnSkillExampleSoft").addEventListener("click", () => setSkillMatrixExampleKind("softskill"));
-
-document.getElementById('statusForm').addEventListener('submit',async e=>{e.preventDefault();
-  if(!validateFormRequired(e.target))return;
-  if(!requireSaveUnit()) return;
-  const saveUnit = getSaveUnit();
-  const id=document.getElementById('s_editId').value||Date.now().toString();
-  const entry={id,workstream:sWS.value,kategorie:sKat.value,titel:document.getElementById('s_titel').value.trim(),ampel:document.getElementById('s_ampel').value,
-    stand:document.getElementById('s_stand').value,kommentar:document.getElementById('s_kommentar').value,
-    datum:document.getElementById('s_datum').value||today(),erfasser:currentName,unit:saveUnit,type:'status'};
-  const eId=document.getElementById('s_editId').value; if (!eId) delete entry.id;
+  const id = document.getElementById(dom.editId)?.value || "";
+  const bezeichnung = document.getElementById(dom.bezeichnung)?.value.trim() || "";
+  const beschreibung = document.getElementById(dom.beschreibung)?.value.trim() || "";
+  const hinweis = document.getElementById(dom.hinweis)?.value.trim() || "";
+  const jahresumsatz = document.getElementById(dom.jahresumsatz)?.value.trim() || "";
+  const ampel = document.getElementById(dom.ampel)?.value || "";
+  const entry = {
+    id: id || undefined,
+    category,
+    bezeichnung,
+    beschreibung,
+    hinweis,
+    jahresumsatz,
+    ampel,
+  };
   try {
-    await saveEntry("status", entry);
+    await saveEntry("portfolio", entry);
     await refreshEntries();
-    document.getElementById('statusForm').reset();document.getElementById('s_editId').value='';
-    document.getElementById('s_leitfrageBox').style.display='none';document.getElementById('btnStatusCancel').style.display='none';
-    renderNavStatus();renderInfoStatus();toast('Unit Übersicht gespeichert!');
-  } catch (err) {
-    toast(err.message || 'Speichern fehlgeschlagen.', '#e74c3c', 4000);
+    renderPortfolio();
+    resetPortfolioForm(category);
+    notifyFormSaveSuccess(form, "Portfolio gespeichert!");
+  } catch (error) {
+    toast(error.message || "Speichern fehlgeschlagen.", "#e74c3c", 4000);
   }
-});
-function cancelStatusEdit(){document.getElementById('statusForm').reset();document.getElementById('s_editId').value='';
-  document.getElementById('btnStatusCancel').style.display='none';document.getElementById('s_leitfrageBox').style.display='none';renderNavStatus();renderInfoStatus()}
+}
 
-// ===== TEAM FORM =====
-document.getElementById('teamForm').addEventListener('submit',async e=>{e.preventDefault();
-  if(!validateFormRequired(e.target))return;
-  if(!requireSaveUnit()) return;
+function renderPortfolioCategory(category) {
+  const dom = portfolioDomForCategory(category);
+  const listEl = document.getElementById(dom.list);
+  const emptyEl = document.getElementById(dom.empty);
+  if (!listEl) return;
+
+  const items = load("portfolio")
+    .filter((e) => String(e.category || "") === category)
+    .slice()
+    .sort((a, b) =>
+      String(a.bezeichnung || "").localeCompare(String(b.bezeichnung || ""), "de")
+    );
+
+  if (emptyEl) emptyEl.style.display = items.length ? "none" : "block";
+
+  listEl.innerHTML = items
+    .map((e) => {
+      const desc = esc((e.beschreibung || "").slice(0, 80));
+      const descMore = (e.beschreibung || "").length > 80 ? "…" : "";
+      const hint = esc((e.hinweis || "").slice(0, 60));
+      const hintMore = (e.hinweis || "").length > 60 ? "…" : "";
+      return (
+        "<tr>" +
+        `<td>${esc(e.bezeichnung || "–")}</td>` +
+        `<td style="text-align:center">${ampelHTML(e.ampel)}</td>` +
+        `<td>${esc(e.jahresumsatz || "–")}</td>` +
+        `<td style="max-width:280px">${desc}${descMore}</td>` +
+        `<td style="max-width:200px">${hint || "–"}${hintMore}</td>` +
+        `<td style="white-space:nowrap">` +
+        `<button class="btn btn-sm btn-outline" onclick="editEntry('portfolio','${escAttr(e.id)}')">✏️</button> ` +
+        `<button class="btn btn-sm btn-danger" onclick="deleteEntry('portfolio','${escAttr(e.id)}')">🗑️</button>` +
+        `</td>` +
+        "</tr>"
+      );
+    })
+    .join("");
+}
+
+function renderPortfolio() {
+  renderPortfolioCategory("produkte");
+  renderPortfolioCategory("services");
+  renderPortfolioCategory("loesungen");
+  renderPortfolioCategory("partnergeschaeft");
+  renderPortfolioCategory("projektgeschaeft");
+}
+
+function loadPortfolioEntry(entry) {
+  if (!entry) return;
+  const category = String(entry.category || "").trim();
+  const dom = portfolioDomForCategory(category);
+  document.getElementById(dom.editId).value = entry.id || "";
+  document.getElementById(dom.bezeichnung).value = entry.bezeichnung || "";
+  document.getElementById(dom.beschreibung).value = entry.beschreibung || "";
+  document.getElementById(dom.hinweis).value = entry.hinweis || "";
+  document.getElementById(dom.jahresumsatz).value = entry.jahresumsatz || "";
+  document.getElementById(dom.ampel).value = entry.ampel || "";
+  const cancel = document.getElementById(dom.cancelBtn);
+  if (cancel) cancel.style.display = "";
+  resetFormSaveButtonTracker(document.getElementById(dom.formId));
+}
+
+function cancelPortfolioEdit(category) {
+  resetPortfolioForm(category);
+}
+
+// ===== ORGANISATION (Aufbau & Rollen je Unit) =====
+function syncOrgSonstigesInRow(row, prefix) {
+  const sel = row.querySelector(`.${prefix}-select`);
+  const other = row.querySelector(`.${prefix}-other`);
+  if (!sel || !other) return;
+  const isOther = sel.value === SELECT_SONSTIGES;
+  other.classList.toggle("visible", isOther);
+  other.required = isOther;
+  if (!isOther) other.value = "";
+}
+
+const ORG_PIE_COLORS = [
+  "#27ae60",
+  "#0f3460",
+  "#3498db",
+  "#f39c12",
+  "#9b59b6",
+  "#e74c3c",
+  "#1abc9c",
+  "#34495e",
+  "#d35400",
+  "#7f8c8d",
+];
+
+function parseOrgUmsatzText(raw) {
+  if (!raw || !String(raw).trim()) return null;
+  let s = String(raw)
+    .trim()
+    .toLowerCase()
+    .replace(/\s+/g, "")
+    .replace(/€|eur/g, "");
+  let mult = 1;
+  if (/mio|million|mill\.?/.test(s)) {
+    mult = 1e6;
+    s = s.replace(/(mio\.?|million|mill\.?)/g, "");
+  } else if (/mrd|milliard/.test(s)) {
+    mult = 1e9;
+    s = s.replace(/(mrd\.?|milliard)/g, "");
+  } else if (/tsd|tausend/.test(s)) {
+    mult = 1e3;
+    s = s.replace(/(tsd\.?|tausend)/g, "");
+  } else if (/k$/.test(s)) {
+    mult = 1e3;
+    s = s.replace(/k$/, "");
+  }
+  const numMatch = s.match(/[\d.,]+/);
+  if (!numMatch) return null;
+  let numStr = numMatch[0];
+  if (numStr.includes(",") && numStr.includes(".")) {
+    if (numStr.lastIndexOf(",") > numStr.lastIndexOf(".")) {
+      numStr = numStr.replace(/\./g, "").replace(",", ".");
+    } else {
+      numStr = numStr.replace(/,/g, "");
+    }
+  } else if (numStr.includes(",")) {
+    const parts = numStr.split(",");
+    if (parts[1]?.length === 3 && parts[0].length <= 3) {
+      numStr = parts.join("");
+    } else {
+      numStr = numStr.replace(",", ".");
+    }
+  }
+  const n = parseFloat(numStr);
+  if (!Number.isFinite(n) || n < 0) return null;
+  return n * mult;
+}
+
+function formatOrgUmsatzValue(n) {
+  if (n >= 1e9) return `${(n / 1e9).toLocaleString("de-DE", { maximumFractionDigits: 1 })} Mrd.`;
+  if (n >= 1e6) return `${(n / 1e6).toLocaleString("de-DE", { maximumFractionDigits: 1 })} Mio.`;
+  if (n >= 1e3) return `${(n / 1e3).toLocaleString("de-DE", { maximumFractionDigits: 0 })} Tsd.`;
+  return n.toLocaleString("de-DE");
+}
+
+function orgPieSlicePath(cx, cy, r, startAngle, endAngle) {
+  const x1 = cx + r * Math.cos(startAngle);
+  const y1 = cy + r * Math.sin(startAngle);
+  const x2 = cx + r * Math.cos(endAngle);
+  const y2 = cy + r * Math.sin(endAngle);
+  const large = endAngle - startAngle > Math.PI ? 1 : 0;
+  return `M ${cx} ${cy} L ${x1} ${y1} A ${r} ${r} 0 ${large} 1 ${x2} ${y2} Z`;
+}
+
+function renderOrgPieChart(container, slices, opts) {
+  if (!container) return;
+  const total = slices.reduce((sum, s) => sum + s.value, 0);
+  if (!slices.length || total <= 0) {
+    container.innerHTML = `<p class="org-pie-empty">${esc(opts.emptyLabel || "Keine auswertbaren Werte")}</p>`;
+    return;
+  }
+  const cx = 100;
+  const cy = 100;
+  const r = 88;
+  let angle = -Math.PI / 2;
+  const paths = slices
+    .map((slice, i) => {
+      const share = slice.value / total;
+      const start = angle;
+      const end = angle + share * Math.PI * 2;
+      angle = end;
+      if (share >= 0.9999) {
+        return `<circle cx="${cx}" cy="${cy}" r="${r}" fill="${ORG_PIE_COLORS[i % ORG_PIE_COLORS.length]}" data-label="${escAttr(slice.label)}"></circle>`;
+      }
+      return `<path d="${orgPieSlicePath(cx, cy, r, start, end)}" fill="${ORG_PIE_COLORS[i % ORG_PIE_COLORS.length]}" data-label="${escAttr(slice.label)}"></path>`;
+    })
+    .join("");
+  const legend = slices
+    .map((slice, i) => {
+      const pct = ((slice.value / total) * 100).toLocaleString("de-DE", { maximumFractionDigits: 1 });
+      const val = opts.formatValue(slice.value);
+      return `<div class="org-pie-legend-item">
+        <span class="org-pie-swatch" style="background:${ORG_PIE_COLORS[i % ORG_PIE_COLORS.length]}"></span>
+        <span class="org-pie-legend-label">${esc(slice.label)}</span>
+        <span class="org-pie-legend-meta">${esc(val)} (${pct}%)</span>
+      </div>`;
+    })
+    .join("");
+  container.innerHTML = `<div class="org-pie-chart">
+    <svg class="org-pie-svg" viewBox="0 0 200 200" role="img" aria-label="${escAttr(opts.ariaLabel || "Tortendiagramm")}">
+      ${paths}
+    </svg>
+    <div class="org-pie-legend">${legend}
+      <div class="org-pie-total">Gesamt: ${esc(opts.formatValue(total))}</div>
+    </div>
+  </div>`;
+}
+
+function collectOrgGliederungChartRows() {
+  const rows = [];
+  document.querySelectorAll("#org_gliederung_rows .org-gliederung-row").forEach((r) => {
+    const bereich = readSelectWithOther(r, ".org-gli-select", ".org-gli-other") || "Ohne Bezeichnung";
+    const hcRaw = r.querySelector(".org-gli-hc")?.value;
+    const hc = hcRaw === "" ? null : parseInt(hcRaw, 10);
+    const umsatz = parseOrgUmsatzText(r.querySelector(".org-gli-umsatz")?.value);
+    rows.push({
+      label: bereich,
+      headcount: Number.isFinite(hc) && hc > 0 ? hc : 0,
+      umsatz: umsatz != null && umsatz > 0 ? umsatz : 0,
+    });
+  });
+  return rows;
+}
+
+function aggregateOrgChartSlices(rows, key) {
+  const map = new Map();
+  rows.forEach((row) => {
+    const v = row[key];
+    if (v > 0) map.set(row.label, (map.get(row.label) || 0) + v);
+  });
+  return [...map.entries()]
+    .map(([label, value]) => ({ label, value }))
+    .sort((a, b) => b.value - a.value);
+}
+
+function renderOrgGliederungCharts() {
+  const chartsWrap = document.getElementById("org_gliederung_charts");
+  const hat = document.getElementById("org_hat_gliederung")?.value === "ja";
+  if (!chartsWrap || !hat) {
+    if (chartsWrap) chartsWrap.hidden = true;
+    return;
+  }
+  const rows = collectOrgGliederungChartRows();
+  const hcSlices = aggregateOrgChartSlices(rows, "headcount");
+  const umsatzSlices = aggregateOrgChartSlices(rows, "umsatz");
+  const hasChartData = hcSlices.length > 0 || umsatzSlices.length > 0;
+  chartsWrap.hidden = !hasChartData;
+  renderOrgPieChart(document.getElementById("org_chart_headcount"), hcSlices, {
+    emptyLabel: "Headcount in den Bereichen erfassen (Zahlen > 0).",
+    ariaLabel: "Headcount nach organisatorischem Bereich",
+    formatValue: (n) => `${n.toLocaleString("de-DE")} MA`,
+  });
+  renderOrgPieChart(document.getElementById("org_chart_umsatz"), umsatzSlices, {
+    emptyLabel: "Umsatz in den Bereichen erfassen (z. B. 1,2 Mio.).",
+    ariaLabel: "Umsatz nach organisatorischem Bereich",
+    formatValue: formatOrgUmsatzValue,
+  });
+}
+
+function collectOrgRollenChartRows() {
+  const rows = [];
+  document.querySelectorAll("#org_rollen_rows .org-rolle-row").forEach((r) => {
+    const rolle = readSelectWithOther(r, ".org-rol-select", ".org-rol-other") || "Ohne Bezeichnung";
+    const anzahlRaw = r.querySelector(".org-rol-anzahl")?.value;
+    const anzahl = anzahlRaw === "" ? null : parseInt(anzahlRaw, 10);
+    rows.push({
+      label: rolle,
+      anzahl: Number.isFinite(anzahl) && anzahl > 0 ? anzahl : 0,
+    });
+  });
+  return rows;
+}
+
+function renderOrgRollenCharts() {
+  const chartsWrap = document.getElementById("org_rollen_charts");
+  if (!chartsWrap) return;
+  const slices = aggregateOrgChartSlices(collectOrgRollenChartRows(), "anzahl");
+  chartsWrap.hidden = slices.length === 0;
+  renderOrgPieChart(document.getElementById("org_chart_rollen"), slices, {
+    emptyLabel: "Anzahl pro Rolle erfassen (Zahlen > 0).",
+    ariaLabel: "Personen nach Rolle in der Unit",
+    formatValue: (n) => `${n.toLocaleString("de-DE")} Pers.`,
+  });
+}
+
+function orgRowRemoveButtonHtml(title) {
+  return `<button type="button" class="row-remove-btn" title="${escAttr(title)}" aria-label="${escAttr(title)}">
+    <svg class="row-remove-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+      <path d="M3 6h18"/><path d="M8 6V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/><path d="M19 6l-1 14a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2L5 6"/><line x1="10" y1="11" x2="10" y2="17"/><line x1="14" y1="11" x2="14" y2="17"/>
+    </svg>
+  </button>`;
+}
+
+function updateOrgGliederungSectionVisibility() {
+  const hat = document.getElementById("org_hat_gliederung")?.value || "";
+  const section = document.getElementById("org_gliederung_section");
+  if (section) section.style.display = hat === "ja" ? "" : "none";
+  if (hat !== "ja") {
+    const chartsWrap = document.getElementById("org_gliederung_charts");
+    if (chartsWrap) chartsWrap.hidden = true;
+  } else {
+    renderOrgGliederungCharts();
+  }
+}
+
+function getOrgGliederungRowBereichLabel(row) {
+  return readSelectWithOther(row, ".org-gli-select", ".org-gli-other");
+}
+
+function updateOrgGliederungRowSummary(row) {
+  const summary = row.querySelector(".org-gli-header-summary");
+  if (!summary) return;
+  const label = getOrgGliederungRowBereichLabel(row);
+  if (label) {
+    summary.textContent = label;
+    summary.classList.remove("is-placeholder");
+  } else {
+    summary.textContent = "– noch nicht gewählt –";
+    summary.classList.add("is-placeholder");
+  }
+}
+
+function setOrgGliederungRowOpen(row, open) {
+  row.classList.toggle("is-collapsed", !open);
+  const toggle = row.querySelector(".org-gli-toggle");
+  if (toggle) toggle.setAttribute("aria-expanded", open ? "true" : "false");
+}
+
+function toggleOrgGliederungRow(row) {
+  setOrgGliederungRowOpen(row, row.classList.contains("is-collapsed"));
+}
+
+function bindOrgGliederungRow(row, opts = {}) {
+  const startOpen = opts.startOpen !== false;
+  setOrgGliederungRowOpen(row, startOpen);
+  updateOrgGliederungRowSummary(row);
+
+  row.querySelector(".org-gli-toggle")?.addEventListener("click", (e) => {
+    e.stopPropagation();
+    toggleOrgGliederungRow(row);
+  });
+  row.querySelector(".org-gli-header")?.addEventListener("click", (e) => {
+    if (e.target.closest(".row-remove-btn")) return;
+    toggleOrgGliederungRow(row);
+  });
+  row.querySelector(".org-gli-select")?.addEventListener("change", () => {
+    syncOrgSonstigesInRow(row, "org-gli");
+    updateOrgGliederungRowSummary(row);
+    renderOrgGliederungCharts();
+  });
+  row.querySelector(".org-gli-other")?.addEventListener("input", () => {
+    updateOrgGliederungRowSummary(row);
+    renderOrgGliederungCharts();
+  });
+  row.querySelector(".row-remove-btn")?.addEventListener("click", (e) => {
+    e.stopPropagation();
+    row.remove();
+    renderOrgGliederungCharts();
+  });
+  syncOrgSonstigesInRow(row, "org-gli");
+}
+
+function addOrgGliederungRow(data) {
+  const d = data || {};
+  const bereichR = resolveOrgSelect(d.bereich, ORG_TECH_BEREICHE);
+  const container = document.getElementById("org_gliederung_rows");
+  if (!container) return;
+  const hasBereich =
+    !!String(d.bereich || "").trim() ||
+    (!!bereichR.value && bereichR.value !== SELECT_SONSTIGES) ||
+    (bereichR.value === SELECT_SONSTIGES && !!String(bereichR.other || "").trim());
+  const row = document.createElement("div");
+  row.className = "skill-assessment-row org-gliederung-row";
+  row.innerHTML = `
+    ${orgRowRemoveButtonHtml("Bereich entfernen")}
+    <div class="org-gli-header">
+      <button type="button" class="org-gli-toggle" aria-expanded="true" aria-label="Bereich auf- oder zuklappen">
+        <svg class="org-gli-chevron" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+          <polyline points="6 9 12 15 18 9"></polyline>
+        </svg>
+      </button>
+      <div class="org-gli-header-text">
+        <span class="org-gli-header-label">Organisatorischer Bereich</span>
+        <span class="org-gli-header-summary is-placeholder">– noch nicht gewählt –</span>
+      </div>
+    </div>
+    <div class="org-gli-body">
+      <div class="skill-assessment-grid">
+        <div class="span2">
+          <div class="org-gli-field-label">Kategorie / Bereich</div>
+          <select class="org-gli-select">${buildOrgSelectOptions(ORG_TECH_BEREICHE, bereichR.value)}</select>
+          <input type="text" class="org-gli-other sk-sonstiges-input${bereichR.value === SELECT_SONSTIGES ? " visible" : ""}" placeholder="Bereich manuell eingeben" value="${escAttr(bereichR.other)}">
+        </div>
+        <div class="span2"><label>Beschreibung / Erlaeuterung</label>
+          <textarea class="org-gli-beschreibung" style="min-height:45px">${esc(d.beschreibung || "")}</textarea></div>
+        <div><label>Headcount</label>
+          <input type="number" class="org-gli-hc" min="0" value="${d.headcount != null && d.headcount !== "" ? escAttr(d.headcount) : ""}"></div>
+        <div><label>Umsatz</label>
+          <input type="text" class="org-gli-umsatz" placeholder="z.B. 1,2 Mio. EUR" value="${escAttr(d.umsatz || "")}"></div>
+      </div>
+    </div>`;
+  container.appendChild(row);
+  bindOrgGliederungRow(row, { startOpen: !hasBereich });
+}
+
+function getOrgRolleRowLabel(row) {
+  return readSelectWithOther(row, ".org-rol-select", ".org-rol-other");
+}
+
+function updateOrgRolleRowSummary(row) {
+  const summary = row.querySelector(".org-rol-header-summary");
+  if (!summary) return;
+  const label = getOrgRolleRowLabel(row);
+  if (label) {
+    summary.textContent = label;
+    summary.classList.remove("is-placeholder");
+  } else {
+    summary.textContent = "– noch nicht gewählt –";
+    summary.classList.add("is-placeholder");
+  }
+}
+
+function setOrgRolleRowOpen(row, open) {
+  row.classList.toggle("is-collapsed", !open);
+  const toggle = row.querySelector(".org-rol-toggle");
+  if (toggle) toggle.setAttribute("aria-expanded", open ? "true" : "false");
+}
+
+function toggleOrgRolleRow(row) {
+  setOrgRolleRowOpen(row, row.classList.contains("is-collapsed"));
+}
+
+function bindOrgRolleRow(row, opts = {}) {
+  const startOpen = opts.startOpen !== false;
+  setOrgRolleRowOpen(row, startOpen);
+  updateOrgRolleRowSummary(row);
+
+  row.querySelector(".org-rol-toggle")?.addEventListener("click", (e) => {
+    e.stopPropagation();
+    toggleOrgRolleRow(row);
+  });
+  row.querySelector(".org-rol-header")?.addEventListener("click", (e) => {
+    if (e.target.closest(".row-remove-btn")) return;
+    toggleOrgRolleRow(row);
+  });
+  row.querySelector(".org-rol-select")?.addEventListener("change", () => {
+    syncOrgSonstigesInRow(row, "org-rol");
+    updateOrgRolleRowSummary(row);
+    renderOrgRollenCharts();
+  });
+  row.querySelector(".org-rol-other")?.addEventListener("input", () => {
+    updateOrgRolleRowSummary(row);
+    renderOrgRollenCharts();
+  });
+  row.querySelector(".org-rol-anzahl")?.addEventListener("input", () => renderOrgRollenCharts());
+  row.querySelector(".row-remove-btn")?.addEventListener("click", (e) => {
+    e.stopPropagation();
+    row.remove();
+    renderOrgRollenCharts();
+  });
+  syncOrgSonstigesInRow(row, "org-rol");
+}
+
+function addOrgRolleRow(data) {
+  const d = data || {};
+  const rolleR = resolveOrgSelect(d.rolle, ORG_ROLLEN);
+  const container = document.getElementById("org_rollen_rows");
+  if (!container) return;
+  const hasRolle =
+    !!String(d.rolle || "").trim() ||
+    (!!rolleR.value && rolleR.value !== SELECT_SONSTIGES) ||
+    (rolleR.value === SELECT_SONSTIGES && !!String(rolleR.other || "").trim());
+  const row = document.createElement("div");
+  row.className = "skill-assessment-row org-rolle-row";
+  row.innerHTML = `
+    ${orgRowRemoveButtonHtml("Rolle entfernen")}
+    <div class="org-rol-header">
+      <button type="button" class="org-rol-toggle" aria-expanded="true" aria-label="Rolle auf- oder zuklappen">
+        <svg class="org-rol-chevron" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+          <polyline points="6 9 12 15 18 9"></polyline>
+        </svg>
+      </button>
+      <div class="org-rol-header-text">
+        <span class="org-rol-header-label">Rolle</span>
+        <span class="org-rol-header-summary is-placeholder">– noch nicht gewählt –</span>
+      </div>
+    </div>
+    <div class="org-rol-body">
+      <div class="skill-assessment-grid">
+        <div class="span2">
+          <div class="org-rol-field-label">Kategorie / Rolle</div>
+          <select class="org-rol-select">${buildOrgSelectOptions(ORG_ROLLEN, rolleR.value)}</select>
+          <input type="text" class="org-rol-other sk-sonstiges-input${rolleR.value === SELECT_SONSTIGES ? " visible" : ""}" placeholder="Rolle manuell eingeben" value="${escAttr(rolleR.other)}">
+        </div>
+        <div><label>Anzahl</label>
+          <input type="number" class="org-rol-anzahl" min="0" value="${d.anzahl != null && d.anzahl !== "" ? escAttr(d.anzahl) : ""}"></div>
+        <div class="span2"><label>Bemerkung</label>
+          <input type="text" class="org-rol-bemerkung" value="${escAttr(d.bemerkung || "")}" placeholder="Optional"></div>
+      </div>
+    </div>`;
+  container.appendChild(row);
+  bindOrgRolleRow(row, { startOpen: !hasRolle });
+}
+
+function resetOrgGliederungRows(rows) {
+  const container = document.getElementById("org_gliederung_rows");
+  if (!container) return;
+  container.innerHTML = "";
+  const list = rows && rows.length ? rows : [{}];
+  list.forEach((r) => addOrgGliederungRow(r));
+  renderOrgGliederungCharts();
+}
+
+function resetOrgRollenRows(rows) {
+  const container = document.getElementById("org_rollen_rows");
+  if (!container) return;
+  container.innerHTML = "";
+  const list = rows && rows.length ? rows : [{}];
+  list.forEach((r) => addOrgRolleRow(r));
+  renderOrgRollenCharts();
+}
+
+function getOrganisationFormData() {
+  const hat = document.getElementById("org_hat_gliederung")?.value || "";
+  const gliederungen = [];
+  if (hat === "ja") {
+    document.querySelectorAll("#org_gliederung_rows .org-gliederung-row").forEach((r) => {
+      const bereich = readSelectWithOther(r, ".org-gli-select", ".org-gli-other");
+      const beschreibung = r.querySelector(".org-gli-beschreibung")?.value.trim() || "";
+      const hcRaw = r.querySelector(".org-gli-hc")?.value;
+      const umsatz = r.querySelector(".org-gli-umsatz")?.value.trim() || "";
+      if (!bereich && !beschreibung && hcRaw === "" && !umsatz) return;
+      gliederungen.push({
+        bereich,
+        beschreibung,
+        headcount: hcRaw === "" ? null : parseInt(hcRaw, 10),
+        umsatz,
+      });
+    });
+  }
+  const rollen = [];
+  document.querySelectorAll("#org_rollen_rows .org-rolle-row").forEach((r) => {
+    const rolle = readSelectWithOther(r, ".org-rol-select", ".org-rol-other");
+    const anzahlRaw = r.querySelector(".org-rol-anzahl")?.value;
+    const bemerkung = r.querySelector(".org-rol-bemerkung")?.value.trim() || "";
+    if (!rolle && anzahlRaw === "" && !bemerkung) return;
+    rollen.push({
+      rolle,
+      anzahl: anzahlRaw === "" ? null : parseInt(anzahlRaw, 10),
+      bemerkung,
+    });
+  });
+  return {
+    hatTechnologischeGliederung: hat,
+    gliederungen,
+    rollen,
+  };
+}
+
+function validateOrganisationForm() {
+  const hat = document.getElementById("org_hat_gliederung");
+  if (!hat?.value) {
+    toast("Bitte angeben, ob eine organisatorische Unterteilung existiert.", "#e74c3c", 4000);
+    hat?.focus();
+    return false;
+  }
+  if (hat.value === "ja") {
+    const data = getOrganisationFormData();
+    if (!data.gliederungen.length) {
+      toast("Bitte mindestens einen organisatorischen Bereich erfassen.", "#e74c3c", 4000);
+      return false;
+    }
+    for (const g of data.gliederungen) {
+      if (!g.bereich) {
+        toast("Bitte fuer jeden organisatorischen Bereich eine Bezeichnung waehlen oder eingeben.", "#e74c3c", 4000);
+        return false;
+      }
+    }
+  }
+  const rollen = getOrganisationFormData().rollen;
+  for (const r of rollen) {
+    if (r.rolle && (r.anzahl == null || Number.isNaN(r.anzahl))) {
+      toast("Bitte fuer jede erfasste Rolle eine Anzahl angeben.", "#e74c3c", 4000);
+      return false;
+    }
+    if (!r.rolle && r.anzahl != null) {
+      toast("Bitte fuer jede Anzahl auch eine Rolle waehlen oder eingeben.", "#e74c3c", 4000);
+      return false;
+    }
+  }
+  return true;
+}
+
+function loadOrganisationEntry(entry) {
+  if (!entry) return;
+  document.getElementById("org_editId").value = entry.id || "";
+  document.getElementById("org_hat_gliederung").value = entry.hatTechnologischeGliederung || "";
+  updateOrgGliederungSectionVisibility();
+  resetOrgGliederungRows(entry.hatTechnologischeGliederung === "ja" ? entry.gliederungen || [] : []);
+  resetOrgRollenRows(entry.rollen || []);
+  resetFormSaveButtonTracker(document.getElementById("organisationForm"));
+}
+
+function resetOrganisationForm() {
+  const form = document.getElementById("organisationForm");
+  if (form) form.reset();
+  document.getElementById("org_editId").value = "";
+  updateOrgGliederungSectionVisibility();
+  resetOrgGliederungRows([]);
+  resetOrgRollenRows([]);
+  resetFormSaveButtonTracker(document.getElementById("organisationForm"));
+}
+
+function findOrganisationEntryForUnit(entries, preferredId) {
+  const list = entries || [];
+  if (preferredId) {
+    const byId = list.find((e) => String(e.id) === String(preferredId));
+    if (byId) return byId;
+  }
+  const unit = getSaveUnit();
+  if (unit) {
+    return list.find((e) => e.unit === unit) || null;
+  }
+  return null;
+}
+
+function renderOrganisation() {
+  const preferredId = document.getElementById("org_editId")?.value || "";
+  const entry = findOrganisationEntryForUnit(load("organisation"), preferredId);
+  if (entry) {
+    loadOrganisationEntry(entry);
+  } else {
+    resetOrganisationForm();
+  }
+}
+
+function organisationOverviewDetail(e) {
+  const hat = e.hatTechnologischeGliederung === "ja" ? "Ja" : e.hatTechnologischeGliederung === "nein" ? "Nein" : "–";
+  const nGli = Array.isArray(e.gliederungen) ? e.gliederungen.length : 0;
+  const nRol = Array.isArray(e.rollen) ? e.rollen.length : 0;
+  const rollenSum = (e.rollen || [])
+    .map((r) => (r.anzahl != null ? `${r.rolle || "?"}: ${r.anzahl}` : r.rolle))
+    .filter(Boolean)
+    .slice(0, 4)
+    .join(", ");
+  return `Gliederung: ${hat} (${nGli} Bereiche) | Rollen: ${nRol}${rollenSum ? " – " + rollenSum : ""}`;
+}
+
+async function onSubmitOrganisation(event) {
+  event?.preventDefault?.();
+  if (!requireSaveUnit()) return;
+  if (!validateOrganisationForm()) return;
   const saveUnit = getSaveUnit();
-  const id=document.getElementById('t_editId').value||Date.now().toString();
-  const entry={id,workstream:document.getElementById('t_workstream').value,bereich:document.getElementById('t_bereich').value,
-    headcount:document.getElementById('t_headcount').value,offen:document.getElementById('t_offen').value,
-    ausbau:document.getElementById('t_ausbau').value,status:document.getElementById('t_status').value,
-    rollenmix:document.getElementById('t_rollenmix').value,schwerpunkt:document.getElementById('t_schwerpunkt').value,
-    bemerkung:document.getElementById('t_bemerkung').value,erfasser:currentName,unit:saveUnit,type:'team'};
-  const eId=document.getElementById('t_editId').value; if (!eId) delete entry.id;
+  const existing = load("organisation");
+  const preferred = findOrganisationEntryForUnit(
+    existing,
+    document.getElementById("org_editId")?.value || ""
+  );
+  const editId = preferred?.id || "";
+  const data = getOrganisationFormData();
+  const entry = { id: editId || undefined, unit: saveUnit, workstream: "", ...data };
   try {
-    await saveEntry("team", entry);
+    const savedId = await saveEntry("organisation", entry);
+    document.getElementById("org_editId").value = savedId;
     await refreshEntries();
-    document.getElementById('teamForm').reset();document.getElementById('t_editId').value='';
-    document.getElementById('btnTeamCancel').style.display='none';renderNavTeam();toast('Team Übersicht gespeichert!');
-  } catch (err) {
-    toast(err.message || 'Speichern fehlgeschlagen.', '#e74c3c', 4000);
+    const saved = findOrganisationEntryForUnit(load("organisation"), savedId);
+    if (saved) loadOrganisationEntry(saved);
+    notifyFormSaveSuccess(document.getElementById("organisationForm"), "Organisation gespeichert!");
+  } catch (error) {
+    toast(error.message || "Speichern fehlgeschlagen.", "#e74c3c", 4000);
   }
-});
-function cancelTeamEdit(){document.getElementById('teamForm').reset();document.getElementById('t_editId').value='';document.getElementById('btnTeamCancel').style.display='none';renderNavTeam()}
-
+}
 
 // ===== SKILL ASSESSMENT (Excel-Vorlage, 1:n) =====
 function escAttr(s) {
@@ -1015,38 +3129,63 @@ function skillOverviewDetail(e) {
 
 let currentSkillKind = "tech";
 
+function collapseAllCollapsibleSections(root) {
+  const scope = root || document;
+  scope.querySelectorAll("details[open]").forEach((el) => el.removeAttribute("open"));
+}
+
+function collapseSkillDetailsSections() {
+  ["skillDetailsTech", "skillDetailsSoft"].forEach((id) => {
+    document.getElementById(id)?.removeAttribute("open");
+  });
+}
+
+function openSkillDetailsSection(kind) {
+  const id = kind === "soft" ? "skillDetailsSoft" : "skillDetailsTech";
+  document.getElementById(id)?.setAttribute("open", "");
+  setSkillKind(kind);
+}
+
 function setSkillKind(kind) {
-  currentSkillKind = kind;
-  document.getElementById("sk_assessment_section").style.display = kind === "tech" ? "" : "none";
-  document.getElementById("ss_assessment_section").style.display = kind === "soft" ? "" : "none";
-  document.getElementById("btnSkillKindTech").classList.toggle("active", kind === "tech");
-  document.getElementById("btnSkillKindSoft").classList.toggle("active", kind === "soft");
+  currentSkillKind = kind === "soft" ? "soft" : "tech";
   refreshSkillInfoPanel();
 }
 
 function refreshSkillInfoPanel() {
-  if (currentSkillKind === "tech") {
-    const row = document.querySelector("#sk_assessment_rows .skill-assessment-row");
+  const softOpen = document.getElementById("skillDetailsSoft")?.open;
+  const techOpen = document.getElementById("skillDetailsTech")?.open;
+  const kind =
+    currentSkillKind === "soft" || (softOpen && !techOpen) ? "soft" : "tech";
+  if (kind === "tech") {
+    const row =
+      document.querySelector("#sk_assessment_rows .skill-assessment-row--editing") ||
+      document.querySelector("#sk_assessment_rows .skill-assessment-row");
     if (!row) {
       renderSkillInfo("", "");
       return;
     }
-    const kat = readSelectWithOther(row, ".sk-kategorie", ".sk-kategorie-other");
-    let lvl = readSelectWithOther(row, ".sk-level", ".sk-level-other");
-    const parsedLvl = parseInt(lvl, 10);
-    if (parsedLvl >= 1 && parsedLvl <= 5) lvl = parsedLvl;
-    renderSkillInfo(kat, lvl);
+    const data = readTechSkillPayloadFromRow(row);
+    let lvl = data.level;
+    if (lvl == null && data.levelCustom) {
+      const parsedLvl = parseInt(data.levelCustom, 10);
+      if (parsedLvl >= 1 && parsedLvl <= 5) lvl = parsedLvl;
+    }
+    renderSkillInfo(data.kategorie || "", lvl ?? "");
   } else {
-    const row = document.querySelector("#ss_assessment_rows .skill-assessment-row");
+    const row =
+      document.querySelector("#ss_assessment_rows .skill-assessment-row--editing") ||
+      document.querySelector("#ss_assessment_rows .skill-assessment-row");
     if (!row) {
       renderSoftSkillInfo("", "");
       return;
     }
-    const kat = readSelectWithOther(row, ".ss-kategorie", ".ss-kategorie-other");
-    let lvl = readSelectWithOther(row, ".ss-level", ".ss-level-other");
-    const parsedLvl = parseInt(lvl, 10);
-    if (parsedLvl >= 1 && parsedLvl <= 5) lvl = parsedLvl;
-    renderSoftSkillInfo(kat, lvl);
+    const data = readSoftSkillPayloadFromRow(row);
+    let lvl = data.level;
+    if (lvl == null && data.levelCustom) {
+      const parsedLvl = parseInt(data.levelCustom, 10);
+      if (parsedLvl >= 1 && parsedLvl <= 5) lvl = parsedLvl;
+    }
+    renderSoftSkillInfo(data.kategorie || "", lvl ?? "");
   }
 }
 
@@ -1062,13 +3201,7 @@ function syncSonstigesFieldsInRow(row, prefix) {
   const pairs = [
     [`.${p}-kategorie`, `.${p}-kategorie-other`],
     [`.${p}-level`, `.${p}-level-other`],
-    [`.${p}-nachweise`, `.${p}-nachweise-other`],
-    [`.${p}-entwicklung`, `.${p}-entwicklung-other`],
   ];
-  if (p === "sk") {
-    pairs[2] = [".sk-zertifikat", ".sk-zertifikat-other"];
-    pairs[3] = [".sk-interesse", ".sk-interesse-other"];
-  }
   pairs.forEach(([selCls, otherCls]) => {
     const sel = row.querySelector(selCls);
     const other = row.querySelector(otherCls);
@@ -1114,17 +3247,18 @@ function onSkillAssessmentChange(ev) {
   if (!row) return;
   syncSonstigesFieldsInRow(row);
   if (ev.target.classList.contains("sk-kategorie")) {
-    const katVal = readSelectWithOther(row, ".sk-kategorie", ".sk-kategorie-other");
-    const cat = getCategoryByName(katVal);
+    const katData = readSkillCategoryFromRow(row, "tech");
+    const cat = getCategoryById(katData.kategorie_id) || getCategoryByName(katData.kategorie);
     const tech = row.querySelector(".sk-technologie");
     if (cat && tech && !tech.value.trim()) tech.placeholder = cat.beispielTechnologien;
-    else if (tech && row.querySelector(".sk-kategorie").value === SELECT_SONSTIGES) tech.placeholder = "Technologien manuell eingeben";
+    else if (tech && row.querySelector(".sk-kategorie").value === SELECT_SONSTIGES) tech.placeholder = "Weitere Details manuell eingeben";
   }
-  const kat = readSelectWithOther(row, ".sk-kategorie", ".sk-kategorie-other");
+  const katData = readSkillCategoryFromRow(row, "tech");
+  const kat = katData.kategorie;
   let lvl = readSelectWithOther(row, ".sk-level", ".sk-level-other");
   const parsedLvl = parseInt(lvl, 10);
   if (parsedLvl >= 1 && parsedLvl <= 5) lvl = parsedLvl;
-  if (currentSkillKind === "tech") renderSkillInfo(kat, lvl);
+  if (row.closest("#sk_assessment_rows") && currentSkillKind === "tech") renderSkillInfo(kat, lvl);
 }
 
 function renderSoftSkillInfo(kategorie, level) {
@@ -1161,230 +3295,389 @@ function onSoftSkillAssessmentChange(ev) {
   if (!row) return;
   syncSonstigesFieldsInRow(row, "ss");
   if (ev.target.classList.contains("ss-kategorie")) {
-    const katVal = readSelectWithOther(row, ".ss-kategorie", ".ss-kategorie-other");
-    const cat = getSoftCategoryByName(katVal);
+    const katData = readSkillCategoryFromRow(row, "soft");
+    const cat = getSoftCategoryById(katData.kategorie_id) || getSoftCategoryByName(katData.kategorie);
     const komp = row.querySelector(".ss-kompetenz");
     if (cat && komp && !komp.value.trim()) komp.placeholder = cat.beispielKompetenzen;
-    else if (komp && row.querySelector(".ss-kategorie").value === SELECT_SONSTIGES) komp.placeholder = "Kompetenzen manuell eingeben";
+    else if (komp && row.querySelector(".ss-kategorie").value === SELECT_SONSTIGES) komp.placeholder = "Weitere Details manuell eingeben";
   }
-  const kat = readSelectWithOther(row, ".ss-kategorie", ".ss-kategorie-other");
+  const katData = readSkillCategoryFromRow(row, "soft");
+  const kat = katData.kategorie;
   let lvl = readSelectWithOther(row, ".ss-level", ".ss-level-other");
   const parsedLvl = parseInt(lvl, 10);
   if (parsedLvl >= 1 && parsedLvl <= 5) lvl = parsedLvl;
-  if (currentSkillKind === "soft") renderSoftSkillInfo(kat, lvl);
+  if (row.closest("#ss_assessment_rows") && currentSkillKind === "soft") renderSoftSkillInfo(kat, lvl);
 }
 
-function addSkillAssessmentRow(data) {
-  const d = data || {};
-  const catR = resolveCategorySelect(d.kategorie);
-  const lvlR = resolveLevelSelect(d.level, d.levelCustom);
-  const zertR = resolveSimpleSelect(d.zertifikatVorhanden, ["Ja", "Nein"]);
-  const intR = resolveSimpleSelect(d.interesseWeiterbildung, ["Niedrig", "Mittel", "Hoch"]);
-  const container = document.getElementById("sk_assessment_rows");
-  const row = document.createElement("div");
-  row.className = "skill-assessment-row";
-  row.innerHTML = `
-    <button type="button" class="sk-row-remove" title="Zeile entfernen">✕</button>
-    <div class="skill-assessment-grid">
-      <div class="span2"><label>Skill-Kategorie</label>
-        <select class="sk-kategorie">${buildCategoryOptions(d.kategorie)}</select>
-        <input type="text" class="sk-kategorie-other sk-sonstiges-input${catR.value === SELECT_SONSTIGES ? " visible" : ""}" placeholder="Kategorie manuell eingeben" value="${escAttr(catR.other)}">
-      </div>
-      <div class="span2"><label>Spezifische Technologie</label>
-        <input type="text" class="sk-technologie" placeholder="Technologien" value="${escAttr(d.technologie)}"></div>
-      <div><label>Level</label>
-        <select class="sk-level">${buildLevelOptions(d.level, d.levelCustom)}</select>
-        <input type="text" class="sk-level-other sk-sonstiges-input${lvlR.value === SELECT_SONSTIGES ? " visible" : ""}" placeholder="z.B. 3 oder eigene Level-Bezeichnung" value="${escAttr(lvlR.other)}">
-      </div>
-      <div><label>Zertifikat vorhanden</label>
-        <select class="sk-zertifikat">${buildSimpleOptions(["Ja", "Nein"], zertR.value)}</select>
-        <input type="text" class="sk-zertifikat-other sk-sonstiges-input${zertR.value === SELECT_SONSTIGES ? " visible" : ""}" placeholder="Manuelle Eingabe" value="${escAttr(zertR.other)}">
-      </div>
-      <div class="span2"><label>Zertifikat Details</label>
-        <input type="text" class="sk-zertifikat-details" value="${escAttr(d.zertifikatDetails)}"></div>
-      <div><label>Interesse Weiterbildung</label>
-        <select class="sk-interesse">${buildSimpleOptions(["Niedrig", "Mittel", "Hoch"], intR.value)}</select>
-        <input type="text" class="sk-interesse-other sk-sonstiges-input${intR.value === SELECT_SONSTIGES ? " visible" : ""}" placeholder="Manuelle Eingabe" value="${escAttr(intR.other)}">
-      </div>
-      <div><label>Letzte Anwendung</label>
-        <input type="date" class="sk-letzte" value="${escAttr(d.letzteAnwendung)}"></div>
-      <div class="span2"><label>Projekt-Beispiel</label>
-        <input type="text" class="sk-projekt" value="${escAttr(d.projektBeispiel)}"></div>
-      <div class="span2"><label>Bemerkungen</label>
-        <textarea class="sk-bemerkung" style="min-height:45px">${esc(d.bemerkung || d.bemerkungen || "")}</textarea></div>
-    </div>`;
-  container.appendChild(row);
-  row.querySelectorAll(".sk-kategorie, .sk-level, .sk-zertifikat, .sk-interesse").forEach((el) => {
+function bindTechSkillRowEditEvents(row) {
+  row.querySelectorAll(".sk-kategorie, .sk-level").forEach((el) => {
     el.addEventListener("change", onSkillAssessmentChange);
   });
   row.querySelectorAll(".sk-kategorie-other, .sk-level-other").forEach((el) => {
     el.addEventListener("input", onSkillAssessmentChange);
   });
+}
+
+function bindSoftSkillRowEditEvents(row) {
+  row.querySelectorAll(".ss-kategorie, .ss-level").forEach((el) => {
+    el.addEventListener("change", onSoftSkillAssessmentChange);
+  });
+  row.querySelectorAll(".ss-kategorie-other, .ss-level-other").forEach((el) => {
+    el.addEventListener("input", onSoftSkillAssessmentChange);
+  });
+}
+
+function renderTechSkillRowView(row, data) {
+  const d = enrichTechSkillItemClient(data || {});
+  storeTechSkillPayloadOnRow(row, d);
+  row.className = "skill-assessment-row skill-assessment-row--view";
+  row.innerHTML = `
+    <div class="skill-list-item">
+      <div class="skill-list-item__main">
+        <div class="skill-list-item__title">${esc(formatTechSkillListTitle(d))}</div>
+        <div class="skill-list-item__meta">${esc(formatTechSkillListMeta(d))}</div>
+      </div>
+      <div class="skill-list-item__actions">
+        <button type="button" class="btn btn-sm btn-outline sk-row-edit">Bearbeiten</button>
+        <button type="button" class="btn btn-sm btn-danger btn-outline sk-row-delete">Löschen</button>
+      </div>
+    </div>`;
+}
+
+function renderTechSkillRowEdit(row, data) {
+  const d = data || {};
+  const catR = resolveCategorySelect(d.kategorie, d.kategorie_id);
+  const lvlR = resolveLevelSelect(d.level, d.levelCustom);
+  row.className = "skill-assessment-row skill-assessment-row--editing";
+  row.innerHTML = `
+    <div class="skill-assessment-grid">
+      <div class="span2"><label>Skill-Kategorie</label>
+        <select class="sk-kategorie">${buildCategoryOptions(d.kategorie, d.kategorie_id)}</select>
+        <input type="text" class="sk-kategorie-other sk-sonstiges-input${catR.value === SELECT_SONSTIGES ? " visible" : ""}" placeholder="Kategorie manuell eingeben" value="${escAttr(catR.other)}">
+      </div>
+      <div class="span2"><label>Weitere Details</label>
+        <input type="text" class="sk-technologie" placeholder="Weitere Details" value="${escAttr(d.technologie)}"></div>
+      <div><label>Level</label>
+        <select class="sk-level">${buildLevelOptions(d.level, d.levelCustom)}</select>
+        <input type="text" class="sk-level-other sk-sonstiges-input${lvlR.value === SELECT_SONSTIGES ? " visible" : ""}" placeholder="z.B. 3 oder eigene Level-Bezeichnung" value="${escAttr(lvlR.other)}">
+      </div>
+      <div class="span2"><label>Bemerkungen</label>
+        <textarea class="sk-bemerkung" style="min-height:45px">${esc(d.bemerkung || d.bemerkungen || "")}</textarea></div>
+    </div>
+    <div class="skill-assessment-row-actions">
+      <button type="button" class="btn btn-sm btn-primary sk-row-save">Übernehmen</button>
+      <button type="button" class="btn btn-sm btn-outline sk-row-cancel">Abbrechen</button>
+    </div>`;
+  bindTechSkillRowEditEvents(row);
   syncSonstigesFieldsInRow(row);
-  const katVal = readSelectWithOther(row, ".sk-kategorie", ".sk-kategorie-other");
-  const cat = getCategoryByName(katVal);
+  const katData = readSkillCategoryFromRow(row, "tech");
+  const cat = getCategoryById(katData.kategorie_id) || getCategoryByName(katData.kategorie);
   const tech = row.querySelector(".sk-technologie");
   if (cat && tech) tech.placeholder = cat.beispielTechnologien;
+}
+
+function enterTechSkillRowEdit(row) {
+  const data = readTechSkillPayloadFromRow(row);
+  row.dataset.skillPayloadBackup = row.dataset.skillPayload || "";
+  renderTechSkillRowEdit(row, data);
+  setSkillKind("tech");
+  refreshSkillInfoPanel();
+  row.querySelector(".sk-kategorie")?.focus();
+}
+
+function cancelTechSkillRowEdit(row) {
+  const hadBackup = row.dataset.skillPayloadBackup != null && row.dataset.skillPayloadBackup !== "";
+  if (!hadBackup) {
+    row.remove();
+    updateSkillAssessmentListEmptyState("tech");
+    refreshSkillInfoPanel();
+    return;
+  }
+  try {
+    const data = JSON.parse(row.dataset.skillPayloadBackup || "{}");
+    renderTechSkillRowView(row, data);
+  } catch (_e) {
+    row.remove();
+  }
+  delete row.dataset.skillPayloadBackup;
+  refreshSkillInfoPanel();
+}
+
+function deleteTechSkillRow(row) {
+  const title = formatTechSkillListTitle(readTechSkillPayloadFromRow(row));
+  if (!confirm(`Fachskill „${title}“ wirklich löschen?`)) return;
+  row.remove();
+  updateSkillAssessmentListEmptyState("tech");
+  refreshSkillInfoPanel();
+}
+
+function addSkillAssessmentRow(data, options = {}) {
+  const editing = options.editing !== false;
+  const container = document.getElementById("sk_assessment_rows");
+  const row = document.createElement("li");
+  row.className = "skill-assessment-row";
+  if (editing) {
+    renderTechSkillRowEdit(row, data || {});
+    row.dataset.skillPayloadBackup = data ? JSON.stringify(data) : "";
+  } else {
+    renderTechSkillRowView(row, data || {});
+  }
+  container.appendChild(row);
+  updateSkillAssessmentListEmptyState("tech");
+  if (editing) {
+    setSkillKind("tech");
+    refreshSkillInfoPanel();
+    row.querySelector(".sk-kategorie")?.focus();
+  }
+  return row;
+}
+
+function addSkillAssessmentRowFromButton() {
+  addSkillAssessmentRow({}, { editing: true });
+  openSkillDetailsSection("tech");
 }
 
 function getSkillAssessmentData() {
   const rows = document.querySelectorAll("#sk_assessment_rows .skill-assessment-row");
   const result = [];
   rows.forEach((r) => {
-    const kategorie = readSelectWithOther(r, ".sk-kategorie", ".sk-kategorie-other");
-    const technologie = r.querySelector(".sk-technologie").value.trim();
-    const levelSel = r.querySelector(".sk-level").value;
-    const levelOther = r.querySelector(".sk-level-other").value.trim();
-    if (!kategorie && !technologie && !levelSel && !levelOther) return;
-
-    let level = null;
-    let levelCustom = "";
-    if (levelSel === SELECT_SONSTIGES) {
-      levelCustom = levelOther;
-      const parsed = parseInt(levelOther, 10);
-      if (parsed >= 1 && parsed <= 5) level = parsed;
-    } else if (levelSel) {
-      level = parseInt(levelSel, 10);
-    }
-
+    const data = readTechSkillPayloadFromRow(r);
+    if (isTechSkillPayloadEmpty(data)) return;
     result.push({
-      kategorie,
-      technologie,
-      level,
-      levelCustom,
-      zertifikatVorhanden: readSelectWithOther(r, ".sk-zertifikat", ".sk-zertifikat-other"),
-      zertifikatDetails: r.querySelector(".sk-zertifikat-details").value.trim(),
-      interesseWeiterbildung: readSelectWithOther(r, ".sk-interesse", ".sk-interesse-other"),
-      letzteAnwendung: r.querySelector(".sk-letzte").value,
-      projektBeispiel: r.querySelector(".sk-projekt").value.trim(),
-      bemerkungen: r.querySelector(".sk-bemerkung").value.trim(),
+      kategorie: data.kategorie,
+      kategorie_id: data.kategorie_id ?? null,
+      technologie: data.technologie || "",
+      level: data.level,
+      levelCustom: data.levelCustom || "",
+      bemerkungen: data.bemerkungen || "",
     });
   });
   return result;
 }
 
 function setSkillAssessmentData(skills) {
-  document.getElementById("sk_assessment_rows").innerHTML = "";
-  if (!skills || !skills.length) {
-    addSkillAssessmentRow();
-  } else {
-    skills.forEach((s) => addSkillAssessmentRow(s));
-  }
+  const container = document.getElementById("sk_assessment_rows");
+  container.innerHTML = "";
+  enrichTechSkillList(skills).forEach((s) => addSkillAssessmentRow(s, { editing: false }));
+  updateSkillAssessmentListEmptyState("tech");
   if (currentSkillKind === "tech") refreshSkillInfoPanel();
 }
 
-function addSoftSkillAssessmentRow(data) {
-  const d = data || {};
-  const catR = resolveSoftCategorySelect(d.kategorie);
-  const lvlR = resolveSoftLevelSelect(d.level, d.levelCustom);
-  const nachR = resolveSoftSimpleSelect(d.nachweise, ["Ja", "Nein"]);
-  const entR = resolveSoftSimpleSelect(d.entwicklungsinteresse, ["Niedrig", "Mittel", "Hoch"]);
-  const container = document.getElementById("ss_assessment_rows");
-  const row = document.createElement("div");
-  row.className = "skill-assessment-row";
+function renderSoftSkillRowView(row, data) {
+  const d = enrichSoftSkillItemClient(data || {});
+  storeSoftSkillPayloadOnRow(row, d);
+  row.className = "skill-assessment-row skill-assessment-row--view";
   row.innerHTML = `
-    <button type="button" class="ss-row-remove" title="Zeile entfernen">✕</button>
+    <div class="skill-list-item">
+      <div class="skill-list-item__main">
+        <div class="skill-list-item__title">${esc(formatSoftSkillListTitle(d))}</div>
+        <div class="skill-list-item__meta">${esc(formatSoftSkillListMeta(d))}</div>
+      </div>
+      <div class="skill-list-item__actions">
+        <button type="button" class="btn btn-sm btn-outline ss-row-edit">Bearbeiten</button>
+        <button type="button" class="btn btn-sm btn-danger btn-outline ss-row-delete">Löschen</button>
+      </div>
+    </div>`;
+}
+
+function renderSoftSkillRowEdit(row, data) {
+  const d = data || {};
+  const catR = resolveSoftCategorySelect(d.kategorie, d.kategorie_id);
+  const lvlR = resolveSoftLevelSelect(d.level, d.levelCustom);
+  row.className = "skill-assessment-row skill-assessment-row--editing";
+  row.innerHTML = `
     <div class="skill-assessment-grid">
       <div class="span2"><label>Soft Skill Kategorie</label>
-        <select class="ss-kategorie">${buildSoftCategoryOptions(d.kategorie)}</select>
+        <select class="ss-kategorie">${buildSoftCategoryOptions(d.kategorie, d.kategorie_id)}</select>
         <input type="text" class="ss-kategorie-other sk-sonstiges-input${catR.value === SELECT_SONSTIGES ? " visible" : ""}" placeholder="Kategorie manuell eingeben" value="${escAttr(catR.other)}">
       </div>
-      <div class="span2"><label>Spezifische Kompetenz</label>
-        <input type="text" class="ss-kompetenz" placeholder="Kompetenzen" value="${escAttr(d.kompetenz)}"></div>
+      <div class="span2"><label>Weitere Details</label>
+        <input type="text" class="ss-kompetenz" placeholder="Weitere Details" value="${escAttr(d.kompetenz)}"></div>
       <div><label>Level</label>
         <select class="ss-level">${buildSoftLevelOptions(d.level, d.levelCustom)}</select>
         <input type="text" class="ss-level-other sk-sonstiges-input${lvlR.value === SELECT_SONSTIGES ? " visible" : ""}" placeholder="z.B. 3 oder eigene Level-Bezeichnung" value="${escAttr(lvlR.other)}">
       </div>
-      <div><label>Nachweise/Zertifikate</label>
-        <select class="ss-nachweise">${buildSimpleOptions(["Ja", "Nein"], nachR.value)}</select>
-        <input type="text" class="ss-nachweise-other sk-sonstiges-input${nachR.value === SELECT_SONSTIGES ? " visible" : ""}" placeholder="Manuelle Eingabe" value="${escAttr(nachR.other)}">
-      </div>
-      <div class="span2"><label>Zertifikat Details</label>
-        <input type="text" class="ss-zertifikat-details" value="${escAttr(d.zertifikatDetails)}"></div>
-      <div><label>Entwicklungsinteresse</label>
-        <select class="ss-entwicklung">${buildSimpleOptions(["Niedrig", "Mittel", "Hoch"], entR.value)}</select>
-        <input type="text" class="ss-entwicklung-other sk-sonstiges-input${entR.value === SELECT_SONSTIGES ? " visible" : ""}" placeholder="Manuelle Eingabe" value="${escAttr(entR.other)}">
-      </div>
-      <div><label>Letzte Anwendung</label>
-        <input type="date" class="ss-letzte" value="${escAttr(d.letzteAnwendung)}"></div>
-      <div class="span2"><label>Kontext/Beispiel</label>
-        <input type="text" class="ss-kontext" value="${escAttr(d.kontextBeispiel)}"></div>
       <div class="span2"><label>Bemerkungen</label>
         <textarea class="ss-bemerkung" style="min-height:45px">${esc(d.bemerkung || d.bemerkungen || "")}</textarea></div>
+    </div>
+    <div class="skill-assessment-row-actions">
+      <button type="button" class="btn btn-sm btn-primary ss-row-save">Übernehmen</button>
+      <button type="button" class="btn btn-sm btn-outline ss-row-cancel">Abbrechen</button>
     </div>`;
-  container.appendChild(row);
-  row.querySelectorAll(".ss-kategorie, .ss-level, .ss-nachweise, .ss-entwicklung").forEach((el) => {
-    el.addEventListener("change", onSoftSkillAssessmentChange);
-  });
-  row.querySelectorAll(".ss-kategorie-other, .ss-level-other").forEach((el) => {
-    el.addEventListener("input", onSoftSkillAssessmentChange);
-  });
+  bindSoftSkillRowEditEvents(row);
   syncSonstigesFieldsInRow(row, "ss");
-  const katVal = readSelectWithOther(row, ".ss-kategorie", ".ss-kategorie-other");
-  const cat = getSoftCategoryByName(katVal);
+  const katData = readSkillCategoryFromRow(row, "soft");
+  const cat = getSoftCategoryById(katData.kategorie_id) || getSoftCategoryByName(katData.kategorie);
   const komp = row.querySelector(".ss-kompetenz");
   if (cat && komp) komp.placeholder = cat.beispielKompetenzen;
+}
+
+function enterSoftSkillRowEdit(row) {
+  const data = readSoftSkillPayloadFromRow(row);
+  row.dataset.skillPayloadBackup = row.dataset.skillPayload || "";
+  renderSoftSkillRowEdit(row, data);
+  setSkillKind("soft");
+  refreshSkillInfoPanel();
+  row.querySelector(".ss-kategorie")?.focus();
+}
+
+function cancelSoftSkillRowEdit(row) {
+  const hadBackup = row.dataset.skillPayloadBackup != null && row.dataset.skillPayloadBackup !== "";
+  if (!hadBackup) {
+    row.remove();
+    updateSkillAssessmentListEmptyState("soft");
+    refreshSkillInfoPanel();
+    return;
+  }
+  try {
+    const data = JSON.parse(row.dataset.skillPayloadBackup || "{}");
+    renderSoftSkillRowView(row, data);
+  } catch (_e) {
+    row.remove();
+  }
+  delete row.dataset.skillPayloadBackup;
+  refreshSkillInfoPanel();
+}
+
+function deleteSoftSkillRow(row) {
+  const title = formatSoftSkillListTitle(readSoftSkillPayloadFromRow(row));
+  if (!confirm(`Soft Skill „${title}“ wirklich löschen?`)) return;
+  row.remove();
+  updateSkillAssessmentListEmptyState("soft");
+  refreshSkillInfoPanel();
+}
+
+function addSoftSkillAssessmentRow(data, options = {}) {
+  const editing = options.editing !== false;
+  const container = document.getElementById("ss_assessment_rows");
+  const row = document.createElement("li");
+  row.className = "skill-assessment-row";
+  if (editing) {
+    renderSoftSkillRowEdit(row, data || {});
+    row.dataset.skillPayloadBackup = data ? JSON.stringify(data) : "";
+  } else {
+    renderSoftSkillRowView(row, data || {});
+  }
+  container.appendChild(row);
+  updateSkillAssessmentListEmptyState("soft");
+  if (editing) {
+    setSkillKind("soft");
+    refreshSkillInfoPanel();
+    row.querySelector(".ss-kategorie")?.focus();
+  }
+  return row;
+}
+
+function addSoftSkillAssessmentRowFromButton() {
+  addSoftSkillAssessmentRow({}, { editing: true });
+  openSkillDetailsSection("soft");
 }
 
 function getSoftSkillAssessmentData() {
   const rows = document.querySelectorAll("#ss_assessment_rows .skill-assessment-row");
   const result = [];
   rows.forEach((r) => {
-    const kategorie = readSelectWithOther(r, ".ss-kategorie", ".ss-kategorie-other");
-    const kompetenz = r.querySelector(".ss-kompetenz").value.trim();
-    const levelSel = r.querySelector(".ss-level").value;
-    const levelOther = r.querySelector(".ss-level-other").value.trim();
-    if (!kategorie && !kompetenz && !levelSel && !levelOther) return;
-
-    let level = null;
-    let levelCustom = "";
-    if (levelSel === SELECT_SONSTIGES) {
-      levelCustom = levelOther;
-      const parsed = parseInt(levelOther, 10);
-      if (parsed >= 1 && parsed <= 5) level = parsed;
-    } else if (levelSel) {
-      level = parseInt(levelSel, 10);
-    }
-
+    const data = readSoftSkillPayloadFromRow(r);
+    if (isSoftSkillPayloadEmpty(data)) return;
     result.push({
-      kategorie,
-      kompetenz,
-      level,
-      levelCustom,
-      nachweise: readSelectWithOther(r, ".ss-nachweise", ".ss-nachweise-other"),
-      zertifikatDetails: r.querySelector(".ss-zertifikat-details").value.trim(),
-      entwicklungsinteresse: readSelectWithOther(r, ".ss-entwicklung", ".ss-entwicklung-other"),
-      letzteAnwendung: r.querySelector(".ss-letzte").value,
-      kontextBeispiel: r.querySelector(".ss-kontext").value.trim(),
-      bemerkungen: r.querySelector(".ss-bemerkung").value.trim(),
+      kategorie: data.kategorie,
+      kategorie_id: data.kategorie_id ?? null,
+      kompetenz: data.kompetenz || "",
+      level: data.level,
+      levelCustom: data.levelCustom || "",
+      bemerkungen: data.bemerkungen || "",
     });
   });
   return result;
 }
 
 function setSoftSkillAssessmentData(softSkills) {
-  document.getElementById("ss_assessment_rows").innerHTML = "";
-  if (!softSkills || !softSkills.length) {
-    addSoftSkillAssessmentRow();
-  } else {
-    softSkills.forEach((s) => addSoftSkillAssessmentRow(s));
-  }
+  const container = document.getElementById("ss_assessment_rows");
+  container.innerHTML = "";
+  enrichSoftSkillList(softSkills).forEach((s) => addSoftSkillAssessmentRow(s, { editing: false }));
+  updateSkillAssessmentListEmptyState("soft");
   if (currentSkillKind === "soft") refreshSkillInfoPanel();
+}
+
+function handleTechSkillListClick(ev) {
+  const row = ev.target.closest(".skill-assessment-row");
+  if (!row || !row.closest("#sk_assessment_rows")) return;
+  if (ev.target.closest(".sk-row-delete")) {
+    ev.preventDefault();
+    deleteTechSkillRow(row);
+    return;
+  }
+  if (ev.target.closest(".sk-row-edit")) {
+    ev.preventDefault();
+    enterTechSkillRowEdit(row);
+    return;
+  }
+  if (ev.target.closest(".sk-row-save")) {
+    ev.preventDefault();
+    const err = commitTechSkillRow(row);
+    if (err) {
+      const el = focusSelectOrOther(row, ".sk-kategorie", ".sk-kategorie-other");
+      if (el) reportFieldError(el, err);
+    } else {
+      delete row.dataset.skillPayloadBackup;
+    }
+    return;
+  }
+  if (ev.target.closest(".sk-row-cancel")) {
+    ev.preventDefault();
+    cancelTechSkillRowEdit(row);
+  }
+}
+
+function handleSoftSkillListClick(ev) {
+  const row = ev.target.closest(".skill-assessment-row");
+  if (!row || !row.closest("#ss_assessment_rows")) return;
+  if (ev.target.closest(".ss-row-delete")) {
+    ev.preventDefault();
+    deleteSoftSkillRow(row);
+    return;
+  }
+  if (ev.target.closest(".ss-row-edit")) {
+    ev.preventDefault();
+    enterSoftSkillRowEdit(row);
+    return;
+  }
+  if (ev.target.closest(".ss-row-save")) {
+    ev.preventDefault();
+    const err = commitSoftSkillRow(row);
+    if (err) {
+      const el = focusSelectOrOther(row, ".ss-kategorie", ".ss-kategorie-other");
+      if (el) reportFieldError(el, err);
+    } else {
+      delete row.dataset.skillPayloadBackup;
+    }
+    return;
+  }
+  if (ev.target.closest(".ss-row-cancel")) {
+    ev.preventDefault();
+    cancelSoftSkillRowEdit(row);
+  }
 }
 
 function resetSkillForm() {
   document.getElementById("skillForm").reset();
   document.getElementById("sk_editId").value = "";
+  renderSkillEmployeeCatalogCheckboxes(null);
+  updateSkillUnitDisplay(null);
   setSkillAssessmentData([]);
   setSoftSkillAssessmentData([]);
+  collapseSkillDetailsSections();
   setSkillKind("tech");
+  resetFormSaveButtonTracker(document.getElementById("skillForm"));
 }
 
 function fillSkillEmployeeFields(e) {
-  document.getElementById("sk_mitarbeiter_id").value = e.mitarbeiterId || "";
+  const pnEl = document.getElementById("sk_personalnummer");
+  if (pnEl) pnEl.value = resolveSkillFormPersonalnummer(e);
   document.getElementById("sk_nachname").value = e.nachname || (e.name || "").split(", ")[0] || "";
   document.getElementById("sk_vorname").value = e.vorname || (e.name || "").split(", ")[1] || "";
-  document.getElementById("sk_rolle").value = e.rolle || "";
+  renderSkillEmployeeCatalogCheckboxes(e);
+  updateSkillUnitDisplay(e);
   document.getElementById("sk_email").value = e.email || "";
 }
 
@@ -1411,54 +3704,30 @@ async function deleteSkillEmployee(id) {
   await deleteEntry("skill", id, { skipConfirm: true });
 }
 
-async function removeSkillExamples() {
-  if (!currentUnit && !isSuperAdmin) {
-    toast("Bitte zuerst anmelden.", "#e74c3c");
-    return;
-  }
-  const toDelete = load("skill").filter(isSkillExampleEntry);
-  if (!toDelete.length) {
-    toast("Keine Beispiel-Mitarbeiter gefunden.", "#e74c3c");
-    return;
-  }
-  if (!confirm(`${toDelete.length} Beispiel-Mitarbeiter entfernen?`)) return;
-  for (const e of toDelete) {
-    await api(`/api/entries/${e.id}`, { method: "DELETE" });
-  }
-  const activeId = document.getElementById("sk_editId").value;
-  if (toDelete.some((e) => String(e.id) === String(activeId))) {
-    resetSkillForm();
-    document.getElementById("btnSkillCancel").style.display = "none";
-    document.getElementById("skillSaveSuccess").style.display = "none";
-  }
-  await refreshEntries();
-  renderSkillEmployeeNav();
-  renderOverview();
-  updateSkillDeleteButton();
-  toast(`${toDelete.length} Beispiel-Mitarbeiter entfernt.`, "#27ae60", 4500);
-}
-
-function loadSkillEmployeeEntry(entry) {
+async function loadSkillEmployeeEntry(entry) {
   if (!entry) return;
-  setSkillSubtab("erfassung");
-  document.getElementById("sk_editId").value = entry.id;
-  fillSkillEmployeeFields(entry);
-  if (isLegacySkillEntry(entry)) {
+  await loadSkillCategoriesFromApi();
+  const freshEntry = await resolveSkillEmployeeEntry(entry);
+  collapseSkillDetailsSections();
+  document.getElementById("sk_editId").value = freshEntry.id;
+  await fillSkillEmployeeFieldsWithLookup(freshEntry);
+  if (isLegacySkillEntry(freshEntry)) {
     setSkillAssessmentData([]);
     setSoftSkillAssessmentData([]);
     toast("Legacy-Eintrag: bitte Skills neu im neuen Format erfassen.", "#f39c12");
   } else {
-    setSkillAssessmentData(entry.skills || []);
-    setSoftSkillAssessmentData(entry.softSkills || []);
+    setSkillAssessmentData(freshEntry.skills || []);
+    setSoftSkillAssessmentData(freshEntry.softSkills || []);
   }
   document.getElementById("btnSkillCancel").style.display = "";
   updateSkillDeleteButton();
   renderSkillEmployeeNav();
+  resetFormSaveButtonTracker(document.getElementById("skillForm"));
 }
 
 function showSkillSaveConfirmation(label) {
   const msg = `${label} wurde gespeichert.`;
-  toast(`✓ ${msg}`, "#27ae60", 4500);
+  notifyFormSaveSuccess(document.getElementById("skillForm"), msg);
   const banner = document.getElementById("skillSaveSuccess");
   if (banner) {
     banner.textContent = `✓ ${msg} Der Mitarbeiter steht links in der Liste.`;
@@ -1490,11 +3759,19 @@ function renderSkillEmployeeNav(highlightId) {
   let h = "";
   entries.forEach((e) => {
     const cls = String(e.id) === activeId ? "nav-pill active" : "nav-pill";
-    const idPart = e.mitarbeiterId
-      ? `<span style="opacity:.75;font-weight:400"> (${esc(e.mitarbeiterId)})</span>`
+    const pn = getSkillEntryPersonalnummer(e);
+    const idPart = pn
+      ? `<span style="opacity:.75;font-weight:400"> (${esc(pn)})</span>`
       : "";
-    const subDetail = isLegacySkillEntry(e) ? "Legacy" : skillOverviewDetail(e);
-    const unitPart = isSuperAdminViewAll() && e.unit ? esc(e.unit) + " · " : "";
+    const catPart = skillEmployeeCatalogSummary(e);
+    const skillsPart = isLegacySkillEntry(e) ? "Legacy" : skillOverviewDetail(e);
+    const subDetail =
+      catPart !== "–" && skillsPart !== "–"
+        ? `${catPart} · ${skillsPart}`
+        : catPart !== "–"
+          ? catPart
+          : skillsPart;
+    const unitPart = e.unit ? esc(e.unit) + " · " : "";
     const sub = unitPart + subDetail;
     h += `<div class="${cls}" data-skill-id="${e.id}" role="button" tabindex="0">${esc(skillEmployeeLabel(e))}${idPart}<span class="nav-pill-sub">${sub}</span></div>`;
   });
@@ -1510,16 +3787,17 @@ function renderSkillEmployeeNav(highlightId) {
   if (activeEl) activeEl.scrollIntoView({ block: "nearest", behavior: "smooth" });
 }
 
-function newSkillEmployee() {
+async function newSkillEmployee() {
+  await ensureSkillEmployeeCatalogsLoaded();
   resetSkillForm();
   document.getElementById("btnSkillCancel").style.display = "none";
   updateSkillDeleteButton();
   renderSkillEmployeeNav();
 }
 
-document.getElementById("btnSkillEmployeeNew")?.addEventListener("click", newSkillEmployee);
-document.getElementById("btnSkillExamplesLoad")?.addEventListener("click", loadSkillExamples);
-document.getElementById("btnSkillExamplesRemove")?.addEventListener("click", removeSkillExamples);
+document.getElementById("btnSkillEmployeeNew")?.addEventListener("click", () => {
+  newSkillEmployee();
+});
 document.getElementById("btnSkillDelete")?.addEventListener("click", () => {
   const id = document.getElementById("sk_editId").value;
   if (id) deleteSkillEmployee(id);
@@ -1553,88 +3831,76 @@ function buildMergedSkillExamples() {
   return Object.values(byId);
 }
 
-async function loadSkillExamples() {
-  if (!requireSaveUnit()) {
-    return;
-  }
-  const saveUnit = getSaveUnit();
-  const existing = load("skill");
-  if (existing.length && !confirm("Es existieren bereits Skill-Eintraege. Trotzdem Beispieldaten zusaetzlich anlegen?")) return;
-  const merged = buildMergedSkillExamples();
-  for (const ex of merged) {
-    const entry = {
-      mitarbeiterId: ex.mitarbeiterId,
-      nachname: ex.nachname,
-      vorname: ex.vorname,
-      rolle: ex.rolle,
-      skills: ex.skills,
-      softSkills: ex.softSkills,
-      name: `${ex.nachname}, ${ex.vorname}`,
-      erfasser: currentName,
-      unit: saveUnit,
-      type: "skill",
-      isExample: true,
-    };
-    await saveEntry("skill", entry);
-  }
-  await refreshEntries();
-  renderSkillEmployeeNav();
-  renderOverview();
-  toast(`${merged.length} Beispiel-Mitarbeiter (Fach- + Soft Skills) angelegt.`, "#27ae60", 4500);
-}
+document.getElementById("sk_assessment_rows")?.addEventListener("change", onSkillAssessmentChange);
+document.getElementById("sk_assessment_rows")?.addEventListener("click", handleTechSkillListClick);
 
-document.getElementById("sk_assessment_rows").addEventListener("change", onSkillAssessmentChange);
-document.getElementById("sk_assessment_rows").addEventListener("click", (ev) => {
-  if (ev.target.classList.contains("sk-row-remove")) {
-    ev.target.closest(".skill-assessment-row").remove();
-    refreshSkillInfoPanel();
+document.getElementById("ss_assessment_rows")?.addEventListener("change", onSoftSkillAssessmentChange);
+document.getElementById("ss_assessment_rows")?.addEventListener("click", handleSoftSkillListClick);
+
+document.getElementById("skillDetailsTech")?.addEventListener("toggle", async () => {
+  if (document.getElementById("skillDetailsTech")?.open) {
+    await loadSkillCategoriesFromApi();
+    refreshSkillAssessmentCategoryLabels();
+    setSkillKind("tech");
   }
+  refreshSkillInfoPanel();
 });
-
-document.getElementById("ss_assessment_rows").addEventListener("change", onSoftSkillAssessmentChange);
-document.getElementById("ss_assessment_rows").addEventListener("click", (ev) => {
-  if (ev.target.classList.contains("ss-row-remove")) {
-    ev.target.closest(".skill-assessment-row").remove();
-    refreshSkillInfoPanel();
+document.getElementById("skillDetailsSoft")?.addEventListener("toggle", async () => {
+  if (document.getElementById("skillDetailsSoft")?.open) {
+    await loadSkillCategoriesFromApi();
+    refreshSkillAssessmentCategoryLabels();
+    setSkillKind("soft");
   }
+  refreshSkillInfoPanel();
 });
-
-document.getElementById("btnSkillKindTech").addEventListener("click", () => setSkillKind("tech"));
-document.getElementById("btnSkillKindSoft").addEventListener("click", () => setSkillKind("soft"));
 
 document.getElementById("skillForm").addEventListener("submit", async (e) => {
   e.preventDefault();
-  if (!requireSaveUnit()) {
+  if (isMitarbeiter && !document.getElementById("sk_editId").value) {
+    toast("Kein Skill-Profil zugeordnet. Bitte Ihren Unit Lead kontaktieren.", "#e74c3c", 5000);
     return;
   }
-  const saveUnit = getSaveUnit();
   if (!validateSkillFormFields()) return;
   const skills = getSkillAssessmentData();
   const softSkills = getSoftSkillAssessmentData();
   const nachname = document.getElementById("sk_nachname").value.trim();
   const vorname = document.getElementById("sk_vorname").value.trim();
+  const catalogData = getSkillFormCatalogData();
   const entry = {
     nachname,
     vorname,
-    rolle: document.getElementById("sk_rolle").value.trim(),
+    org_role_ids: catalogData.org_role_ids,
+    org_roles: catalogData.org_roles,
+    position_ids: catalogData.position_ids,
+    positions: catalogData.positions,
+    rolle: catalogData.rolle,
+    position_id: catalogData.position_id,
     name: `${nachname}, ${vorname}`,
     skills,
     softSkills,
     erfasser: currentName,
-    unit: saveUnit,
     type: "skill",
   };
-  const mitarbeiterId = document.getElementById("sk_mitarbeiter_id").value.trim();
-  if (mitarbeiterId) entry.mitarbeiterId = mitarbeiterId;
   const email = document.getElementById("sk_email").value.trim().toLowerCase();
   if (email) entry.email = email;
+  const saveUnit = resolveSkillEntryUnit(entry);
+  if (!saveUnit) {
+    toast(
+      "Unit fehlt beim Mitarbeiter. Bitte Unit in der Benutzerverwaltung zuweisen oder einen bestehenden Mitarbeiter bearbeiten.",
+      "#e74c3c",
+      5000
+    );
+    return;
+  }
+  entry.unit = saveUnit;
+  const personalnummer = document.getElementById("sk_personalnummer")?.value.trim() || "";
+  if (personalnummer) entry.personalnummer = personalnummer;
   const label = skillEmployeeLabel(entry);
   const eId = document.getElementById("sk_editId").value;
   if (eId) entry.id = eId;
   const submitBtn = e.target.querySelector('button[type="submit"]');
   if (submitBtn) submitBtn.disabled = true;
   try {
-    setSkillSubtab("erfassung");
     switchTab("skills");
     const savedId = await saveEntry("skill", entry);
     document.getElementById("sk_editId").value = savedId;
@@ -1663,7 +3929,13 @@ setSkillAssessmentData([]);
 setSoftSkillAssessmentData([]);
 
 // ===== OVERVIEW =====
-function getAll(){return[...load('status').map(e=>({...e,_type:'status'})),...load('team').map(e=>({...e,_type:'team'})),...load('skill').map(e=>({...e,_type:'skill'}))]}
+function getAll(){
+  return [
+    ...load("portfolio").map((e) => ({ ...e, _type: "portfolio" })),
+    ...load("organisation").map((e) => ({ ...e, _type: "organisation" })),
+    ...load("skill").map((e) => ({ ...e, _type: "skill" })),
+  ];
+}
 function renderOverview(){
   const all=getAll();const fT=document.getElementById('ov_filterType').value;const fW=document.getElementById('ov_filterWS').value;
   const fS=document.getElementById('ov_filterSearch').value.toLowerCase();
@@ -1676,25 +3948,26 @@ function renderOverview(){
   }
   const f=all.filter(e=>{if(fT&&e._type!==fT)return false;if(fW&&e.workstream!==fW)return false;
     if(fS&&!JSON.stringify(e).toLowerCase().includes(fS))return false;return true});
-  const sc=all.filter(e=>e._type==='status').length,tc=all.filter(e=>e._type==='team').length,skc=all.filter(e=>e._type==='skill').length;
+  const pc=all.filter(e=>e._type==='portfolio').length,oc=all.filter(e=>e._type==='organisation').length,skc=all.filter(e=>e._type==='skill').length;
   document.getElementById('overviewStats').innerHTML=`
     <div class="stat-card"><div class="num">${all.length}</div><div class="lbl">Gesamt</div></div>
-    <div class="stat-card"><div class="num">${sc}</div><div class="lbl">Unit Übersicht</div></div>
-    <div class="stat-card"><div class="num">${tc}</div><div class="lbl">Team Übersicht</div></div>
-    <div class="stat-card"><div class="num">${skc}</div><div class="lbl">Skill-Übersicht</div></div>`;
+    <div class="stat-card"><div class="num">${pc}</div><div class="lbl">Portfolio</div></div>
+    <div class="stat-card"><div class="num">${oc}</div><div class="lbl">Organisation</div></div>
+    <div class="stat-card"><div class="num">${skc}</div><div class="lbl">Skills</div></div>`;
   const tb=document.getElementById('overviewBody'),no=document.getElementById('noOverview');
   if(!f.length){tb.innerHTML='';no.style.display='block';return}no.style.display='none';
-  const tl={status:'📊 Unit Übersicht',team:'👥 Team Übersicht',skill:'🧠 Skill-Übersicht'};
+  const tl={portfolio:'🧩 Portfolio',organisation:'🏢 Organisation',skill:'🧠 Skills'};
   tb.innerHTML=f.map(e=>{let k='',a='',d='';
-    if(e._type==='status'){const kat=displayKategorie(e.kategorie);k=e.titel?esc(e.titel):esc(kat);a=ampelHTML(e.ampel);d=e.titel?esc(kat)+' | '+esc((e.stand||'').substring(0,80)):esc((e.stand||'').substring(0,80))}
-    else if(e._type==='team'){k=e.bereich;a=ampelHTML(e.status);d='HC:'+e.headcount+' | '+esc(e.schwerpunkt||'')}
+    if(e._type==='portfolio'){k=esc(e.bezeichnung||'–');a=ampelHTML(e.ampel);d=esc((e.beschreibung||'').substring(0,50))+(e.jahresumsatz?' | Umsatz: '+esc(e.jahresumsatz):'')+(e.hinweis?' | Hinweis: '+esc((e.hinweis||'').substring(0,30)):'')}
+    else if(e._type==='organisation'){k='Organisatorischer Aufbau';a='–';d=esc(organisationOverviewDetail(e))}
     else{
-      const idLabel=e.mitarbeiterId?` (${e.mitarbeiterId})`:'';
+      const pnOv=getSkillEntryPersonalnummer(e);
+      const idLabel=pnOv?` (${pnOv})`:'';
       k=esc(skillEmployeeLabel(e))+idLabel;
       a='–';
       const nSkills=Array.isArray(e.skills)?e.skills.length:0;
       const nSoft=Array.isArray(e.softSkills)?e.softSkills.length:0;
-      d=esc(e.rolle)+(nSkills||nSoft?` | ${skillOverviewDetail(e)}`:isLegacySkillEntry(e)?' | Legacy':'');
+      d=esc(skillEmployeeCatalogSummary(e))+(nSkills||nSoft?` | ${skillOverviewDetail(e)}`:isLegacySkillEntry(e)?' | Legacy':'');
     }
     const unitCell = showUnitCol ? `<td><strong>${esc(e.unit || '–')}</strong></td>` : '';
     return`<tr>${unitCell}<td>${tl[e._type]}</td><td>${esc(e.workstream||'–')}</td><td>${esc(k)}</td><td>${a}</td><td style="max-width:220px">${d}</td>
@@ -1709,6 +3982,7 @@ function switchSuperAdminViewForEntry(entry) {
   renderHeaderUnitSwitcher();
   updateHeaderUnitDisplay();
   updateSuperAdminFormMode();
+  refreshUnitContextPanels();
   renderSkillEmployeeNav(entry.id);
   renderOverview();
   renderExportStats();
@@ -1720,21 +3994,12 @@ function editEntry(type,id){
   const e = (isSuperAdminViewAll() ? store : load(type)).find((x) => x.id === id);
   if(!e)return;
   switchSuperAdminViewForEntry(e);
-  if(type==='status'){
-    document.getElementById('s_editId').value=e.id;document.getElementById('s_workstream').value=e.workstream;
-    sWS.dispatchEvent(new Event('change'));
-    setTimeout(()=>{document.getElementById('s_kategorie').value=displayKategorie(e.kategorie);sKat.dispatchEvent(new Event('change'));
-      document.getElementById('s_ampel').value=e.ampel;document.getElementById('s_titel').value=e.titel||'';
-      document.getElementById('s_stand').value=e.stand;document.getElementById('s_kommentar').value=e.kommentar;
-      document.getElementById('s_datum').value=e.datum;
-      document.getElementById('btnStatusCancel').style.display='';},50);switchTab('status');
-  }else if(type==='team'){
-    document.getElementById('t_editId').value=e.id;document.getElementById('t_workstream').value=e.workstream;
-    document.getElementById('t_bereich').value=e.bereich;document.getElementById('t_headcount').value=e.headcount;
-    document.getElementById('t_offen').value=e.offen;document.getElementById('t_ausbau').value=e.ausbau;
-    document.getElementById('t_status').value=e.status;document.getElementById('t_rollenmix').value=e.rollenmix;
-    document.getElementById('t_schwerpunkt').value=e.schwerpunkt;document.getElementById('t_bemerkung').value=e.bemerkung;
-    document.getElementById('btnTeamCancel').style.display='';renderNavTeam();switchTab('team');
+  if(type==='portfolio'){
+    switchTab('portfolio');
+    loadPortfolioEntry(e);
+  }else if(type==='organisation'){
+    switchTab('organisation');
+    loadOrganisationEntry(e);
   }else{
     switchTab('skills');
     loadSkillEmployeeEntry(e);
@@ -1750,13 +4015,14 @@ async function deleteEntry(type, id, opts = {}) {
     updateSkillDeleteButton();
   }
   await refreshEntries();
+  if (type === "organisation") renderOrganisation();
   renderSkillEmployeeNav();
   renderOverview();
   toast("Gelöscht.", "#e74c3c");
 }
 
 // ===== EXPORT =====
-function renderExportStats(){const a=getAll();const unitLabel=getViewUnitLabel();document.getElementById('exportStats').innerHTML=`<strong>${a.length}</strong> Eintraege – Unit: <strong>${esc(unitLabel)}</strong> (${load('status').length} Status, ${load('team').length} Teams, ${load('skill').length} Skills)`}
+function renderExportStats(){const a=getAll();const unitLabel=getViewUnitLabel();document.getElementById('exportStats').innerHTML=`<strong>${a.length}</strong> Eintraege – Unit: <strong>${esc(unitLabel)}</strong> (${load('portfolio').length} Portfolio, ${load('organisation').length} Organisation, ${load('skill').length} Skills)`}
 function exportJSON(){const a=getAll();if(!a.length){toast('Keine Daten.','#e74c3c');return}
   const unitLabel=getViewUnitLabel();
   const b=new Blob([JSON.stringify({unit:unitLabel,erfasser:currentName,export:new Date().toISOString(),entries:a},null,2)],{type:'application/json'});
@@ -1771,7 +4037,7 @@ function flattenSkillsForExport(entries) {
   entries.filter((e) => e._type === "skill").forEach((e) => {
     if (isLegacySkillEntry(e)) {
       rows.push({
-        mitarbeiterId: e.mitarbeiterId || "",
+        personalnummer: getSkillEntryPersonalnummer(e),
         name: skillEmployeeLabel(e),
         vorname: e.vorname || "",
         rolle: e.rolle || "",
@@ -1779,19 +4045,14 @@ function flattenSkillsForExport(entries) {
         skillKategorie: "Legacy",
         technologie: legacySkillSummary(e),
         level: "",
-        zertifikatVorhanden: "",
-        zertifikatDetails: e.zertifikate || "",
-        interesseWeiterbildung: "",
-        letzteAnwendung: "",
-        projektBeispiel: "",
-        bemerkungen: e.ziel || "",
+        bemerkungen: [e.ziel, e.zertifikate].filter(Boolean).join(" | ") || "",
       });
       return;
     }
     e.skills.forEach((s) => {
       rows.push({
         skillArt: "Fachskill",
-        mitarbeiterId: e.mitarbeiterId || "",
+        personalnummer: getSkillEntryPersonalnummer(e),
         name: e.nachname || skillEmployeeLabel(e).split(", ")[0],
         vorname: e.vorname || "",
         rolle: e.rolle || "",
@@ -1799,11 +4060,6 @@ function flattenSkillsForExport(entries) {
         skillKategorie: s.kategorie,
         technologie: s.technologie,
         level: formatSkillLevel(s),
-        zertifikatVorhanden: s.zertifikatVorhanden || "",
-        zertifikatDetails: s.zertifikatDetails || "",
-        interesseWeiterbildung: s.interesseWeiterbildung || "",
-        letzteAnwendung: s.letzteAnwendung || "",
-        projektBeispiel: s.projektBeispiel || "",
         bemerkungen: s.bemerkungen || "",
       });
     });
@@ -1818,7 +4074,7 @@ function flattenSoftSkillsForExport(entries) {
     e.softSkills.forEach((s) => {
       rows.push({
         skillArt: "Soft Skill",
-        mitarbeiterId: e.mitarbeiterId || "",
+        personalnummer: getSkillEntryPersonalnummer(e),
         name: e.nachname || skillEmployeeLabel(e).split(", ")[0],
         vorname: e.vorname || "",
         rolle: e.rolle || "",
@@ -1826,11 +4082,6 @@ function flattenSoftSkillsForExport(entries) {
         softSkillKategorie: s.kategorie,
         kompetenz: s.kompetenz,
         level: formatSoftSkillLevel(s),
-        nachweise: s.nachweise || "",
-        zertifikatDetails: s.zertifikatDetails || "",
-        entwicklungsinteresse: s.entwicklungsinteresse || "",
-        letzteAnwendung: s.letzteAnwendung || "",
-        kontextBeispiel: s.kontextBeispiel || "",
         bemerkungen: s.bemerkungen || "",
       });
     });
@@ -1841,55 +4092,47 @@ function exportMD(){const a=getAll();if(!a.length){toast('Keine Daten.','#e74c3c
   const unit=getViewUnitLabel(),name=currentName,dt=new Date().toISOString().slice(0,16).replace('T',' ');
   let md='# Unitleiter-Erfassung: '+unit+'\n\n';
   md+='**Erfasser:** '+name+'  \n**Export:** '+dt+'  \n**Eintraege:** '+a.length+'\n\n---\n\n';
-  // Status
-  const st=a.filter(e=>e._type==='status');
-  if(st.length){
-    md+='## IST-Statusaufnahme\n\n';
-    const wsGroups={};st.forEach(e=>{if(!wsGroups[e.workstream])wsGroups[e.workstream]=[];wsGroups[e.workstream].push(e)});
-    Object.keys(wsGroups).forEach(ws=>{
-      md+='### '+ws+'\n\n';
-      md+='| Bezeichnung / Name | Kategorie | Ampel | Beschreibung / Erlaeuterung | Kommentar |\n';
-      md+='|--------------|-----------|-------|---------------------------|----------|\n';
-      wsGroups[ws].forEach(e=>{
-        const amp=ampelEmoji(e.ampel);
-        const titel=(e.titel||'').replace(/\|/g,'/').replace(/\n/g,' ');
-        const stand=(e.stand||'').replace(/\|/g,'/').replace(/\n/g,' ');
-        const kom=(e.kommentar||'').replace(/\|/g,'/').replace(/\n/g,' ');
-        md+='| '+titel+' | '+displayKategorie(e.kategorie)+' | '+amp+' | '+stand+' | '+kom+' |\n';
-      });
-      md+='\n';
+  const orgEntries=a.filter(e=>e._type==='organisation');
+  if(orgEntries.length){
+    md+='## Organisation (Aufbau & Rollen)\n\n';
+    orgEntries.forEach(e=>{
+      const hat=e.hatTechnologischeGliederung==='ja'?'Ja':e.hatTechnologischeGliederung==='nein'?'Nein':'–';
+      md+=`**Organisatorische Unterteilung:** ${hat}\n\n`;
+      if(Array.isArray(e.gliederungen)&&e.gliederungen.length){
+        md+='| Bereich | Headcount | Umsatz | Beschreibung |\n|---|---:|---|---|\n';
+        e.gliederungen.forEach(g=>{
+          md+=`| ${String(g.bereich||'').replace(/\|/g,'/')} | ${g.headcount!=null?g.headcount:'–'} | ${String(g.umsatz||'').replace(/\|/g,'/')||'–'} | ${String(g.beschreibung||'').replace(/\|/g,'/').replace(/\n/g,' ')} |\n`;
+        });
+        md+='\n';
+      }
+      if(Array.isArray(e.rollen)&&e.rollen.length){
+        md+='| Rolle | Anzahl | Bemerkung |\n|---|---:|---|\n';
+        e.rollen.forEach(r=>{
+          md+=`| ${String(r.rolle||'').replace(/\|/g,'/')} | ${r.anzahl!=null?r.anzahl:'–'} | ${String(r.bemerkung||'').replace(/\|/g,'/')} |\n`;
+        });
+        md+='\n';
+      }
+      if(e.bemerkung)md+=`**Bemerkung:** ${String(e.bemerkung).replace(/\n/g,' ')}\n\n`;
     });
-  }
-  // Team
-  const tm=a.filter(e=>e._type==='team');
-  if(tm.length){
-    md+='## Teamuebersicht\n\n';
-    md+='| Workstream | Bereich | HC | Offen | Ausbau | Status | Rollenmix | Schwerpunkt | Bemerkung |\n';
-    md+='|------------|---------|---:|------:|--------|--------|-----------|-------------|-----------|\n';
-    tm.forEach(e=>{
-      const amp=ampelEmoji(e.status);
-      md+='| '+e.workstream+' | '+e.bereich+' | '+e.headcount+' | '+(e.offen||'–')+' | '+(e.ausbau||'–')+' | '+amp+' | '+(e.rollenmix||'').replace(/\|/g,'/')+' | '+(e.schwerpunkt||'')+' | '+(e.bemerkung||'').replace(/\|/g,'/').replace(/\n/g,' ')+' |\n';
-    });
-    md+='\n';
   }
   const cleanMd = (v) => String(v || "").replace(/\|/g, "/").replace(/\n/g, " ");
   const skRows = flattenSkillsForExport(a);
   if (skRows.length) {
     md += "## Fachskill-Assessment\n\n";
-    md += "| Mitarbeiter ID | Name | Vorname | Rolle | Workstream | Skill-Kategorie | Technologie | Level | Zertifikat | Zertifikat Details | Interesse | Letzte Anwendung | Projekt | Bemerkungen |\n";
-    md += "|---|---|---|---|---|---|---|---|---|---|---|---|---|---|\n";
+    md += "| Personalnummer | Name | Vorname | Rolle | Workstream | Skill-Kategorie | Weitere Details | Level | Bemerkungen |\n";
+    md += "|---|---|---|---|---|---|---|---|---|---|\n";
     skRows.forEach((r) => {
-      md += `| ${cleanMd(r.mitarbeiterId)} | ${cleanMd(r.name)} | ${cleanMd(r.vorname)} | ${cleanMd(r.rolle)} | ${cleanMd(r.workstream)} | ${cleanMd(r.skillKategorie)} | ${cleanMd(r.technologie)} | ${cleanMd(r.level)} | ${cleanMd(r.zertifikatVorhanden)} | ${cleanMd(r.zertifikatDetails)} | ${cleanMd(r.interesseWeiterbildung)} | ${cleanMd(r.letzteAnwendung)} | ${cleanMd(r.projektBeispiel)} | ${cleanMd(r.bemerkungen)} |\n`;
+      md += `| ${cleanMd(r.personalnummer)} | ${cleanMd(r.name)} | ${cleanMd(r.vorname)} | ${cleanMd(r.rolle)} | ${cleanMd(r.workstream)} | ${cleanMd(r.skillKategorie)} | ${cleanMd(r.technologie)} | ${cleanMd(r.level)} | ${cleanMd(r.bemerkungen)} |\n`;
     });
     md += "\n";
   }
   const ssRows = flattenSoftSkillsForExport(a);
   if (ssRows.length) {
     md += "## Soft-Skill-Assessment\n\n";
-    md += "| Mitarbeiter ID | Name | Vorname | Rolle | Workstream | Soft Skill Kategorie | Kompetenz | Level | Nachweise | Zertifikat Details | Entwicklungsinteresse | Letzte Anwendung | Kontext/Beispiel | Bemerkungen |\n";
-    md += "|---|---|---|---|---|---|---|---|---|---|---|---|---|---|\n";
+    md += "| Personalnummer | Name | Vorname | Rolle | Workstream | Soft Skill Kategorie | Weitere Details | Level | Bemerkungen |\n";
+    md += "|---|---|---|---|---|---|---|---|---|---|\n";
     ssRows.forEach((r) => {
-      md += `| ${cleanMd(r.mitarbeiterId)} | ${cleanMd(r.name)} | ${cleanMd(r.vorname)} | ${cleanMd(r.rolle)} | ${cleanMd(r.workstream)} | ${cleanMd(r.softSkillKategorie)} | ${cleanMd(r.kompetenz)} | ${cleanMd(r.level)} | ${cleanMd(r.nachweise)} | ${cleanMd(r.zertifikatDetails)} | ${cleanMd(r.entwicklungsinteresse)} | ${cleanMd(r.letzteAnwendung)} | ${cleanMd(r.kontextBeispiel)} | ${cleanMd(r.bemerkungen)} |\n`;
+      md += `| ${cleanMd(r.personalnummer)} | ${cleanMd(r.name)} | ${cleanMd(r.vorname)} | ${cleanMd(r.rolle)} | ${cleanMd(r.workstream)} | ${cleanMd(r.softSkillKategorie)} | ${cleanMd(r.kompetenz)} | ${cleanMd(r.level)} | ${cleanMd(r.bemerkungen)} |\n`;
     });
     md += "\n";
   }
@@ -1900,6 +4143,7 @@ async function clearAll(){
   if(!confirm('ALLE Eintraege dieser Unit loeschen?'))return;
   await api("/api/entries", { method: "DELETE" });
   await refreshEntries();
+  renderOrganisation();
   renderOverview();
   renderExportStats();
   toast('Geloescht.','#e74c3c');
@@ -1913,6 +4157,227 @@ function checkAdmin(){
   if (superCard) superCard.style.display = isSuperAdmin ? '' : 'none';
 }
 
+let adminSubtab = "users";
+
+function collapseAdminPanelDetails(panelId) {
+  const panel = document.getElementById(panelId);
+  if (!panel) return;
+  panel.querySelectorAll("details.admin-collapsible[open]").forEach((el) => {
+    el.removeAttribute("open");
+  });
+}
+
+function setAdminSubtab(mode) {
+  adminSubtab =
+    mode === "skills" ? "skills" : mode === "roles" ? "roles" : mode === "org" ? "org" : "users";
+  ["adminPanelUsers", "adminPanelSkills", "adminPanelRoles", "adminPanelOrg"].forEach(
+    collapseAdminPanelDetails
+  );
+  document.getElementById("btnAdminSubtabUsers")?.classList.toggle("active", adminSubtab === "users");
+  document.getElementById("btnAdminSubtabSkills")?.classList.toggle("active", adminSubtab === "skills");
+  document.getElementById("btnAdminSubtabRoles")?.classList.toggle("active", adminSubtab === "roles");
+  document.getElementById("btnAdminSubtabOrg")?.classList.toggle("active", adminSubtab === "org");
+  const usersPanel = document.getElementById("adminPanelUsers");
+  const skillsPanel = document.getElementById("adminPanelSkills");
+  const rolesPanel = document.getElementById("adminPanelRoles");
+  const orgPanel = document.getElementById("adminPanelOrg");
+  if (usersPanel) usersPanel.style.display = adminSubtab === "users" ? "" : "none";
+  if (skillsPanel) skillsPanel.style.display = adminSubtab === "skills" ? "" : "none";
+  if (rolesPanel) rolesPanel.style.display = adminSubtab === "roles" ? "" : "none";
+  if (orgPanel) orgPanel.style.display = adminSubtab === "org" ? "" : "none";
+  if (adminSubtab === "skills") renderAdminSkillCategories();
+  if (adminSubtab === "roles") renderAdminRolesAndPositions();
+  if (adminSubtab === "org") renderAdminOrgChart();
+}
+
+async function initAdminPage() {
+  await loadMasterUnitsCache();
+  await loadSkillCategoriesFromApi();
+  await ensureAdminUserFormCatalogs();
+  renderAdminUserCatalogCheckboxes("adm_edit_");
+  await renderAdminUsers();
+  if (isSuperAdmin) await renderSuperAdminUnits();
+  setAdminSubtab(adminSubtab);
+}
+
+async function loadUnitLeadCandidatesCache() {
+  try {
+    const users = await api("/api/admin/users");
+    unitLeadCandidatesCache = users
+      .filter(userIsUnitLeaderCandidate)
+      .sort((a, b) => String(a.name).localeCompare(String(b.name), "de"));
+  } catch (_e) {
+    unitLeadCandidatesCache = [];
+  }
+}
+
+function userHasDeputyUnitLeaderPosition(user) {
+  const positions = user?.userPositions || [];
+  const key = normalizePositionKey(DEPUTY_UNIT_LEADER_POSITION);
+  return positions.some((position) => normalizePositionKey(position) === key);
+}
+
+async function loadDeputyCandidatesCache() {
+  try {
+    const users = await api("/api/admin/users");
+    deputyCandidatesCache = users
+      .filter(userHasDeputyUnitLeaderPosition)
+      .sort((a, b) => String(a.name).localeCompare(String(b.name), "de"));
+  } catch (_e) {
+    deputyCandidatesCache = [];
+  }
+}
+
+function renderUnitLeadSelect(selectId, selectedId) {
+  const select = document.getElementById(selectId);
+  if (!select) return;
+  const picked = selectedId ? String(selectedId) : "";
+  if (!unitLeadCandidatesCache.length) {
+    select.innerHTML =
+      '<option value="">Keine Unit Leiter vorhanden (Position „Unit Leiter“ oder Rolle Unit Lead)</option>';
+    select.disabled = true;
+    return;
+  }
+  select.disabled = false;
+  select.innerHTML =
+    '<option value="">– Unit Leiter waehlen –</option>' +
+    unitLeadCandidatesCache
+      .map(
+        (lead) =>
+          `<option value="${lead.id}"${picked === String(lead.id) ? " selected" : ""}>${esc(
+            lead.name
+          )} (${esc(lead.email)})</option>`
+      )
+      .join("");
+}
+
+function renderDeputyLeadSelect(selectedId, unitName) {
+  const select = document.getElementById("adm_unit_edit_deputy_id");
+  const hint = document.getElementById("adm_unit_edit_deputy_hint");
+  if (!select) return;
+  const picked = selectedId ? String(selectedId) : "";
+  let candidates = [...deputyCandidatesCache];
+  const unitFilter = String(unitName || "").trim();
+  if (unitFilter) {
+    const onUnit = candidates.filter(
+      (user) => Array.isArray(user.units) && user.units.includes(unitFilter)
+    );
+    if (onUnit.length) candidates = onUnit;
+  }
+  if (picked) {
+    const selected = deputyCandidatesCache.find((user) => String(user.id) === picked);
+    if (selected && !candidates.some((user) => String(user.id) === picked)) {
+      candidates = [selected, ...candidates];
+    }
+  }
+  if (hint) {
+    if (!deputyCandidatesCache.length) {
+      hint.textContent = `Keine Benutzer mit Position „${DEPUTY_UNIT_LEADER_POSITION}“ vorhanden. Position in der Rollen-Pflege anlegen und Benutzern zuweisen.`;
+    } else if (unitFilter && candidates.length) {
+      hint.textContent = `Stellvertreter mit Position „${DEPUTY_UNIT_LEADER_POSITION}“ für Unit „${unitFilter}“. Optional, darf nicht identisch mit Unit Leiter sein.`;
+    } else if (unitFilter) {
+      hint.textContent = `Kein Stellvertreter für Unit „${unitFilter}“ gefunden. Alle Benutzer mit Position „${DEPUTY_UNIT_LEADER_POSITION}“ werden angeboten.`;
+    } else {
+      hint.textContent = `Benutzer mit Position „${DEPUTY_UNIT_LEADER_POSITION}“. Optional, darf nicht identisch mit Unit Leiter sein.`;
+    }
+  }
+  if (!deputyCandidatesCache.length) {
+    select.innerHTML = '<option value="">Keine Stellvertreter vorhanden</option>';
+    select.disabled = true;
+    return;
+  }
+  select.disabled = false;
+  select.innerHTML =
+    '<option value="">– optional –</option>' +
+    candidates
+      .map((user) => {
+        const unitsLabel =
+          Array.isArray(user.units) && user.units.length
+            ? ` · ${user.units.map((unit) => esc(unit)).join(", ")}`
+            : "";
+        return `<option value="${user.id}"${picked === String(user.id) ? " selected" : ""}>${esc(
+          user.name
+        )} (${esc(user.email)}${unitsLabel})</option>`;
+      })
+      .join("");
+}
+
+function closeAdminEditUnit() {
+  const overlay = document.getElementById("admUnitEdit");
+  if (overlay) overlay.style.display = "none";
+  const errEl = document.getElementById("admUnitEditError");
+  if (errEl) errEl.style.display = "none";
+}
+
+async function openAdminEditUnit(unit) {
+  if (!unit) return;
+  await loadUnitLeadCandidatesCache();
+  await loadDeputyCandidatesCache();
+  document.getElementById("adm_unit_edit_id").value = unit.id;
+  document.getElementById("adm_unit_edit_name").value = unit.name || "";
+  renderUnitLeadSelect("adm_unit_edit_lead_id", unit.unitLead?.id || "");
+  renderDeputyLeadSelect(unit.deputyLead?.id || "", unit.name || "");
+  document.getElementById("admUnitEditError").style.display = "none";
+  document.getElementById("admUnitEdit").style.display = "flex";
+  document.getElementById("adm_unit_edit_name").focus();
+  initModalSaveButtonTracker("admUnitEdit", "admUnitEditSave");
+}
+
+async function saveAdminEditUnit() {
+  const id = document.getElementById("adm_unit_edit_id").value;
+  const name = document.getElementById("adm_unit_edit_name").value.trim();
+  const unitLeadId = document.getElementById("adm_unit_edit_lead_id")?.value || "";
+  const deputyLeadId = document.getElementById("adm_unit_edit_deputy_id")?.value || "";
+  const errEl = document.getElementById("admUnitEditError");
+  errEl.style.display = "none";
+
+  if (!id || !name) {
+    errEl.textContent = "Bitte Unit-Namen eingeben.";
+    errEl.style.display = "block";
+    return;
+  }
+  if (!unitLeadId) {
+    errEl.textContent = "Bitte einen Unit Leiter zuweisen.";
+    errEl.style.display = "block";
+    return;
+  }
+  if (deputyLeadId && deputyLeadId === unitLeadId) {
+    errEl.textContent = "Stellvertreter darf nicht identisch mit Unit Leiter sein.";
+    errEl.style.display = "block";
+    return;
+  }
+
+  try {
+    const oldUnit = masterUnitsCache.find((u) => String(u.id) === String(id));
+    await api(`/api/admin/units/${id}`, {
+      method: "PUT",
+      body: JSON.stringify({
+        name,
+        unitLeadId: Number(unitLeadId),
+        deputyLeadId: deputyLeadId ? Number(deputyLeadId) : null,
+      }),
+    });
+    if (oldUnit && superAdminViewUnit === oldUnit.name && name !== oldUnit.name) {
+      superAdminViewUnit = name;
+    }
+  } catch (error) {
+    errEl.textContent = error.message;
+    errEl.style.display = "block";
+    return;
+  }
+
+  const saveBtn = document.getElementById("admUnitEditSave");
+  notifyFormSaveSuccess(saveBtn, "Unit aktualisiert!");
+  setTimeout(async () => {
+    closeAdminEditUnit();
+    await loadMasterUnitsCache();
+    await renderSuperAdminUnits();
+    await renderHeaderUnitSwitcher();
+    await renderAdminUsers();
+    refreshSuperAdminViews();
+  }, 450);
+}
+
 async function renderSuperAdminUnits() {
   if (!isSuperAdmin) return;
   const units = await api("/api/admin/units");
@@ -1921,18 +4386,36 @@ async function renderSuperAdminUnits() {
   const tbody = document.getElementById("admUnitsBody");
   if (!tbody) return;
   if (!units.length) {
-    tbody.innerHTML = '<tr><td colspan="2" style="color:var(--rc-muted);font-style:italic">Noch keine Units angelegt.</td></tr>';
+    tbody.innerHTML =
+      '<tr><td colspan="4" style="color:var(--rc-muted);font-style:italic">Noch keine Units angelegt.</td></tr>';
     return;
   }
+  const personLabel = (person, emptyText) =>
+    person?.name
+      ? esc(person.name)
+      : `<span style="color:var(--rc-muted);font-style:italic">${emptyText}</span>`;
   tbody.innerHTML = units
-    .map(
-      (u) =>
-        `<tr><td>${esc(u.name)}</td><td><button type="button" class="btn btn-sm btn-danger" data-unit-id="${u.id}">🗑️ Entfernen</button></td></tr>`
-    )
+    .map((u) => {
+      return (
+        `<tr><td>${esc(u.name)}</td><td>${personLabel(u.unitLead, "Kein Unit Leiter")}</td>` +
+        `<td>${personLabel(u.deputyLead, "Kein Stellvertreter")}</td>` +
+        `<td style="white-space:nowrap">` +
+        `<button type="button" class="btn btn-sm btn-outline" data-action="edit-unit" data-unit-id="${u.id}">✏️ Bearbeiten</button> ` +
+        `<button type="button" class="btn btn-sm btn-danger" data-unit-id="${u.id}">🗑️ Entfernen</button>` +
+        `</td></tr>`
+      );
+    })
     .join("");
-  tbody.querySelectorAll("[data-unit-id]").forEach((btn) => {
+  tbody.querySelectorAll("[data-action=\"edit-unit\"]").forEach((btn) => {
+    btn.addEventListener("click", () => {
+      const unit = units.find((u) => String(u.id) === String(btn.getAttribute("data-unit-id")));
+      if (unit) openAdminEditUnit(unit);
+    });
+  });
+  tbody.querySelectorAll("button.btn-danger[data-unit-id]").forEach((btn) => {
     btn.addEventListener("click", () => adminDeleteMasterUnit(btn.getAttribute("data-unit-id")));
   });
+  if (adminSubtab === "org") renderAdminOrgChart();
 }
 
 async function adminAddMasterUnit() {
@@ -1977,31 +4460,10 @@ async function adminDeleteMasterUnit(id) {
 async function renderAdminUsers(){
   if(!isAdmin) return;
   await loadMasterUnitsCache();
-  const users = (await api("/api/admin/users")).filter(userMatchesSuperAdminView);
-  document.getElementById('admUserCount').textContent = users.length;
-  const tbody = document.getElementById('admUsersBody');
-  tbody.innerHTML = users.map(u => {
-    const isProtected = u.email === currentEmail;
-    const unitsLabel = Array.isArray(u.units) && u.units.length ? esc(u.units.join(', ')) : '–';
-    return '<tr>'
-      + '<td>' + esc(u.email) + '</td>'
-      + '<td>' + esc(u.name) + '</td>'
-      + '<td>' + esc(roleLabel(u.role)) + '</td>'
-      + '<td>' + unitsLabel + '</td>'
-      + '<td style="white-space:nowrap">'
-      + '<button class="btn btn-sm btn-outline" data-action="edit" data-user-id="' + u.id + '">✏️</button> '
-      + (isProtected ? '' : '<button class="btn btn-sm btn-danger" data-action="delete" data-user-id="' + u.id + '">🗑️</button>')
-      + '</td></tr>';
-  }).join('');
-  tbody.querySelectorAll('[data-action="edit"]').forEach((btn) => {
-    btn.addEventListener('click', () => {
-      const user = users.find((u) => String(u.id) === String(btn.getAttribute('data-user-id')));
-      if (user) adminEditUser(user);
-    });
-  });
-  tbody.querySelectorAll('[data-action="delete"]').forEach((btn) => {
-    btn.addEventListener('click', () => adminDeleteUser(btn.getAttribute('data-user-id')));
-  });
+  adminUsersCache = await api("/api/admin/users");
+  populateAdminUserUnitFilterOptions();
+  renderAdminUsersTableBody();
+  if (adminSubtab === "org") renderAdminOrgChart();
 }
 
 async function adminAddUser(){
@@ -2009,20 +4471,23 @@ async function adminAddUser(){
   const nn = document.getElementById('adm_nachname').value.trim();
   const vn = document.getElementById('adm_vorname').value.trim();
   const pw = document.getElementById('adm_pw').value;
-  const role = document.getElementById('adm_role').value;
-  const units = getSelectedAdminUnits("adm_units_select");
   const errEl = document.getElementById('admError');
   const okEl = document.getElementById('admSuccess');
   errEl.style.display='none'; okEl.style.display='none';
 
   if(!email||!nn||!vn||!pw){errEl.textContent='Bitte alle Felder ausfuellen.';errEl.style.display='block';return}
   if(!email.includes('@')){errEl.textContent='Bitte gueltige E-Mail eingeben.';errEl.style.display='block';return}
-  if(isUnitScopedSession(role) && !units.length){errEl.textContent='Mindestens eine Unit aus der Liste waehlen.';errEl.style.display='block';return}
 
   try {
     await api("/api/admin/users", {
       method: "POST",
-      body: JSON.stringify({ email, name: nn + ', ' + vn, password: pw, role, units })
+      body: JSON.stringify({
+        email,
+        name: nn + ', ' + vn,
+        password: pw,
+        personalnummer: document.getElementById("adm_personalnummer")?.value.trim() || "",
+        minimalAccount: true,
+      }),
     });
   } catch (error) {
     errEl.textContent = error.message;
@@ -2034,13 +4499,13 @@ async function adminAddUser(){
   document.getElementById('adm_nachname').value='';
   document.getElementById('adm_vorname').value='';
   document.getElementById('adm_pw').value='';
-  document.getElementById('adm_role').value='unit_lead';
-  updateAdminUnitsFieldVisibility();
-  renderAdminUnitCheckboxes("adm_units_select", []);
+  document.getElementById('adm_personalnummer').value='';
   okEl.textContent='Benutzer ' + email + ' angelegt.';okEl.style.display='block';
   await renderAdminUsers();
   if (isSuperAdmin) await renderSuperAdminUnits();
-  toast('Benutzer angelegt!');
+  const adminCard = document.getElementById("adm_email")?.closest(".card");
+  resetFormSaveButtonTracker(adminCard);
+  notifyFormSaveSuccess(document.getElementById("btnAdminAddUser"), "Benutzer angelegt!");
 }
 
 async function adminDeleteUser(id){
@@ -2050,79 +4515,1705 @@ async function adminDeleteUser(id){
   toast('Benutzer geloescht.');
 }
 
-async function adminEditUser(user){
-  const newPw = prompt('Neues Passwort fuer ' + user.email + ' (leer lassen fuer unveraendert):', '');
-  if(newPw === null) return;
-  const nameParts = user.name.split(', ');
-  const newNn = prompt('Nachname:', nameParts[0] || '');
-  if(newNn === null) return;
-  const newVn = prompt('Vorname:', nameParts[1]||'');
-  if(newVn === null) return;
-  const newRole = prompt(
-    'Rolle (admin, unit_lead oder mitarbeiter):',
-    user.role || 'unit_lead'
+function normalizeImportHeader(value) {
+  return String(value || "")
+    .trim()
+    .toLowerCase()
+    .replace(/\s+/g, "")
+    .replace(/ä/g, "ae")
+    .replace(/ö/g, "oe")
+    .replace(/ü/g, "ue")
+    .replace(/ß/g, "ss");
+}
+
+function findImportColumnIndex(headers, candidates) {
+  for (const candidate of candidates) {
+    const idx = headers.indexOf(normalizeImportHeader(candidate));
+    if (idx >= 0) return idx;
+  }
+  return -1;
+}
+
+const ADMIN_USER_EXPORT_HEADERS = [
+  "personalnummer",
+  "nachname",
+  "vorname",
+  "email",
+  "positionen",
+  "rollen_organisation",
+  "units",
+  "standort",
+  "regionalleiter_email",
+  "geschaeftsfuehrung_email",
+  "administration",
+];
+
+function joinImportList(values) {
+  return (values || []).filter(Boolean).join("; ");
+}
+
+function userToAdminExportRow(user) {
+  const nameParts = String(user.name || "").split(", ");
+  const nachname = (nameParts[0] || "").trim();
+  const vorname = (nameParts[1] || "").trim();
+  const rl = adminUsersCache.find((u) => String(u.id) === String(user.regionalleiter_id));
+  const gf = adminUsersCache.find((u) => String(u.id) === String(user.geschaeftsfuehrung_id));
+  const administration = (user.roles || []).filter((role) =>
+    SYSTEM_PRIVILEGE_ROLES.includes(role)
   );
-  if(newRole === null) return;
-  const normalizedRole = ["admin", "unit_lead", "mitarbeiter"].includes(newRole) ? newRole : user.role;
-  let newUnits = user.units || [];
-  if (isUnitScopedSession(normalizedRole)) {
-    const picked = await pickUnitsFromMaster(user.units || []);
-    if (picked === null) return;
-    newUnits = picked;
-    if (!newUnits.length) {
-      toast('Mindestens eine Unit erforderlich.', '#e74c3c');
-      return;
-    }
-  } else {
-    newUnits = [];
+  return [
+    user.personalnummer || "",
+    nachname,
+    vorname,
+    user.email || "",
+    joinImportList(user.userPositions),
+    joinImportList(user.userOrgRoles),
+    joinImportList(user.units),
+    user.standort || "",
+    rl?.email || "",
+    gf?.email || "",
+    joinImportList(administration),
+  ];
+}
+
+async function adminExportUsers() {
+  if (typeof XLSX === "undefined") {
+    toast("Excel-Bibliothek nicht geladen.", "#e74c3c");
+    return;
+  }
+  await renderAdminUsers();
+  if (!adminUsersCache.length) {
+    toast("Keine Benutzer zum Exportieren.", "#e74c3c");
+    return;
+  }
+  const matrix = [ADMIN_USER_EXPORT_HEADERS, ...adminUsersCache.map(userToAdminExportRow)];
+  const sheet = XLSX.utils.aoa_to_sheet(matrix);
+  const workbook = XLSX.utils.book_new();
+  XLSX.utils.book_append_sheet(workbook, sheet, "Benutzer");
+  const stamp = new Date().toISOString().slice(0, 10);
+  XLSX.writeFile(workbook, `benutzer-export-${stamp}.xlsx`);
+  toast(`${adminUsersCache.length} Benutzer exportiert.`, "#27ae60");
+}
+
+function parseAdminUsersImportWorkbook(workbook) {
+  if (!workbook?.SheetNames?.length) {
+    throw new Error("Die Excel-Datei enthaelt keine Tabellen.");
+  }
+  const sheet = workbook.Sheets[workbook.SheetNames[0]];
+  const matrix = XLSX.utils.sheet_to_json(sheet, { header: 1, defval: "" });
+  if (!matrix.length) throw new Error("Die Excel-Datei ist leer.");
+
+  const headers = matrix[0].map((cell) => normalizeImportHeader(cell));
+  const idxNr = findImportColumnIndex(headers, ["nr", "personalnummer", "personal-nr", "personalnr"]);
+  const idxVorname = findImportColumnIndex(headers, ["vorname", "vornamem", "vornamen"]);
+  const idxNachname = findImportColumnIndex(headers, ["nachname", "nachnamen"]);
+  const idxMail = findImportColumnIndex(headers, ["mail", "email", "e-mail", "emailadresse"]);
+  const idxPositionen = findImportColumnIndex(headers, ["positionen", "position", "userpositions"]);
+  const idxOrgRoles = findImportColumnIndex(headers, [
+    "rollen_organisation",
+    "rollenorganisation",
+    "org_rollen",
+    "userorgroles",
+  ]);
+  const idxUnits = findImportColumnIndex(headers, ["units", "unit"]);
+  const idxStandort = findImportColumnIndex(headers, ["standort"]);
+  const idxRlMail = findImportColumnIndex(headers, [
+    "regionalleiter_email",
+    "regionalleitermail",
+    "regionalleiter",
+  ]);
+  const idxGfMail = findImportColumnIndex(headers, [
+    "geschaeftsfuehrung_email",
+    "geschaeftsfuehrungmail",
+    "geschaeftsfuehrung",
+  ]);
+  const idxAdmin = findImportColumnIndex(headers, ["administration", "admin", "privileg"]);
+
+  if (idxVorname < 0 || idxNachname < 0 || idxMail < 0) {
+    throw new Error("Erste Zeile muss mindestens vorname, nachname und email (mail) enthalten.");
   }
 
-  await api('/api/admin/users/' + user.id, {
-    method: "PUT",
-    body: JSON.stringify({
-      name: newNn + ', ' + newVn,
-      role: normalizedRole,
-      password: newPw || undefined,
-      units: newUnits,
-    })
+  const rows = [];
+  for (let i = 1; i < matrix.length; i += 1) {
+    const line = matrix[i] || [];
+    const email = String(line[idxMail] || "").trim();
+    const vorname = String(line[idxVorname] || "").trim();
+    const nachname = String(line[idxNachname] || "").trim();
+    const personalnummer = idxNr >= 0 ? String(line[idxNr] || "").trim() : "";
+    if (!email && !vorname && !nachname && !personalnummer) continue;
+    rows.push({
+      rowNum: i + 1,
+      email,
+      vorname,
+      nachname,
+      personalnummer,
+      positionen: idxPositionen >= 0 ? String(line[idxPositionen] || "").trim() : "",
+      rollenOrganisation: idxOrgRoles >= 0 ? String(line[idxOrgRoles] || "").trim() : "",
+      units: idxUnits >= 0 ? String(line[idxUnits] || "").trim() : "",
+      standort: idxStandort >= 0 ? String(line[idxStandort] || "").trim() : "",
+      regionalleiterEmail: idxRlMail >= 0 ? String(line[idxRlMail] || "").trim() : "",
+      geschaeftsfuehrungEmail: idxGfMail >= 0 ? String(line[idxGfMail] || "").trim() : "",
+      administration: idxAdmin >= 0 ? String(line[idxAdmin] || "").trim() : "",
+    });
+  }
+
+  if (!rows.length) {
+    throw new Error("Keine Datenzeilen in der Excel-Datei gefunden.");
+  }
+  return rows;
+}
+
+function readAdminUsersImportFile(file) {
+  return new Promise((resolve, reject) => {
+    const reader = new FileReader();
+    reader.onload = (event) => {
+      try {
+        if (typeof XLSX === "undefined") {
+          reject(new Error("Excel-Bibliothek nicht geladen."));
+          return;
+        }
+        const workbook = XLSX.read(event.target.result, { type: "array" });
+        resolve(parseAdminUsersImportWorkbook(workbook));
+      } catch (error) {
+        reject(error);
+      }
+    };
+    reader.onerror = () => reject(new Error("Datei konnte nicht gelesen werden."));
+    reader.readAsArrayBuffer(file);
   });
-  await renderAdminUsers();
-  toast('Benutzer aktualisiert!');
 }
 
-async function adminExportUsers(){
-  const users = await api("/api/admin/users");
-  const blob = new Blob([JSON.stringify(users, null, 2)], {type:'application/json'});
-  dl(blob, 'realcore_benutzer_' + today() + '.json');
-  toast('Benutzer exportiert!');
+const SKILL_CATEGORY_EXPORT_HEADERS = [
+  "id",
+  "kind",
+  "name",
+  "beschreibung",
+  "beispiel",
+  "sort_order",
+];
+
+const CATALOG_EXPORT_HEADERS = ["id", "name", "sort_order"];
+
+function skillCategoryToExportRow(cat) {
+  return [
+    cat.id,
+    cat.kind,
+    cat.name || "",
+    cat.beschreibung || "",
+    cat.beispiel || "",
+    cat.sortOrder ?? cat.sort_order ?? "",
+  ];
 }
 
-function adminResetUsers(){
-  toast('Reset wurde aus Sicherheitsgruenden entfernt.','#e74c3c');
+function catalogItemToExportRow(item) {
+  return [item.id, item.name || "", item.sortOrder ?? item.sort_order ?? ""];
 }
 
+function getWorkbookSheet(workbook, preferredNames, { fallbackFirst = true } = {}) {
+  if (!workbook?.SheetNames?.length) return null;
+  for (const name of preferredNames) {
+    if (workbook.Sheets[name]) return workbook.Sheets[name];
+  }
+  return fallbackFirst ? workbook.Sheets[workbook.SheetNames[0]] : null;
+}
+
+function parseMatrixImportRows(matrix, mapRow) {
+  if (!matrix.length) throw new Error("Die Excel-Datei ist leer.");
+  const headers = matrix[0].map((cell) => normalizeImportHeader(cell));
+  const idxId = findImportColumnIndex(headers, ["id"]);
+  const idxName = findImportColumnIndex(headers, ["name", "bezeichnung"]);
+  const idxSort = findImportColumnIndex(headers, ["sort_order", "sortorder", "reihenfolge"]);
+  if (idxName < 0) {
+    throw new Error("Erste Zeile muss mindestens name enthalten.");
+  }
+  const rows = [];
+  for (let i = 1; i < matrix.length; i += 1) {
+    const line = matrix[i] || [];
+    const name = String(line[idxName] || "").trim();
+    const id = idxId >= 0 ? String(line[idxId] || "").trim() : "";
+    const sort_order = idxSort >= 0 ? String(line[idxSort] || "").trim() : "";
+    if (!name && !id) continue;
+    rows.push(
+      mapRow({
+        rowNum: i + 1,
+        id,
+        name,
+        sort_order,
+        line,
+        headers,
+        idxId,
+        idxName,
+        idxSort,
+      })
+    );
+  }
+  if (!rows.length) throw new Error("Keine Datenzeilen in der Excel-Datei gefunden.");
+  return rows;
+}
+
+function parseSkillCategoriesImportWorkbook(workbook) {
+  const sheet = getWorkbookSheet(workbook, ["skill_kategorien", "kategorien"]);
+  if (!sheet) throw new Error("Die Excel-Datei enthaelt keine Tabellen.");
+  const matrix = XLSX.utils.sheet_to_json(sheet, { header: 1, defval: "" });
+  if (!matrix.length) throw new Error("Die Excel-Datei ist leer.");
+
+  const headers = matrix[0].map((cell) => normalizeImportHeader(cell));
+  const idxId = findImportColumnIndex(headers, ["id"]);
+  const idxKind = findImportColumnIndex(headers, ["kind", "art", "typ"]);
+  const idxName = findImportColumnIndex(headers, ["name", "kategorie", "kategoriename"]);
+  const idxBesch = findImportColumnIndex(headers, ["beschreibung", "description"]);
+  const idxBeispiel = findImportColumnIndex(headers, ["beispiel", "example"]);
+  const idxSort = findImportColumnIndex(headers, ["sort_order", "sortorder", "reihenfolge"]);
+
+  if (idxName < 0) {
+    throw new Error("Erste Zeile muss mindestens name enthalten.");
+  }
+
+  const rows = [];
+  for (let i = 1; i < matrix.length; i += 1) {
+    const line = matrix[i] || [];
+    const name = String(line[idxName] || "").trim();
+    const rawKind = idxKind >= 0 ? String(line[idxKind] || "").trim().toLowerCase() : "tech";
+    const kind = rawKind === "soft" ? "soft" : "tech";
+    const id = idxId >= 0 ? String(line[idxId] || "").trim() : "";
+    const beschreibung = idxBesch >= 0 ? String(line[idxBesch] || "").trim() : "";
+    const beispiel = idxBeispiel >= 0 ? String(line[idxBeispiel] || "").trim() : "";
+    const sort_order = idxSort >= 0 ? String(line[idxSort] || "").trim() : "";
+    if (!name && !id) continue;
+    rows.push({
+      rowNum: i + 1,
+      id: id || undefined,
+      kind,
+      name,
+      beschreibung,
+      beispiel,
+      sort_order: sort_order || undefined,
+    });
+  }
+  if (!rows.length) throw new Error("Keine Datenzeilen in der Excel-Datei gefunden.");
+  return rows;
+}
+
+function parseCatalogSheetRows(sheet, sheetLabel) {
+  const matrix = XLSX.utils.sheet_to_json(sheet, { header: 1, defval: "" });
+  if (matrix.length < 2) return [];
+  try {
+    return parseMatrixImportRows(matrix, ({ rowNum, id, name, sort_order }) => ({
+      rowNum,
+      id: id || undefined,
+      name,
+      sort_order: sort_order || undefined,
+      sheet: sheetLabel,
+    }));
+  } catch (error) {
+    if (error.message === "Keine Datenzeilen in der Excel-Datei gefunden.") return [];
+    throw error;
+  }
+}
+
+function parseCatalogsImportWorkbook(workbook) {
+  if (!workbook?.SheetNames?.length) {
+    throw new Error("Die Excel-Datei enthaelt keine Tabellen.");
+  }
+  const rolesSheet = getWorkbookSheet(workbook, ["rollen_organisation", "rollen", "org_rollen"], {
+    fallbackFirst: false,
+  });
+  const positionsSheet = getWorkbookSheet(workbook, ["positionen", "positions"], {
+    fallbackFirst: false,
+  });
+  const roles = rolesSheet ? parseCatalogSheetRows(rolesSheet, "rollen_organisation") : [];
+  const positions = positionsSheet ? parseCatalogSheetRows(positionsSheet, "positionen") : [];
+
+  if (!roles.length && !positions.length) {
+    const fallback = workbook.Sheets[workbook.SheetNames[0]];
+    const matrix = XLSX.utils.sheet_to_json(fallback, { header: 1, defval: "" });
+    const headers = (matrix[0] || []).map((cell) => normalizeImportHeader(cell));
+    const idxTyp = findImportColumnIndex(headers, ["typ", "type", "art"]);
+    if (idxTyp < 0) {
+      throw new Error(
+        "Erwartet Blaetter rollen_organisation und positionen, oder eine Spalte typ."
+      );
+    }
+    const idxId = findImportColumnIndex(headers, ["id"]);
+    const idxName = findImportColumnIndex(headers, ["name"]);
+    const idxSort = findImportColumnIndex(headers, ["sort_order", "sortorder"]);
+    if (idxName < 0) throw new Error("Erste Zeile muss name und typ enthalten.");
+    for (let i = 1; i < matrix.length; i += 1) {
+      const line = matrix[i] || [];
+      const typ = String(line[idxTyp] || "").trim().toLowerCase();
+      const name = String(line[idxName] || "").trim();
+      if (!name) continue;
+      const entry = {
+        rowNum: i + 1,
+        id: idxId >= 0 ? String(line[idxId] || "").trim() || undefined : undefined,
+        name,
+        sort_order:
+          idxSort >= 0 ? String(line[idxSort] || "").trim() || undefined : undefined,
+      };
+      if (typ === "position" || typ === "positionen") positions.push(entry);
+      else roles.push(entry);
+    }
+  }
+  if (!roles.length && !positions.length) {
+    throw new Error("Keine Rollen- oder Positionszeilen gefunden.");
+  }
+  return { roles, positions };
+}
+
+function readImportWorkbookFromFile(file, parser) {
+  return new Promise((resolve, reject) => {
+    const reader = new FileReader();
+    reader.onload = (event) => {
+      try {
+        if (typeof XLSX === "undefined") {
+          reject(new Error("Excel-Bibliothek nicht geladen."));
+          return;
+        }
+        const workbook = XLSX.read(event.target.result, { type: "array" });
+        resolve(parser(workbook));
+      } catch (error) {
+        reject(error);
+      }
+    };
+    reader.onerror = () => reject(new Error("Datei konnte nicht gelesen werden."));
+    reader.readAsArrayBuffer(file);
+  });
+}
+
+function formatImportResultMessage(result, label) {
+  const parts = [];
+  if (result.created) parts.push(`${result.created} neu`);
+  if (result.updated) parts.push(`${result.updated} aktualisiert`);
+  let text = parts.length ? `${label}: ${parts.join(", ")}.` : `${label}: keine Aenderungen.`;
+  if (result.errors?.length) {
+    const details = result.errors
+      .slice(0, 5)
+      .map((entry) => {
+        const ref = entry.name || entry.email || "–";
+        const sheet = entry.sheet ? ` [${entry.sheet}]` : "";
+        return `Zeile ${entry.row}${sheet} (${ref}): ${entry.message}`;
+      })
+      .join(" | ");
+    text += ` Fehler: ${details}${result.errors.length > 5 ? " …" : ""}`;
+  }
+  return text;
+}
+
+async function adminExportSkillCategories() {
+  if (typeof XLSX === "undefined") {
+    toast("Excel-Bibliothek nicht geladen.", "#e74c3c");
+    return;
+  }
+  await loadAdminCategoriesCache();
+  if (!adminCategoriesCache.length) {
+    toast("Keine Kategorien zum Exportieren.", "#e74c3c");
+    return;
+  }
+  const matrix = [
+    SKILL_CATEGORY_EXPORT_HEADERS,
+    ...adminCategoriesCache.map(skillCategoryToExportRow),
+  ];
+  const sheet = XLSX.utils.aoa_to_sheet(matrix);
+  const workbook = XLSX.utils.book_new();
+  XLSX.utils.book_append_sheet(workbook, sheet, "skill_kategorien");
+  const stamp = new Date().toISOString().slice(0, 10);
+  XLSX.writeFile(workbook, `skill-kategorien-export-${stamp}.xlsx`);
+  toast(`${adminCategoriesCache.length} Kategorien exportiert.`, "#27ae60");
+}
+
+async function adminImportSkillCategories() {
+  const fileInput = document.getElementById("adm_skill_categories_import_file");
+  const errEl = document.getElementById("admSkillCatImportError");
+  const okEl = document.getElementById("admSkillCatImportSuccess");
+  const file = fileInput?.files?.[0];
+  errEl.style.display = "none";
+  okEl.style.display = "none";
+
+  if (!file) {
+    errEl.textContent = "Bitte eine Excel-Datei auswaehlen.";
+    errEl.style.display = "block";
+    return;
+  }
+
+  let rows;
+  try {
+    rows = await readImportWorkbookFromFile(file, parseSkillCategoriesImportWorkbook);
+  } catch (error) {
+    errEl.textContent = error.message || "Excel-Datei konnte nicht gelesen werden.";
+    errEl.style.display = "block";
+    return;
+  }
+
+  try {
+    const result = await api("/api/admin/skill-categories/import", {
+      method: "POST",
+      body: JSON.stringify({ rows }),
+    });
+    okEl.textContent = formatImportResultMessage(result, "Kategorien-Import");
+    okEl.style.display = "block";
+    if (fileInput) fileInput.value = "";
+    await loadAdminCategoriesCache();
+    renderAdminSkillCategories();
+    await loadSkillCategoriesFromApi();
+    toast("Skill-Kategorien-Import abgeschlossen!");
+  } catch (error) {
+    errEl.textContent = error.message;
+    errEl.style.display = "block";
+  }
+}
+
+async function adminExportCatalogs() {
+  if (typeof XLSX === "undefined") {
+    toast("Excel-Bibliothek nicht geladen.", "#e74c3c");
+    return;
+  }
+  await loadAdminAppRolesCache();
+  await loadAdminAppPositionsCache();
+  if (!adminAppRolesCache.length && !adminAppPositionsCache.length) {
+    toast("Keine Rollen oder Positionen zum Exportieren.", "#e74c3c");
+    return;
+  }
+  const workbook = XLSX.utils.book_new();
+  const rolesSheet = XLSX.utils.aoa_to_sheet([
+    CATALOG_EXPORT_HEADERS,
+    ...adminAppRolesCache.map(catalogItemToExportRow),
+  ]);
+  const positionsSheet = XLSX.utils.aoa_to_sheet([
+    CATALOG_EXPORT_HEADERS,
+    ...adminAppPositionsCache.map(catalogItemToExportRow),
+  ]);
+  XLSX.utils.book_append_sheet(workbook, rolesSheet, "rollen_organisation");
+  XLSX.utils.book_append_sheet(workbook, positionsSheet, "positionen");
+  const stamp = new Date().toISOString().slice(0, 10);
+  XLSX.writeFile(workbook, `rollen-positionen-export-${stamp}.xlsx`);
+  toast(
+    `${adminAppRolesCache.length} Rollen, ${adminAppPositionsCache.length} Positionen exportiert.`,
+    "#27ae60"
+  );
+}
+
+async function adminImportCatalogs() {
+  const fileInput = document.getElementById("adm_catalogs_import_file");
+  const errEl = document.getElementById("admCatalogImportError");
+  const okEl = document.getElementById("admCatalogImportSuccess");
+  const file = fileInput?.files?.[0];
+  errEl.style.display = "none";
+  okEl.style.display = "none";
+
+  if (!file) {
+    errEl.textContent = "Bitte eine Excel-Datei auswaehlen.";
+    errEl.style.display = "block";
+    return;
+  }
+
+  let payload;
+  try {
+    payload = await readImportWorkbookFromFile(file, parseCatalogsImportWorkbook);
+  } catch (error) {
+    errEl.textContent = error.message || "Excel-Datei konnte nicht gelesen werden.";
+    errEl.style.display = "block";
+    return;
+  }
+
+  try {
+    const result = await api("/api/admin/catalogs/import", {
+      method: "POST",
+      body: JSON.stringify(payload),
+    });
+    const parts = [];
+    if (result.roles) parts.push(formatImportResultMessage(result.roles, "Rollen"));
+    if (result.positions) parts.push(formatImportResultMessage(result.positions, "Positionen"));
+    okEl.textContent = parts.length ? parts.join(" ") : formatImportResultMessage(result, "Import");
+    okEl.style.display = "block";
+    if (fileInput) fileInput.value = "";
+    await loadAppRolePositionCatalogFromApi();
+    await loadAdminAppRolesCache();
+    await loadAdminAppPositionsCache();
+    renderAdminRolesAndPositions();
+    toast("Rollen- und Positions-Import abgeschlossen!");
+  } catch (error) {
+    errEl.textContent = error.message;
+    errEl.style.display = "block";
+  }
+}
+
+async function adminImportUsers() {
+  const fileInput = document.getElementById("adm_users_import_file");
+  const errEl = document.getElementById("admImportError");
+  const okEl = document.getElementById("admImportSuccess");
+  const file = fileInput?.files?.[0];
+  errEl.style.display = "none";
+  okEl.style.display = "none";
+
+  if (!file) {
+    errEl.textContent = "Bitte eine Excel-Datei auswaehlen.";
+    errEl.style.display = "block";
+    return;
+  }
+
+  let rows;
+  try {
+    rows = await readAdminUsersImportFile(file);
+  } catch (error) {
+    errEl.textContent = error.message || "Excel-Datei konnte nicht gelesen werden.";
+    errEl.style.display = "block";
+    return;
+  }
+
+  try {
+    const result = await api("/api/admin/users/import", {
+      method: "POST",
+      body: JSON.stringify({ rows }),
+    });
+    const parts = [];
+    if (result.created) parts.push(`${result.created} neu angelegt`);
+    if (result.updated) parts.push(`${result.updated} aktualisiert`);
+    okEl.textContent = parts.length
+      ? `Import abgeschlossen: ${parts.join(", ")}.`
+      : "Import abgeschlossen: keine Aenderungen.";
+    if (result.errors?.length) {
+      const details = result.errors
+        .slice(0, 5)
+        .map((entry) => `Zeile ${entry.row} (${entry.email || "–"}): ${entry.message}`)
+        .join(" | ");
+      okEl.textContent += ` Fehler: ${details}${result.errors.length > 5 ? " …" : ""}`;
+    }
+    okEl.style.display = "block";
+    if (fileInput) fileInput.value = "";
+    await renderAdminUsers();
+    toast("Benutzer-Import abgeschlossen!");
+  } catch (error) {
+    errEl.textContent = error.message;
+    errEl.style.display = "block";
+  }
+}
+
+function updateAdminEditUnitsVisibility() {
+  const roles = getAdminFormRoles("adm_edit_");
+  const unitsHint = document.getElementById("adm_edit_units_hint");
+  const standortWrap = document.getElementById("adm_edit_standort_wrap");
+  const gfWrap = document.getElementById("adm_edit_geschaeftsfuehrung_wrap");
+  const regionalWrap = document.getElementById("adm_edit_regionalleiter_wrap");
+  const unitLeadWrap = document.getElementById("adm_edit_unit_lead_wrap");
+  if (unitsHint) {
+    unitsHint.textContent = roles.includes("mitarbeiter")
+      ? "Genau eine Unit auswaehlen. Pflicht bei Position Mitarbeiter."
+      : roles.some((role) => isUnitScopedSession(role))
+        ? "Mindestens eine Unit erforderlich. Mehrere Units moeglich."
+        : "Optional, sofern keine unitbezogene Position gewaehlt ist.";
+  }
+  updateSuperAdminPasswordField("adm_edit_", editingUserHadSuperAdmin);
+  if (standortWrap) standortWrap.style.display = adminFormRequiresRegionalleiterFields("adm_edit_") ? "" : "none";
+  if (gfWrap) gfWrap.style.display = adminFormRequiresRegionalleiterFields("adm_edit_") ? "" : "none";
+  if (regionalWrap) regionalWrap.style.display = adminFormRequiresRegionalleiter("adm_edit_") ? "" : "none";
+  if (unitLeadWrap) unitLeadWrap.style.display = "none";
+  updateMitarbeiterUnitLeadAutoHint("adm_edit_");
+}
+
+async function onAdminEditRolesChange() {
+  const roles = getAdminFormRoles("adm_edit_");
+  const preserved = getSelectedAdminUnits("adm_edit_units_select");
+  const fallback = editingUserUnits || [];
+  const selected = preserved.length ? preserved : fallback;
+  updateAdminEditUnitsVisibility();
+  const userId = document.getElementById("adm_edit_id")?.value || "";
+  if (adminFormRequiresRegionalleiterFields("adm_edit_")) {
+    const currentGf = document.getElementById("adm_edit_geschaeftsfuehrung_id")?.value || "";
+    renderGeschaeftsfuehrungSelect("adm_edit_geschaeftsfuehrung_id", currentGf, userId);
+  }
+  if (adminFormRequiresRegionalleiter("adm_edit_")) {
+    const currentRl = document.getElementById("adm_edit_regionalleiter_id")?.value || "";
+    renderRegionalleiterSelect("adm_edit_regionalleiter_id", currentRl);
+  }
+  updateMitarbeiterUnitLeadAutoHint("adm_edit_");
+  const pick = roles.includes("mitarbeiter") && selected.length > 1 ? [selected[0]] : selected;
+  await refreshAdminUnitCheckboxes("adm_edit_units_select", pick);
+}
+
+function closeAdminEditUser() {
+  const overlay = document.getElementById("admUserEdit");
+  if (overlay) overlay.style.display = "none";
+  const errEl = document.getElementById("admEditError");
+  if (errEl) errEl.style.display = "none";
+}
+
+async function openAdminEditUser(user) {
+  if (!user) return;
+  await ensureAdminUserFormCatalogs();
+  editingUserHadSuperAdmin = getUserRolesList(user).includes("super_admin");
+  editingUserSnapshot = {
+    standort: user.standort || "",
+    geschaeftsfuehrung_id: user.geschaeftsfuehrung_id || "",
+    regionalleiter_id: user.regionalleiter_id || "",
+    unit_lead_id: user.unit_lead_id || "",
+  };
+  editingUserUnits = Array.isArray(user.units) ? [...user.units] : [];
+  const editOrgRoleIds = resolveUserOrgRoleIds(user);
+  const editPositionIds = resolveUserPositionIds(user);
+  await loadMasterUnitsCache();
+  await refreshAdminUnitCheckboxes("adm_edit_units_select", editingUserUnits);
+  const nameParts = String(user.name || "").split(", ");
+  document.getElementById("adm_edit_id").value = user.id;
+  document.getElementById("adm_edit_email").value = user.email || "";
+  document.getElementById("adm_edit_nachname").value = nameParts[0] || "";
+  document.getElementById("adm_edit_vorname").value = nameParts[1] || "";
+  document.getElementById("adm_edit_pw").value = "";
+  document.getElementById("adm_edit_super_admin_pw").value = "";
+  const personalnummerEl = document.getElementById("adm_edit_personalnummer");
+  if (personalnummerEl) personalnummerEl.value = user.personalnummer || "";
+  setPersonalnummerFieldEditable(canEditPersonalnummer());
+  renderAdminUserCatalogCheckboxes("adm_edit_", editOrgRoleIds, editPositionIds);
+  setAdminFormRoles(
+    "adm_edit_",
+    getUserRolesList(user).filter((role) => SYSTEM_PRIVILEGE_ROLES.includes(role))
+  );
+  setAdminUserCatalogFields("adm_edit_", editOrgRoleIds, editPositionIds);
+  setAdminStandortSelect("adm_edit_standort", user.standort);
+  renderGeschaeftsfuehrungSelect(
+    "adm_edit_geschaeftsfuehrung_id",
+    user.geschaeftsfuehrung_id || "",
+    user.id
+  );
+  renderRegionalleiterSelect(
+    "adm_edit_regionalleiter_id",
+    user.regionalleiter_id || ""
+  );
+  const autoLead = resolveUnitLeadFromMasterUnit(editingUserUnits[0] || "");
+  const leadSelect = document.getElementById("adm_edit_unit_lead_id");
+  if (leadSelect) leadSelect.value = String(autoLead.id || user.unit_lead_id || "");
+  await onAdminEditRolesChange();
+  document.getElementById("admEditError").style.display = "none";
+  document.getElementById("admUserEdit").style.display = "flex";
+  document.getElementById("adm_edit_nachname").focus();
+  initModalSaveButtonTracker("admUserEdit", "admUserEditSave");
+}
+
+async function saveAdminEditUser() {
+  const id = document.getElementById("adm_edit_id").value;
+  const email = document.getElementById("adm_edit_email").value.trim().toLowerCase();
+  const nn = document.getElementById("adm_edit_nachname").value.trim();
+  const vn = document.getElementById("adm_edit_vorname").value.trim();
+  const pw = document.getElementById("adm_edit_pw").value;
+  const roles = getAdminFormRoles("adm_edit_");
+  const units = getSelectedAdminUnits("adm_edit_units_select");
+  const errEl = document.getElementById("admEditError");
+  errEl.style.display = "none";
+
+  if (!id || !email || !nn || !vn) {
+    errEl.textContent = "Bitte alle Pflichtfelder ausfuellen.";
+    errEl.style.display = "block";
+    return;
+  }
+  if (!email.includes("@")) {
+    errEl.textContent = "Bitte gueltige E-Mail eingeben.";
+    errEl.style.display = "block";
+    return;
+  }
+  const positions = getAdminUserPositionIds("adm_edit_");
+  const privilege = getAdminPrivilegeRoles("adm_edit_");
+  if (!positions.length && !privilege.length) {
+    errEl.textContent = "Mindestens eine Position oder Administration-Rolle auswaehlen.";
+    errEl.style.display = "block";
+    return;
+  }
+  if (roles.some((role) => isUnitScopedSession(role)) && !units.length) {
+    errEl.textContent = "Mindestens eine Unit aus der Liste waehlen.";
+    errEl.style.display = "block";
+    return;
+  }
+  if (roles.includes("mitarbeiter") && units.length > 1) {
+    errEl.textContent = "Mitarbeiter koennen nur einer Unit zugewiesen werden.";
+    errEl.style.display = "block";
+    return;
+  }
+  const standort = normalizeUserStandort(
+    document.getElementById("adm_edit_standort")?.value ||
+      editingUserSnapshot?.standort ||
+      ""
+  );
+  const geschaeftsfuehrungId =
+    document.getElementById("adm_edit_geschaeftsfuehrung_id")?.value ||
+    editingUserSnapshot?.geschaeftsfuehrung_id ||
+    "";
+  const regionalleiterId =
+    document.getElementById("adm_edit_regionalleiter_id")?.value ||
+    editingUserSnapshot?.regionalleiter_id ||
+    "";
+  const isMitarbeiterUser =
+    roles.includes("mitarbeiter") || hasMitarbeiterPosition("adm_edit_");
+  let unitLeadId = isMitarbeiterUser
+    ? resolveMitarbeiterUnitLeadId("adm_edit_", units)
+    : document.getElementById("adm_edit_unit_lead_id")?.value ||
+      editingUserSnapshot?.unit_lead_id ||
+      "";
+  if (adminFormRequiresRegionalleiterFields("adm_edit_") && !standort) {
+    errEl.textContent = "Bitte Standort Essen oder Bremen waehlen.";
+    errEl.style.display = "block";
+    return;
+  }
+  if (adminFormRequiresRegionalleiter("adm_edit_") && !regionalleiterId) {
+    errEl.textContent = "Bitte einen Regionalleiter zuweisen.";
+    errEl.style.display = "block";
+    return;
+  }
+  if (isMitarbeiterUser && units.length && !unitLeadId) {
+    errEl.textContent =
+      "Fuer die gewaehlte Unit ist kein Unit Leiter hinterlegt. Bitte unter Units verwalten zuweisen.";
+    errEl.style.display = "block";
+    return;
+  }
+  if (!validateSuperAdminGrantPassword("adm_edit_", editingUserHadSuperAdmin, errEl)) return;
+
+  try {
+    const payload = {
+      email,
+      name: nn + ", " + vn,
+      password: pw || undefined,
+      roles,
+      units,
+      userOrgRoleIds: getAdminUserOrgRoleIds("adm_edit_"),
+      userOrgRoles: getAdminUserOrgRoleNames("adm_edit_"),
+      userPositionIds: getAdminUserPositionIds("adm_edit_"),
+      userPositions: getAdminUserPositionNames("adm_edit_"),
+    };
+    if (adminFormRequiresRegionalleiterFields("adm_edit_")) {
+      payload.standort = standort;
+      if (geschaeftsfuehrungId) payload.geschaeftsfuehrungId = geschaeftsfuehrungId;
+    }
+    if (adminFormRequiresRegionalleiter("adm_edit_")) {
+      payload.regionalleiterId = regionalleiterId;
+    }
+    if (isMitarbeiterUser && unitLeadId) {
+      payload.unitLeadId = unitLeadId;
+    }
+    if (needsSuperAdminGrantPassword("adm_edit_", editingUserHadSuperAdmin)) {
+      payload.superAdminGrantPassword = getSuperAdminGrantPassword("adm_edit_");
+    }
+    if (canEditPersonalnummer()) {
+      payload.personalnummer =
+        document.getElementById("adm_edit_personalnummer")?.value.trim() || "";
+    }
+    await api("/api/admin/users/" + id, {
+      method: "PUT",
+      body: JSON.stringify(payload),
+    });
+  } catch (error) {
+    errEl.textContent = error.message;
+    errEl.style.display = "block";
+    return;
+  }
+
+  const saveBtn = document.getElementById("admUserEditSave");
+  notifyFormSaveSuccess(saveBtn, "Benutzer aktualisiert!");
+  setTimeout(async () => {
+    closeAdminEditUser();
+    await renderAdminUsers();
+  }, 450);
+}
+
+async function adminEditUser(user) {
+  await openAdminEditUser(user);
+}
+
+let adminCategoryKind = "tech";
+let adminCategoriesCache = [];
+let adminAppRolesCache = [];
+let adminAppPositionsCache = [];
+
+async function loadAppRolesFromApi() {
+  try {
+    const roles = await api("/api/app-roles");
+    appRolesCatalog = (roles || [])
+      .map((r) => ({ id: Number(r.id), name: r.name }))
+      .filter((r) => Number.isInteger(r.id) && r.id > 0);
+    setOrgRollen(appRolesCatalog.map((r) => r.name));
+    refreshOrgRolleSelects();
+    return roles;
+  } catch (_e) {
+    appRolesCatalog = [];
+    setOrgRollen(DEFAULT_ORG_ROLLEN);
+    return null;
+  }
+}
+
+async function loadAppPositionsFromApi() {
+  try {
+    const positions = await api("/api/app-positions");
+    appPositionsCatalog = (positions || [])
+      .map((p) => ({ id: Number(p.id), name: p.name }))
+      .filter((p) => Number.isInteger(p.id) && p.id > 0);
+    setAppPositions(appPositionsCatalog.map((p) => p.name));
+    if (document.getElementById("sk_org_roles")) {
+      const editId = document.getElementById("sk_editId")?.value;
+      const entry = editId
+        ? load("skill").find((x) => String(x.id) === String(editId))
+        : null;
+      renderSkillEmployeeCatalogCheckboxes(entry || null);
+    }
+    return positions;
+  } catch (_e) {
+    appPositionsCatalog = [];
+    setAppPositions(DEFAULT_APP_POSITIONS);
+    return null;
+  }
+}
+
+async function loadAppRolePositionCatalogFromApi() {
+  await Promise.all([loadAppRolesFromApi(), loadAppPositionsFromApi()]);
+  if (document.getElementById("adm_edit_user_org_roles_select")) {
+    renderAdminUserCatalogCheckboxes("adm_edit_");
+  }
+}
+
+async function loadAdminAppRolesCache() {
+  try {
+    adminAppRolesCache = await api("/api/admin/app-roles");
+    if (!Array.isArray(adminAppRolesCache)) adminAppRolesCache = [];
+  } catch (error) {
+    adminAppRolesCache = [];
+    console.error("Rollen laden fehlgeschlagen:", error);
+    toast(error.message || "Rollen konnten nicht geladen werden.", "#e74c3c", 5000);
+  }
+}
+
+async function loadAdminAppPositionsCache() {
+  try {
+    adminAppPositionsCache = await api("/api/admin/app-positions");
+    if (!Array.isArray(adminAppPositionsCache)) adminAppPositionsCache = [];
+    appPositionsCatalog = adminAppPositionsCache
+      .map((p) => ({ id: Number(p.id), name: p.name }))
+      .filter((p) => Number.isInteger(p.id) && p.id > 0);
+    setAppPositions(appPositionsCatalog.map((p) => p.name));
+  } catch (error) {
+    adminAppPositionsCache = [];
+    console.error("Positionen laden fehlgeschlagen:", error);
+    toast(error.message || "Positionen konnten nicht geladen werden.", "#e74c3c", 5000);
+  }
+}
+
+function renderAdminCatalogTable({ tbodyId, emptyId, items, editAction, deleteAction, onEdit, onDelete }) {
+  const tbody = document.getElementById(tbodyId);
+  const empty = document.getElementById(emptyId);
+  if (!tbody) return;
+  if (!items.length) {
+    tbody.innerHTML = "";
+    if (empty) empty.style.display = "block";
+    return;
+  }
+  if (empty) empty.style.display = "none";
+  tbody.innerHTML = items
+    .map(
+      (item) =>
+        `<tr>` +
+        `<td><strong>${esc(item.name)}</strong></td>` +
+        `<td style="white-space:nowrap">` +
+        `<button type="button" class="btn btn-sm btn-outline" data-action="${editAction}" data-item-id="${item.id}">✏️ Bearbeiten</button> ` +
+        `<button type="button" class="btn btn-sm btn-danger" data-action="${deleteAction}" data-item-id="${item.id}">🗑️</button>` +
+        `</td></tr>`
+    )
+    .join("");
+  tbody.querySelectorAll(`[data-action="${editAction}"]`).forEach((btn) => {
+    btn.addEventListener("click", () => {
+      const item = items.find((r) => String(r.id) === String(btn.getAttribute("data-item-id")));
+      if (item) onEdit(item);
+    });
+  });
+  tbody.querySelectorAll(`[data-action="${deleteAction}"]`).forEach((btn) => {
+    btn.addEventListener("click", () => onDelete(btn.getAttribute("data-item-id")));
+  });
+}
+
+async function renderAdminRolesAndPositions() {
+  if (!isAdmin) return;
+  await loadAdminAppRolesCache();
+  await loadAdminAppPositionsCache();
+  renderAdminCatalogTable({
+    tbodyId: "admRolesBody",
+    emptyId: "admRolesEmpty",
+    items: adminAppRolesCache,
+    editAction: "edit-role",
+    deleteAction: "delete-role",
+    onEdit: openAdminRoleEdit,
+    onDelete: deleteAdminAppRole,
+  });
+  renderAdminCatalogTable({
+    tbodyId: "admPositionsBody",
+    emptyId: "admPositionsEmpty",
+    items: adminAppPositionsCache,
+    editAction: "edit-position",
+    deleteAction: "delete-position",
+    onEdit: openAdminPositionEdit,
+    onDelete: deleteAdminAppPosition,
+  });
+}
+
+function closeAdminRoleEdit() {
+  document.getElementById("admRoleEdit").style.display = "none";
+  document.getElementById("admRoleEditError").style.display = "none";
+}
+
+function openAdminRoleEdit(role) {
+  const isNew = !role;
+  document.getElementById("admRoleEditTitle").textContent = isNew ? "Neue Rolle" : "Rolle bearbeiten";
+  document.getElementById("adm_role_edit_id").value = isNew ? "" : role.id;
+  document.getElementById("adm_role_name").value = isNew ? "" : role.name || "";
+  document.getElementById("admRoleEditError").style.display = "none";
+  document.getElementById("admRoleEdit").style.display = "flex";
+  document.getElementById("adm_role_name").focus();
+  initModalSaveButtonTracker("admRoleEdit", "admRoleEditSave");
+}
+
+async function saveAdminRoleEdit() {
+  const errEl = document.getElementById("admRoleEditError");
+  errEl.style.display = "none";
+  const id = document.getElementById("adm_role_edit_id").value;
+  const name = document.getElementById("adm_role_name").value.trim();
+  if (!name) {
+    errEl.textContent = "Bitte einen Namen eingeben.";
+    errEl.style.display = "block";
+    return;
+  }
+  try {
+    if (id) {
+      await api(`/api/admin/app-roles/${id}`, { method: "PUT", body: JSON.stringify({ name }) });
+    } else {
+      await api("/api/admin/app-roles", { method: "POST", body: JSON.stringify({ name }) });
+    }
+  } catch (error) {
+    errEl.textContent = error.message;
+    errEl.style.display = "block";
+    return;
+  }
+  const saveBtn = document.getElementById("admRoleEditSave");
+  notifyFormSaveSuccess(saveBtn, "Rolle gespeichert.");
+  setTimeout(async () => {
+    closeAdminRoleEdit();
+    await loadAppRolePositionCatalogFromApi();
+    await renderAdminRolesAndPositions();
+    if (isAdmin) await renderAdminUsers();
+    refreshOrgRolleSelects();
+    const editId = document.getElementById("sk_editId")?.value;
+    const entry = editId
+      ? load("skill").find((x) => String(x.id) === String(editId))
+      : null;
+    renderSkillEmployeeCatalogCheckboxes(entry || null);
+  }, 450);
+}
+
+async function deleteAdminAppRole(id) {
+  const role = adminAppRolesCache.find((r) => String(r.id) === String(id));
+  if (!role) return;
+  if (!confirm(`Rolle „${role.name}“ wirklich loeschen?`)) return;
+  await api(`/api/admin/app-roles/${id}`, { method: "DELETE" });
+  await loadAppRolePositionCatalogFromApi();
+  await renderAdminRolesAndPositions();
+  toast("Rolle geloescht.", "#e74c3c");
+}
+
+function closeAdminPositionEdit() {
+  document.getElementById("admPositionEdit").style.display = "none";
+  document.getElementById("admPositionEditError").style.display = "none";
+}
+
+function openAdminPositionEdit(position) {
+  const isNew = !position;
+  document.getElementById("admPositionEditTitle").textContent = isNew
+    ? "Neue Position"
+    : "Position bearbeiten";
+  document.getElementById("adm_position_edit_id").value = isNew ? "" : position.id;
+  document.getElementById("adm_position_name").value = isNew ? "" : position.name || "";
+  document.getElementById("admPositionEditError").style.display = "none";
+  document.getElementById("admPositionEdit").style.display = "flex";
+  document.getElementById("adm_position_name").focus();
+  initModalSaveButtonTracker("admPositionEdit", "admPositionEditSave");
+}
+
+async function saveAdminPositionEdit() {
+  const errEl = document.getElementById("admPositionEditError");
+  errEl.style.display = "none";
+  const id = document.getElementById("adm_position_edit_id").value;
+  const name = document.getElementById("adm_position_name").value.trim();
+  if (!name) {
+    errEl.textContent = "Bitte einen Namen eingeben.";
+    errEl.style.display = "block";
+    return;
+  }
+  try {
+    if (id) {
+      await api(`/api/admin/app-positions/${id}`, { method: "PUT", body: JSON.stringify({ name }) });
+    } else {
+      await api("/api/admin/app-positions", { method: "POST", body: JSON.stringify({ name }) });
+    }
+  } catch (error) {
+    errEl.textContent = error.message;
+    errEl.style.display = "block";
+    return;
+  }
+  const saveBtn = document.getElementById("admPositionEditSave");
+  notifyFormSaveSuccess(saveBtn, "Position gespeichert.");
+  setTimeout(async () => {
+    closeAdminPositionEdit();
+    await loadAppRolePositionCatalogFromApi();
+    await renderAdminRolesAndPositions();
+    if (isAdmin) await renderAdminUsers();
+    const editId = document.getElementById("sk_editId")?.value;
+    const entry = editId
+      ? load("skill").find((x) => String(x.id) === String(editId))
+      : null;
+    renderSkillEmployeeCatalogCheckboxes(entry || null);
+  }, 450);
+}
+
+async function deleteAdminAppPosition(id) {
+  const position = adminAppPositionsCache.find((p) => String(p.id) === String(id));
+  if (!position) return;
+  if (!confirm(`Position „${position.name}“ wirklich loeschen?`)) return;
+  await api(`/api/admin/app-positions/${id}`, { method: "DELETE" });
+  await loadAppRolePositionCatalogFromApi();
+  await renderAdminRolesAndPositions();
+  toast("Position geloescht.", "#e74c3c");
+}
+
+async function loadSkillCategoriesFromApi() {
+  try {
+    const data = await api("/api/skill-categories");
+    setSkillCategories(
+      (data.tech || []).map((c) => ({
+        ...c,
+        beispielTechnologien: c.beispiel,
+      }))
+    );
+    setSoftSkillCategories(
+      (data.soft || []).map((c) => ({
+        ...c,
+        beispielKompetenzen: c.beispiel,
+      }))
+    );
+    return data;
+  } catch (_e) {
+    return null;
+  }
+}
+
+async function loadAdminCategoriesCache() {
+  try {
+    adminCategoriesCache = await api("/api/admin/skill-categories");
+  } catch (_e) {
+    adminCategoriesCache = [];
+  }
+}
+
+function normalizeAdminCategoryKind(kind) {
+  return kind === "soft" ? "soft" : "tech";
+}
+
+function renderAdminCategoryTable(kind) {
+  const safeKind = normalizeAdminCategoryKind(kind);
+  const suffix = safeKind === "soft" ? "Soft" : "Tech";
+  const tbody = document.getElementById(`admCategoriesBody${suffix}`);
+  const empty = document.getElementById(`admCategoriesEmpty${suffix}`);
+  const countEl = document.getElementById(`adm${suffix}CatCount`);
+  if (!tbody) return;
+
+  const rows = adminCategoriesCache.filter((c) => c.kind === safeKind);
+  if (countEl) countEl.textContent = String(rows.length);
+  if (!rows.length) {
+    tbody.innerHTML = "";
+    if (empty) empty.style.display = "block";
+    return;
+  }
+  if (empty) empty.style.display = "none";
+
+  tbody.innerHTML = rows
+    .map(
+      (c) =>
+        `<tr>` +
+        `<td><strong>${esc(c.name)}</strong></td>` +
+        `<td>${esc(c.beschreibung || "–")}</td>` +
+        `<td>${esc(c.beispiel || "–")}</td>` +
+        `<td style="white-space:nowrap">` +
+        `<button type="button" class="btn btn-sm btn-outline" data-action="edit-cat" data-cat-id="${c.id}">✏️ Bearbeiten</button> ` +
+        `<button type="button" class="btn btn-sm btn-danger" data-action="delete-cat" data-cat-id="${c.id}">🗑️</button>` +
+        `</td></tr>`
+    )
+    .join("");
+
+  tbody.querySelectorAll('[data-action="edit-cat"]').forEach((btn) => {
+    btn.addEventListener("click", () => {
+      const cat = adminCategoriesCache.find((c) => String(c.id) === String(btn.getAttribute("data-cat-id")));
+      if (cat) openAdminCategoryEdit(cat);
+    });
+  });
+  tbody.querySelectorAll('[data-action="delete-cat"]').forEach((btn) => {
+    btn.addEventListener("click", () => deleteAdminCategory(btn.getAttribute("data-cat-id")));
+  });
+}
+
+function refreshSkillAssessmentCategoryLabels() {
+  document.querySelectorAll("#sk_assessment_rows .skill-assessment-row--view").forEach((row) => {
+    const data = enrichTechSkillItemClient(JSON.parse(row.dataset.skillPayload || "{}"));
+    renderTechSkillRowView(row, data);
+  });
+  document.querySelectorAll("#ss_assessment_rows .skill-assessment-row--view").forEach((row) => {
+    const data = enrichSoftSkillItemClient(JSON.parse(row.dataset.skillPayload || "{}"));
+    renderSoftSkillRowView(row, data);
+  });
+}
+
+async function reloadOpenSkillEmployeeAfterCatalogChange() {
+  await refreshEntries();
+  const editId = document.getElementById("sk_editId")?.value || "";
+  if (!editId) return;
+  const entry = load("skill").find((x) => String(x.id) === String(editId));
+  if (entry) await loadSkillEmployeeEntry(entry);
+}
+
+function refreshOpenSkillCategorySelects() {
+  document
+    .querySelectorAll("#sk_assessment_rows .skill-assessment-row--editing")
+    .forEach((row) => {
+      const data = readTechSkillPayloadFromForm(row);
+      const sel = row.querySelector(".sk-kategorie");
+      if (!sel) return;
+      sel.innerHTML = buildCategoryOptions(data.kategorie, data.kategorie_id);
+      const resolved = resolveCategorySelect(data.kategorie, data.kategorie_id);
+      sel.value = resolved.value;
+      const other = row.querySelector(".sk-kategorie-other");
+      if (other) other.value = resolved.other || "";
+      syncSonstigesFieldsInRow(row);
+    });
+  document
+    .querySelectorAll("#ss_assessment_rows .skill-assessment-row--editing")
+    .forEach((row) => {
+      const data = readSoftSkillPayloadFromForm(row);
+      const sel = row.querySelector(".ss-kategorie");
+      if (!sel) return;
+      sel.innerHTML = buildSoftCategoryOptions(data.kategorie, data.kategorie_id);
+      const resolved = resolveSoftCategorySelect(data.kategorie, data.kategorie_id);
+      sel.value = resolved.value;
+      const other = row.querySelector(".ss-kategorie-other");
+      if (other) other.value = resolved.other || "";
+      syncSonstigesFieldsInRow(row, "ss");
+    });
+  refreshSkillAssessmentCategoryLabels();
+  refreshSkillInfoPanel();
+}
+
+async function renderAdminSkillCategories() {
+  if (!isAdmin) return;
+  await loadAdminCategoriesCache();
+  renderAdminCategoryTable("tech");
+  renderAdminCategoryTable("soft");
+}
+
+function updateAdminCategoryEditLabels() {
+  const label = document.getElementById("adm_cat_beispiel_label");
+  const kind = normalizeAdminCategoryKind(
+    document.getElementById("adm_cat_edit_kind")?.value || adminCategoryKind
+  );
+  if (label) {
+    label.textContent = kind === "soft" ? "Beispiel-Kompetenzen" : "Beispiel-Technologien";
+  }
+}
+
+function closeAdminCategoryEdit() {
+  document.getElementById("admCategoryEdit").style.display = "none";
+  document.getElementById("admCategoryEditError").style.display = "none";
+}
+
+function openAdminCategoryEdit(category, kindOverride = null) {
+  const isNew = !category;
+  const kind = normalizeAdminCategoryKind(category?.kind || kindOverride || adminCategoryKind);
+  document.getElementById("admCategoryEditTitle").textContent = isNew
+    ? "Neue Kategorie"
+    : "Kategorie bearbeiten";
+  document.getElementById("adm_cat_edit_id").value = isNew ? "" : category.id;
+  document.getElementById("adm_cat_edit_kind").value = kind;
+  document.getElementById("adm_cat_name").value = isNew ? "" : category.name || "";
+  document.getElementById("adm_cat_beschreibung").value = isNew ? "" : category.beschreibung || "";
+  document.getElementById("adm_cat_beispiel").value = isNew ? "" : category.beispiel || "";
+  document.getElementById("admCategoryEditError").style.display = "none";
+  adminCategoryKind = kind;
+  updateAdminCategoryEditLabels();
+  document.getElementById("admCategoryEdit").style.display = "flex";
+  document.getElementById("adm_cat_name").focus();
+  initModalSaveButtonTracker("admCategoryEdit", "admCategoryEditSave");
+}
+
+async function saveAdminCategoryEdit() {
+  const errEl = document.getElementById("admCategoryEditError");
+  errEl.style.display = "none";
+
+  const id = document.getElementById("adm_cat_edit_id").value;
+  const kind = document.getElementById("adm_cat_edit_kind").value || adminCategoryKind;
+  const name = document.getElementById("adm_cat_name").value.trim();
+  const beschreibung = document.getElementById("adm_cat_beschreibung").value.trim();
+  const beispiel = document.getElementById("adm_cat_beispiel").value.trim();
+
+  if (!name) {
+    errEl.textContent = "Bitte Kategorie-Namen eingeben.";
+    errEl.style.display = "block";
+    return;
+  }
+
+  const payload = { name, beschreibung, beispiel };
+  try {
+    if (id) {
+      await api(`/api/admin/skill-categories/${id}`, {
+        method: "PUT",
+        body: JSON.stringify(payload),
+      });
+    } else {
+      await api("/api/admin/skill-categories", {
+        method: "POST",
+        body: JSON.stringify({ ...payload, kind }),
+      });
+    }
+  } catch (error) {
+    errEl.textContent = error.message;
+    errEl.style.display = "block";
+    return;
+  }
+
+  const saveBtn = document.getElementById("admCategoryEditSave");
+  notifyFormSaveSuccess(saveBtn, "Kategorie gespeichert.");
+  setTimeout(async () => {
+    closeAdminCategoryEdit();
+    await loadSkillCategoriesFromApi();
+    await renderAdminSkillCategories();
+    refreshOpenSkillCategorySelects();
+    await reloadOpenSkillEmployeeAfterCatalogChange();
+  }, 450);
+}
+
+async function deleteAdminCategory(id) {
+  const cat = adminCategoriesCache.find((c) => String(c.id) === String(id));
+  if (!cat) return;
+  if (!confirm(`Kategorie „${cat.name}“ wirklich loeschen?`)) return;
+  await api(`/api/admin/skill-categories/${id}`, { method: "DELETE" });
+  await loadSkillCategoriesFromApi();
+  await renderAdminSkillCategories();
+  refreshOpenSkillCategorySelects();
+  await reloadOpenSkillEmployeeAfterCatalogChange();
+  toast("Kategorie geloescht.", "#e74c3c");
+}
+
+function groupFlatOrgUnitsByLead(units) {
+  const byLead = new Map();
+  const withoutLead = [];
+  for (const unit of units || []) {
+    const lead = unit.unitLead;
+    const unitNode = {
+      name: unit.name,
+      mitarbeiter: unit.mitarbeiter || [],
+    };
+    if (lead?.id) {
+      const leadId = String(lead.id);
+      if (!byLead.has(leadId)) {
+        byLead.set(leadId, { branchType: "unit_lead", unitLead: lead, units: [] });
+      }
+      byLead.get(leadId).units.push(unitNode);
+    } else {
+      withoutLead.push(unitNode);
+    }
+  }
+  const unitLeads = [...byLead.values()].sort((a, b) =>
+    String(a.unitLead?.name || "").localeCompare(String(b.unitLead?.name || ""), "de")
+  );
+  if (withoutLead.length) {
+    unitLeads.push({ branchType: "orphan_units", unitLead: null, units: withoutLead });
+  }
+  return unitLeads;
+}
+
+function normalizeOrgChartRegionalleiter(reg) {
+  if (!reg) return reg;
+  if (Array.isArray(reg.unitLeads)) {
+    return {
+      ...reg,
+      layout: reg.layout || (reg.unitLeads.length ? "unit_leads" : "supervisors"),
+      unitLeads: reg.unitLeads,
+    };
+  }
+  if (Array.isArray(reg.units) && reg.units.length) {
+    const isSupervisorShape = reg.units.some(
+      (branch) => branch.branchType === "unit_lead" || branch.branchType === "direct" || branch.mitarbeiter
+    );
+    if (isSupervisorShape && reg.layout === "supervisors") {
+      return {
+        ...reg,
+        layout: "supervisors",
+        unitLeads: reg.units.map((branch) => ({
+          branchType: branch.branchType,
+          unitLead: branch.unitLead,
+          units: [],
+          mitarbeiter: branch.mitarbeiter || [],
+          name: branch.name,
+        })),
+      };
+    }
+    return {
+      ...reg,
+      layout: "unit_leads",
+      unitLeads: groupFlatOrgUnitsByLead(reg.units),
+    };
+  }
+  return { ...reg, layout: "supervisors", unitLeads: [] };
+}
+
+function normalizeOrgChartData(data) {
+  if (!data?.geschaeftsfuehrung) return data;
+  return {
+    geschaeftsfuehrung: data.geschaeftsfuehrung.map((gf) => ({
+      ...gf,
+      regionalleiter: (gf.regionalleiter || []).map(normalizeOrgChartRegionalleiter),
+    })),
+  };
+}
+
+function orgNodeHtml(person, cssClass, roleText, extraHtml) {
+  return (
+    `<div class="org-node ${cssClass}">` +
+    `<div class="org-node-role">${esc(roleText)}</div>` +
+    `<div class="org-node-name">${esc(person.name)}</div>` +
+    (extraHtml || "") +
+    `<div class="org-node-email">${esc(person.email)}</div>` +
+    `</div>`
+  );
+}
+
+function orgEmptyHtml(text) {
+  return `<div class="org-empty-hint">${esc(text)}</div>`;
+}
+
+function renderOrgUnitWithStaff(unit) {
+  const staffHtml = unit.mitarbeiter?.length
+    ? unit.mitarbeiter.map((p) => orgNodeHtml(p, "org-node--mitarbeiter", "Mitarbeiter")).join("")
+    : orgEmptyHtml("Keine Mitarbeiter");
+
+  return (
+    `<div class="org-unit-column">` +
+    `<div class="org-node org-node--unit">` +
+    `<div class="org-node-role">Unit</div>` +
+    `<div class="org-node-unit">${esc(unit.name)}</div>` +
+    `</div>` +
+    `<div class="org-connector-v"></div>` +
+    `<div class="org-tier org-tier--mitarbeiter">` +
+    `<div class="org-mitarbeiter-row">${staffHtml}</div>` +
+    `</div>` +
+    `</div>`
+  );
+}
+
+function renderOrgUnitLeadDirectStaff(branch) {
+  const staffHtml = branch.mitarbeiter?.length
+    ? branch.mitarbeiter.map((p) => orgNodeHtml(p, "org-node--mitarbeiter", "Mitarbeiter")).join("")
+    : orgEmptyHtml("Keine Mitarbeiter");
+
+  let headHtml;
+  if (branch.unitLead) {
+    const unitsHint =
+      branch.name && branch.name !== branch.unitLead.name
+        ? `<div class="org-node-meta">${esc(branch.name)}</div>`
+        : "";
+    headHtml = orgNodeHtml(branch.unitLead, "org-node--lead", "Unit Lead") + unitsHint;
+  } else {
+    headHtml =
+      `<div class="org-node org-node--unit org-node--team">` +
+      `<div class="org-node-role">Team</div>` +
+      `<div class="org-node-unit">${esc(branch.name || "Direkt der Regionalleitung")}</div>` +
+      `</div>`;
+  }
+
+  return (
+    `<div class="org-unitlead-column org-supervisor-column">` +
+    headHtml +
+    `<div class="org-connector-v"></div>` +
+    `<div class="org-tier org-tier--mitarbeiter">` +
+    `<div class="org-mitarbeiter-row">${staffHtml}</div>` +
+    `</div>` +
+    `</div>`
+  );
+}
+
+function renderOrgUnitLeadBranch(branch) {
+  if (!branch.units?.length) {
+    return renderOrgUnitLeadDirectStaff(branch);
+  }
+
+  const unitsHtml = branch.units.map((unit) => renderOrgUnitWithStaff(unit)).join("");
+
+  let headHtml;
+  if (branch.unitLead) {
+    headHtml = orgNodeHtml(branch.unitLead, "org-node--lead", "Unit Lead");
+  } else {
+    headHtml =
+      `<div class="org-node org-node--unit org-node--team">` +
+      `<div class="org-node-role">Units</div>` +
+      `<div class="org-node-unit">Ohne Unit Lead</div>` +
+      `</div>`;
+  }
+
+  return (
+    `<div class="org-unitlead-column">` +
+    headHtml +
+    `<div class="org-connector-v"></div>` +
+    `<div class="org-tier org-tier--units">` +
+    `<div class="org-tier-label">Units</div>` +
+    `<div class="org-tier-columns org-unit-columns org-unitlead-units">${unitsHtml}</div>` +
+    `</div>` +
+    `</div>`
+  );
+}
+
+function renderOrgRegionalHead(reg) {
+  const standortHtml = reg.standort
+    ? `<div class="org-node-standort">${esc(reg.standort)}</div>`
+    : "";
+  return (
+    `<div class="org-regional-head">` +
+    `<div class="org-node org-node--regional">` +
+    `<div class="org-node-role">Regionalleitung</div>` +
+    `<div class="org-node-name">${esc(reg.name)}</div>` +
+    standortHtml +
+    `<div class="org-node-email">${esc(reg.email)}</div>` +
+    `</div>` +
+    `</div>`
+  );
+}
+
+function renderOrgRegionalBranch(reg) {
+  const useSupervisors = reg.layout === "supervisors";
+  const tierLabel = useSupervisors ? "Vorgesetzte & Teams" : "Unit Leads";
+  const emptyHint = useSupervisors
+    ? "Keine Vorgesetzten oder Mitarbeiter zugewiesen"
+    : "Keine Unit Leads oder Units zugewiesen";
+  const unitLeads = reg.unitLeads || [];
+
+  const branchesHtml = unitLeads.length
+    ? unitLeads.map((branch) => renderOrgUnitLeadBranch(branch)).join("")
+    : orgEmptyHtml(emptyHint);
+
+  return (
+    `<div class="org-regional-column">` +
+    `<div class="org-connector-v"></div>` +
+    `<div class="org-tier org-tier--units${useSupervisors ? " org-tier--supervisors" : " org-tier--unitleads"}">` +
+    `<div class="org-tier-label">${tierLabel}</div>` +
+    `<div class="org-tier-columns org-unit-columns org-unitlead-columns">${branchesHtml}</div>` +
+    `</div>` +
+    `</div>`
+  );
+}
+
+function sortOrgRegionalleiter(regionalleiter) {
+  const standortOrder = { Essen: 0, Bremen: 1 };
+  return [...(regionalleiter || [])].sort((a, b) => {
+    const sa = standortOrder[a.standort] ?? 99;
+    const sb = standortOrder[b.standort] ?? 99;
+    if (sa !== sb) return sa - sb;
+    return String(a.name || "").localeCompare(String(b.name || ""), "de");
+  });
+}
+
+function renderOrgGeschaeftsfuehrungTree(gf) {
+  const regionalList = sortOrgRegionalleiter(gf.regionalleiter);
+  const regionalCount = regionalList.length;
+  const forkMod =
+    regionalCount > 1 ? " org-fork--multi" : regionalCount === 1 ? " org-fork--single" : "";
+
+  const regionalHtml = regionalCount
+    ? regionalList
+        .map(
+          (r) =>
+            `<div class="org-regional-branch">` +
+            renderOrgRegionalHead(r) +
+            renderOrgRegionalBranch(r) +
+            `</div>`
+        )
+        .join("")
+    : `<div class="org-regional-branch org-regional-branch--empty">${orgEmptyHtml("Keine Regionalleiter zugewiesen")}</div>`;
+
+  return (
+    `<section class="org-tree">` +
+    `<div class="org-tier org-tier--geschaeftsfuehrung">` +
+    `<div class="org-tier-label">Geschaeftsfuehrung</div>` +
+    `<div class="org-tier-nodes">${orgNodeHtml(gf, "org-node--gf", "Geschaeftsfuehrung")}</div>` +
+    `</div>` +
+    `<div class="org-fork${forkMod}">` +
+    `<div class="org-fork-stem" aria-hidden="true"></div>` +
+    `<div class="org-tier org-tier--regional">` +
+    `<div class="org-tier-label">Regionalleitung</div>` +
+    `<div class="org-tier-columns org-regional-columns org-fork-branches">${regionalHtml}</div>` +
+    `</div>` +
+    `</div>` +
+    `</section>`
+  );
+}
+
+function renderAdminOrgChartHtml(data) {
+  const trees = data.geschaeftsfuehrung?.length
+    ? data.geschaeftsfuehrung.map((gf) => renderOrgGeschaeftsfuehrungTree(gf)).join("")
+    : orgEmptyHtml("Geschaeftsfuehrung – Benutzer mit Rolle Geschaeftsfuehrung anlegen");
+
+  return `<div class="org-chart org-chart--hierarchy">${trees}</div>`;
+}
+
+function orgChartHasContent(data) {
+  return data.geschaeftsfuehrung?.some((gf) => {
+    if (!gf.regionalleiter?.length) return true;
+    return gf.regionalleiter.some((r) =>
+      (r.unitLeads || []).some(
+        (b) =>
+          b.unitLead ||
+          b.units?.some((u) => u.mitarbeiter?.length || u.name) ||
+          b.mitarbeiter?.length ||
+          b.name
+      )
+    );
+  });
+}
+
+async function renderAdminOrgChart() {
+  if (!isAdmin) return;
+  const box = document.getElementById("adminOrgChart");
+  const empty = document.getElementById("adminOrgEmpty");
+  if (!box) return;
+
+  try {
+    const data = normalizeOrgChartData(await api("/api/admin/org-chart"));
+    const hasContent = orgChartHasContent(data) || data.geschaeftsfuehrung?.length;
+    if (!hasContent) {
+      box.innerHTML = "";
+      box.style.display = "none";
+      if (empty) empty.style.display = "block";
+      return;
+    }
+    box.style.display = "";
+    if (empty) empty.style.display = "none";
+    box.innerHTML = renderAdminOrgChartHtml(data);
+    box.scrollTop = 0;
+    box.scrollLeft = 0;
+  } catch (error) {
+    box.innerHTML = `<p style="color:#c0392b;font-size:.82rem">${esc(error.message)}</p>`;
+    if (empty) empty.style.display = "none";
+  }
+}
+
+document.getElementById("admUserFilterName")?.addEventListener("input", renderAdminUsersTableBody);
+document.getElementById("admUserFilterUnit")?.addEventListener("change", renderAdminUsersTableBody);
+document.getElementById("btnAdminExportUsers")?.addEventListener("click", adminExportUsers);
+document.getElementById("btnAdminImportUsers")?.addEventListener("click", adminImportUsers);
+document.getElementById("btnAdminExportSkillCategories")?.addEventListener("click", adminExportSkillCategories);
+document.getElementById("btnAdminImportSkillCategories")?.addEventListener("click", adminImportSkillCategories);
+document.getElementById("btnAdminExportCatalogs")?.addEventListener("click", adminExportCatalogs);
+document.getElementById("btnAdminImportCatalogs")?.addEventListener("click", adminImportCatalogs);
+document.getElementById("adminPanelUsers")?.addEventListener("change", onAdminUnitsSelectionChange);
 document.getElementById("btnAdminAddUnit")?.addEventListener("click", adminAddMasterUnit);
-document.getElementById("adm_role")?.addEventListener("change", updateAdminUnitsFieldVisibility);
+document.getElementById("btnAdminSubtabUsers")?.addEventListener("click", () => setAdminSubtab("users"));
+document.getElementById("btnAdminSubtabSkills")?.addEventListener("click", () => setAdminSubtab("skills"));
+document.getElementById("btnAdminSubtabRoles")?.addEventListener("click", () => setAdminSubtab("roles"));
+document.getElementById("btnAdminSubtabOrg")?.addEventListener("click", () => setAdminSubtab("org"));
+document.getElementById("btnAdminRoleNew")?.addEventListener("click", () => openAdminRoleEdit(null));
+document.getElementById("btnAdminPositionNew")?.addEventListener("click", () => openAdminPositionEdit(null));
+document.getElementById("admRoleEditCancel")?.addEventListener("click", closeAdminRoleEdit);
+document.getElementById("admRoleEditSave")?.addEventListener("click", saveAdminRoleEdit);
+document.getElementById("admPositionEditCancel")?.addEventListener("click", closeAdminPositionEdit);
+document.getElementById("admPositionEditSave")?.addEventListener("click", saveAdminPositionEdit);
+document.getElementById("btnAdminCatNewTech")?.addEventListener("click", () => openAdminCategoryEdit(null, "tech"));
+document.getElementById("btnAdminCatNewSoft")?.addEventListener("click", () => openAdminCategoryEdit(null, "soft"));
+document.getElementById("admCategoryEditCancel")?.addEventListener("click", closeAdminCategoryEdit);
+document.getElementById("admCategoryEditSave")?.addEventListener("click", saveAdminCategoryEdit);
+document.getElementById("admCategoryEdit")?.addEventListener("click", (e) => {
+  if (e.target.id === "admCategoryEdit") closeAdminCategoryEdit();
+});
+document.getElementById("admUnitEditCancel")?.addEventListener("click", closeAdminEditUnit);
+document.getElementById("admUnitEditSave")?.addEventListener("click", saveAdminEditUnit);
+document.getElementById("admUnitEdit")?.addEventListener("click", (e) => {
+  if (e.target.id === "admUnitEdit") closeAdminEditUnit();
+});
+function bindAdminRoleSectionChange(containerId, handler) {
+  const box = document.getElementById(containerId);
+  if (!box) return;
+  box.addEventListener("change", (e) => {
+    if (e.target.matches("input[data-admin-role]")) handler();
+  });
+}
+function bindAdminPositionsChange(containerId, handler) {
+  const box = document.getElementById(containerId);
+  if (!box) return;
+  box.addEventListener("change", (e) => {
+    if (e.target.matches("input[data-user-position-id], input[data-user-position]")) handler();
+  });
+}
+bindAdminRoleSectionChange("adm_edit_privilege_roles_select", onAdminEditRolesChange);
+bindAdminPositionsChange("adm_edit_user_positions_select", onAdminEditRolesChange);
+document.getElementById("admUserEditCancel")?.addEventListener("click", closeAdminEditUser);
+document.getElementById("admUserEditSave")?.addEventListener("click", saveAdminEditUser);
+document.getElementById("admUserEdit")?.addEventListener("click", (e) => {
+  if (e.target.id === "admUserEdit") closeAdminEditUser();
+});
+
+// Portfolio forms
+document.getElementById("portfolioProdukteForm")?.addEventListener("submit", (e) => onSubmitPortfolio("produkte", e));
+document.getElementById("portfolioServicesForm")?.addEventListener("submit", (e) => onSubmitPortfolio("services", e));
+document.getElementById("portfolioLoesungenForm")?.addEventListener("submit", (e) => onSubmitPortfolio("loesungen", e));
+document.getElementById("portfolioPartnergeschaeftForm")?.addEventListener("submit", (e) => onSubmitPortfolio("partnergeschaeft", e));
+document.getElementById("portfolioProjektgeschaeftForm")?.addEventListener("submit", (e) => onSubmitPortfolio("projektgeschaeft", e));
+document.getElementById("btnPfProdCancel")?.addEventListener("click", () => cancelPortfolioEdit("produkte"));
+document.getElementById("btnPfSrvCancel")?.addEventListener("click", () => cancelPortfolioEdit("services"));
+document.getElementById("btnPfSolCancel")?.addEventListener("click", () => cancelPortfolioEdit("loesungen"));
+document.getElementById("btnPfPgsCancel")?.addEventListener("click", () => cancelPortfolioEdit("partnergeschaeft"));
+document.getElementById("btnPfPjgCancel")?.addEventListener("click", () => cancelPortfolioEdit("projektgeschaeft"));
+
+document.getElementById("organisationForm")?.addEventListener("submit", onSubmitOrganisation);
+document.getElementById("org_hat_gliederung")?.addEventListener("change", () => {
+  updateOrgGliederungSectionVisibility();
+  if (document.getElementById("org_hat_gliederung")?.value === "ja") {
+    const section = document.getElementById("orgSectionGliederung");
+    if (section) section.open = true;
+    const rows = document.querySelectorAll("#org_gliederung_rows .org-gliederung-row");
+    if (!rows.length) addOrgGliederungRow();
+    else renderOrgGliederungCharts();
+  }
+});
+document.getElementById("btnOrgGliederungAdd")?.addEventListener("click", () => {
+  const section = document.getElementById("orgSectionGliederung");
+  if (section) section.open = true;
+  addOrgGliederungRow();
+  renderOrgGliederungCharts();
+});
+document.getElementById("org_gliederung_section")?.addEventListener("input", (e) => {
+  if (e.target.matches(".org-gli-hc, .org-gli-umsatz, .org-gli-other, .org-gli-beschreibung")) {
+    renderOrgGliederungCharts();
+  }
+});
+document.getElementById("org_gliederung_section")?.addEventListener("change", (e) => {
+  if (e.target.matches(".org-gli-select")) renderOrgGliederungCharts();
+});
+document.getElementById("btnOrgRolleAdd")?.addEventListener("click", () => {
+  const section = document.getElementById("orgSectionRollen");
+  if (section) section.open = true;
+  addOrgRolleRow();
+  renderOrgRollenCharts();
+});
+document.getElementById("org_rollen_rows")?.addEventListener("input", (e) => {
+  if (e.target.matches(".org-rol-anzahl, .org-rol-other")) renderOrgRollenCharts();
+});
+document.getElementById("org_rollen_rows")?.addEventListener("change", (e) => {
+  if (e.target.matches(".org-rol-select")) renderOrgRollenCharts();
+});
 
 // Init
-document.getElementById('s_datum').value=today();
 updateAdminUnitsFieldVisibility();
-loadPublicLoginUnits();
-document.getElementById("loginEmail")?.addEventListener("blur", resolveLoginUnits);
-document.getElementById("loginPassword")?.addEventListener("blur", resolveLoginUnits);
-document.getElementById("loginPassword")?.addEventListener("keydown", (e) => {
-  if (e.key === "Enter") resolveLoginUnits();
-});
 bootSession();
 
 window.doLogin = doLogin;
 window.doLogout = doLogout;
-window.cancelStatusEdit = cancelStatusEdit;
-window.cancelTeamEdit = cancelTeamEdit;
 window.cancelSkillEdit = cancelSkillEdit;
 window.addSkillAssessmentRow = addSkillAssessmentRow;
-window.loadSkillExamples = loadSkillExamples;
-window.removeSkillExamples = removeSkillExamples;
+window.addSoftSkillAssessmentRow = addSoftSkillAssessmentRow;
+window.addSkillAssessmentRowFromButton = addSkillAssessmentRowFromButton;
+window.addSoftSkillAssessmentRowFromButton = addSoftSkillAssessmentRowFromButton;
 window.deleteSkillEmployee = deleteSkillEmployee;
 window.editEntry = editEntry;
 window.deleteEntry = deleteEntry;
@@ -2133,6 +6224,4 @@ window.clearAll = clearAll;
 window.adminAddUser = adminAddUser;
 window.adminDeleteUser = adminDeleteUser;
 window.adminEditUser = adminEditUser;
-window.adminExportUsers = adminExportUsers;
-window.adminResetUsers = adminResetUsers;
 window.adminAddMasterUnit = adminAddMasterUnit;
