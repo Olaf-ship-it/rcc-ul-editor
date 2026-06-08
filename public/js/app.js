@@ -5357,6 +5357,22 @@ let adminCategoriesCache = [];
 let adminAppRolesCache = [];
 let adminAppPositionsCache = [];
 
+function setOrgRollen(names) {
+  const list = Array.isArray(names) ? names.map((n) => String(n).trim()).filter(Boolean) : [];
+  if (typeof ORG_ROLLEN !== "undefined") {
+    ORG_ROLLEN.length = 0;
+    ORG_ROLLEN.push(...(list.length ? list : DEFAULT_ORG_ROLLEN));
+  }
+}
+
+function setAppPositions(names) {
+  const list = Array.isArray(names) ? names.map((n) => String(n).trim()).filter(Boolean) : [];
+  if (typeof APP_POSITIONS !== "undefined") {
+    APP_POSITIONS.length = 0;
+    APP_POSITIONS.push(...(list.length ? list : DEFAULT_APP_POSITIONS));
+  }
+}
+
 async function loadAppRolesFromApi() {
   try {
     const roles = await api("/api/app-roles");

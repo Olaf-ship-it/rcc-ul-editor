@@ -43,16 +43,6 @@ const DEFAULT_APP_POSITIONS = [
 let ORG_ROLLEN = [...DEFAULT_ORG_ROLLEN];
 let APP_POSITIONS = [...DEFAULT_APP_POSITIONS];
 
-function setOrgRollen(names) {
-  const list = Array.isArray(names) ? names.map((n) => String(n).trim()).filter(Boolean) : [];
-  ORG_ROLLEN = list.length ? list : [...DEFAULT_ORG_ROLLEN];
-}
-
-function setAppPositions(names) {
-  const list = Array.isArray(names) ? names.map((n) => String(n).trim()).filter(Boolean) : [];
-  APP_POSITIONS = list.length ? list : [...DEFAULT_APP_POSITIONS];
-}
-
 function buildOrgSelectOptions(knownValues, selected) {
   return buildSimpleOptions(knownValues, selected);
 }
