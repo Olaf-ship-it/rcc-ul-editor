@@ -1003,6 +1003,8 @@ function getAdminUserListFilters() {
   return {
     name: document.getElementById("admUserFilterName")?.value.trim().toLowerCase() || "",
     unit: document.getElementById("admUserFilterUnit")?.value || "",
+    position: document.getElementById("admUserFilterPosition")?.value || "",
+    orgRole: document.getElementById("admUserFilterOrgRole")?.value || "",
   };
 }
 
@@ -1015,31 +1017,63 @@ function userMatchesAdminUserFilters(u, filters) {
     const units = Array.isArray(u.units) ? u.units : [];
     if (!units.includes(filters.unit)) return false;
   }
+  if (filters.position) {
+    const positions = Array.isArray(u.userPositions) ? u.userPositions : [];
+    if (!positions.includes(filters.position)) return false;
+  }
+  if (filters.orgRole) {
+    const orgRoles = Array.isArray(u.userOrgRoles) ? u.userOrgRoles : [];
+    if (!orgRoles.includes(filters.orgRole)) return false;
+  }
   return true;
 }
 
-function populateAdminUserUnitFilterOptions() {
-  const select = document.getElementById("admUserFilterUnit");
+function populateAdminUserSelectFilterOptions(selectId, emptyLabel, catalogNames, userValueGetter) {
+  const select = document.getElementById(selectId);
   if (!select) return;
   const current = select.value;
-  const unitNames = new Set();
-  masterUnitsCache.forEach((u) => {
-    if (u?.name) unitNames.add(u.name);
-  });
+  const names = new Set((catalogNames || []).filter(Boolean));
   adminUsersCache.forEach((u) => {
-    (Array.isArray(u.units) ? u.units : []).forEach((name) => {
-      if (name) unitNames.add(name);
+    (userValueGetter(u) || []).forEach((name) => {
+      if (name) names.add(name);
     });
   });
-  const sorted = [...unitNames].sort((a, b) => a.localeCompare(b, "de"));
+  const sorted = [...names].sort((a, b) => a.localeCompare(b, "de"));
   select.innerHTML =
-    '<option value="">Alle Units</option>' +
+    `<option value="">${esc(emptyLabel)}</option>` +
     sorted
       .map(
         (name) =>
           `<option value="${escAttr(name)}"${current === name ? " selected" : ""}>${esc(name)}</option>`
       )
       .join("");
+}
+
+function populateAdminUserUnitFilterOptions() {
+  populateAdminUserSelectFilterOptions(
+    "admUserFilterUnit",
+    "Alle Units",
+    masterUnitsCache.map((u) => u?.name).filter(Boolean),
+    (u) => (Array.isArray(u.units) ? u.units : [])
+  );
+}
+
+function populateAdminUserPositionFilterOptions() {
+  populateAdminUserSelectFilterOptions(
+    "admUserFilterPosition",
+    "Alle Positionen",
+    adminAppPositionsCache.map((p) => p.name),
+    (u) => (Array.isArray(u.userPositions) ? u.userPositions : [])
+  );
+}
+
+function populateAdminUserOrgRoleFilterOptions() {
+  populateAdminUserSelectFilterOptions(
+    "admUserFilterOrgRole",
+    "Alle Rollen",
+    adminAppRolesCache.map((r) => r.name),
+    (u) => (Array.isArray(u.userOrgRoles) ? u.userOrgRoles : [])
+  );
 }
 
 function renderAdminUsersTableBody() {
@@ -1056,7 +1090,7 @@ function renderAdminUsersTableBody() {
   const tbody = document.getElementById("admUsersBody");
   if (!tbody) return;
   if (!users.length) {
-    const hasFilters = Boolean(filters.name || filters.unit);
+    const hasFilters = Boolean(filters.name || filters.unit || filters.position || filters.orgRole);
     tbody.innerHTML =
       '<tr><td colspan="9" style="color:var(--rc-muted);font-style:italic">' +
       (hasFilters
@@ -4460,8 +4494,11 @@ async function adminDeleteMasterUnit(id) {
 async function renderAdminUsers(){
   if(!isAdmin) return;
   await loadMasterUnitsCache();
+  await ensureAdminUserFormCatalogs();
   adminUsersCache = await api("/api/admin/users");
   populateAdminUserUnitFilterOptions();
+  populateAdminUserPositionFilterOptions();
+  populateAdminUserOrgRoleFilterOptions();
   renderAdminUsersTableBody();
   if (adminSubtab === "org") renderAdminOrgChart();
 }
@@ -6101,6 +6138,8 @@ async function renderAdminOrgChart() {
 
 document.getElementById("admUserFilterName")?.addEventListener("input", renderAdminUsersTableBody);
 document.getElementById("admUserFilterUnit")?.addEventListener("change", renderAdminUsersTableBody);
+document.getElementById("admUserFilterPosition")?.addEventListener("change", renderAdminUsersTableBody);
+document.getElementById("admUserFilterOrgRole")?.addEventListener("change", renderAdminUsersTableBody);
 document.getElementById("btnAdminExportUsers")?.addEventListener("click", adminExportUsers);
 document.getElementById("btnAdminImportUsers")?.addEventListener("click", adminImportUsers);
 document.getElementById("btnAdminExportSkillCategories")?.addEventListener("click", adminExportSkillCategories);

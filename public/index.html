@@ -540,9 +540,19 @@
                   <span class="adm-users-th-label">Name</span>
                   <input type="search" id="admUserFilterName" class="adm-users-filter-input" placeholder="Name suchen…" autocomplete="off" aria-label="Benutzer nach Name suchen">
                 </th>
-                <th>Positionen</th>
+                <th class="adm-users-th-filter">
+                  <span class="adm-users-th-label">Positionen</span>
+                  <select id="admUserFilterPosition" class="adm-users-filter-select" aria-label="Benutzer nach Position filtern">
+                    <option value="">Alle Positionen</option>
+                  </select>
+                </th>
                 <th>Administration</th>
-                <th>Rollen</th>
+                <th class="adm-users-th-filter">
+                  <span class="adm-users-th-label">Rollen</span>
+                  <select id="admUserFilterOrgRole" class="adm-users-filter-select" aria-label="Benutzer nach Rolle filtern">
+                    <option value="">Alle Rollen</option>
+                  </select>
+                </th>
                 <th>Vorgesetzte</th>
                 <th class="adm-users-th-filter">
                   <span class="adm-users-th-label">Units</span>
