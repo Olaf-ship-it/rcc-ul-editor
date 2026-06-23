@@ -5,12 +5,14 @@ let currentEmail = "";
 let isAdmin = false;
 let isSuperAdmin = false;
 let isMitarbeiter = false;
+let userModules = { backcasting: false, fortschritt: false };
 let currentSkillEntryId = null;
 let currentPersonalnummer = "";
 let skillPersonalnummerRows = [];
 let unitContextPanelFetchGen = 0;
 let headerUnitSwitcherBound = false;
 let superAdminViewUnit = "all";
+let userUnits = [];
 let masterUnitsCache = [];
 let unitLeadCandidatesCache = [];
 let deputyCandidatesCache = [];
@@ -964,25 +966,48 @@ async function api(url, opts = {}) {
   return res.json();
 }
 
+function normalizeUserUnits(units) {
+  return Array.isArray(units) ? units.map((u) => String(u).trim()).filter(Boolean) : [];
+}
+
+function shouldShowHeaderUnitSwitcher() {
+  return isSuperAdmin || isAdmin || userUnits.length > 1;
+}
+
+function initHeaderViewUnit() {
+  if (isSuperAdmin || isAdmin) {
+    superAdminViewUnit = "all";
+  } else if (userUnits.length === 1) {
+    superAdminViewUnit = userUnits[0];
+  } else if (userUnits.length > 1) {
+    superAdminViewUnit = currentUnit || userUnits[0] || "";
+  } else {
+    superAdminViewUnit = currentUnit || "";
+  }
+}
+
 function load(type) {
   const all = entryStore[type] || [];
-  if (!isSuperAdmin) return all;
-  if (superAdminViewUnit === "all") return all;
-  return all.filter((e) => e.unit === superAdminViewUnit);
+  const unit = getSaveUnit();
+  if (unit) return all.filter((e) => e.unit === unit);
+  return all;
 }
 
 function getViewUnitLabel() {
-  if (isSuperAdmin && superAdminViewUnit === "all") return "Alle Units";
-  if (isSuperAdmin && superAdminViewUnit !== "all") return superAdminViewUnit;
+  if ((isSuperAdmin || isAdmin) && superAdminViewUnit === "all") return "Alle Units";
+  if (superAdminViewUnit && superAdminViewUnit !== "all") return superAdminViewUnit;
   return currentUnit;
 }
 
 function getSaveUnit() {
-  if (isSuperAdmin) {
+  if (isSuperAdmin || isAdmin) {
     if (superAdminViewUnit === "all") return "";
-    return superAdminViewUnit;
+    return String(superAdminViewUnit || "").trim();
   }
-  return currentUnit;
+  if (userUnits.length > 1) {
+    return String(superAdminViewUnit || currentUnit || "").trim();
+  }
+  return String(currentUnit || "").trim();
 }
 
 function getExportUnitSlug() {
@@ -990,11 +1015,11 @@ function getExportUnitSlug() {
 }
 
 function isSuperAdminViewAll() {
-  return isSuperAdmin && superAdminViewUnit === "all";
+  return (isSuperAdmin || isAdmin) && superAdminViewUnit === "all";
 }
 
 function userMatchesSuperAdminView(u) {
-  if (!isSuperAdmin || superAdminViewUnit === "all") return true;
+  if (!shouldShowHeaderUnitSwitcher() || superAdminViewUnit === "all") return true;
   if (Array.isArray(u.units) && u.units.includes(superAdminViewUnit)) return true;
   return false;
 }
@@ -1076,23 +1101,128 @@ function populateAdminUserOrgRoleFilterOptions() {
   );
 }
 
-function renderAdminUsersTableBody() {
+function getVisibleAdminUsers() {
   const filters = getAdminUserListFilters();
-  const users = adminUsersCache
+  return adminUsersCache
     .filter(userMatchesSuperAdminView)
     .filter((u) => userMatchesAdminUserFilters(u, filters));
-  const countEl = document.getElementById("admUserCount");
+}
+
+function isAdminUserProtected(user) {
+  return String(user?.email || "").trim().toLowerCase() === String(currentEmail || "").trim().toLowerCase();
+}
+
+function adminUserLoginBadge(user) {
+  if (user?.loginBlocked) {
+    return '<span class="adm-user-login-badge adm-user-login-badge--blocked">Gesperrt</span>';
+  }
+  return '<span class="adm-user-login-badge adm-user-login-badge--active">Aktiv</span>';
+}
+
+function updateAdminUserBulkToolbar(visibleUsers) {
+  const bar = document.getElementById("admUserBulkBar");
+  const countEl = document.getElementById("admUserBulkCount");
+  const selectAllEl = document.getElementById("admUserSelectAllVisible");
+  const selectedCount = adminUserSelection.size;
   if (countEl) {
-    const total = adminUsersCache.filter(userMatchesSuperAdminView).length;
     countEl.textContent =
-      users.length === total ? String(total) : `${users.length} / ${total}`;
+      selectedCount === 1 ? "1 Benutzer ausgewählt" : `${selectedCount} Benutzer ausgewählt`;
+  }
+  if (bar) bar.style.display = selectedCount ? "" : "none";
+  if (selectAllEl && visibleUsers) {
+    const selectable = visibleUsers.filter((u) => !isAdminUserProtected(u));
+    const selectedVisible = selectable.filter((u) => adminUserSelection.has(String(u.id))).length;
+    selectAllEl.checked = selectable.length > 0 && selectedVisible === selectable.length;
+    selectAllEl.indeterminate =
+      selectedVisible > 0 && selectedVisible < selectable.length;
+    selectAllEl.disabled = !selectable.length;
+  }
+}
+
+function toggleAdminUserSelection(userId, checked) {
+  const key = String(userId);
+  if (checked) adminUserSelection.add(key);
+  else adminUserSelection.delete(key);
+  updateAdminUserBulkToolbar(getVisibleAdminUsers());
+}
+
+function selectAllVisibleAdminUsers() {
+  getVisibleAdminUsers().forEach((u) => {
+    if (!isAdminUserProtected(u)) adminUserSelection.add(String(u.id));
+  });
+  renderAdminUsersTableBody();
+}
+
+function clearAdminUserSelection() {
+  adminUserSelection.clear();
+  renderAdminUsersTableBody();
+}
+
+async function adminBulkSetLoginBlocked(blocked) {
+  const ids = [...adminUserSelection]
+    .map((id) => Number(id))
+    .filter((id) => Number.isInteger(id) && id > 0);
+  if (!ids.length) return;
+  const action = blocked ? "sperren" : "freigeben";
+  const users = ids
+    .map((id) => adminUsersCache.find((u) => String(u.id) === String(id)))
+    .filter(Boolean);
+  const names = users
+    .slice(0, 3)
+    .map((u) => u.name || u.email)
+    .join(", ");
+  const suffix = users.length > 3 ? ` und ${users.length - 3} weitere` : "";
+  if (
+    !confirm(
+      `Login fuer ${users.length} Benutzer ${action}?\n\n${names}${suffix}`
+    )
+  ) {
+    return;
+  }
+  try {
+    const result = await api("/api/admin/users/bulk-login-block", {
+      method: "POST",
+      body: JSON.stringify({ userIds: ids, loginBlocked: blocked }),
+    });
+    adminUserSelection.clear();
+    await renderAdminUsers();
+    toast(
+      blocked
+        ? `Login fuer ${result.updated} Benutzer gesperrt.`
+        : `Login fuer ${result.updated} Benutzer freigegeben.`,
+      blocked ? "#e67e22" : "#27ae60"
+    );
+  } catch (error) {
+    toast(error.message, "#e74c3c");
+  }
+}
+
+function renderAdminUsersTableBody() {
+  const filters = getAdminUserListFilters();
+  const users = getVisibleAdminUsers();
+  const total = adminUsersCache.filter(userMatchesSuperAdminView).length;
+  const displayed = users.length;
+  const hasFilters = Boolean(
+    filters.name || filters.unit || filters.position || filters.orgRole
+  );
+  const countEl = document.getElementById("admUserCount");
+  if (countEl) countEl.textContent = String(displayed);
+  const listCountEl = document.getElementById("admUserListCount");
+  if (listCountEl) {
+    if (hasFilters && displayed !== total) {
+      listCountEl.textContent = `${displayed} von ${total} Benutzern angezeigt`;
+    } else if (displayed === 1) {
+      listCountEl.textContent = "1 Benutzer angezeigt";
+    } else {
+      listCountEl.textContent = `${displayed} Benutzer angezeigt`;
+    }
   }
   const tbody = document.getElementById("admUsersBody");
   if (!tbody) return;
+  updateAdminUserBulkToolbar(users);
   if (!users.length) {
-    const hasFilters = Boolean(filters.name || filters.unit || filters.position || filters.orgRole);
     tbody.innerHTML =
-      '<tr><td colspan="9" style="color:var(--rc-muted);font-style:italic">' +
+      '<tr><td colspan="12" style="color:var(--rc-muted);font-style:italic">' +
       (hasFilters
         ? "Keine Benutzer passen zu den Filterkriterien."
         : "Keine Benutzer vorhanden.") +
@@ -1101,10 +1231,22 @@ function renderAdminUsersTableBody() {
   }
   tbody.innerHTML = users
     .map((u) => {
-      const isProtected = u.email === currentEmail;
+      const isProtected = isAdminUserProtected(u);
+      const userId = String(u.id);
+      const isSelected = adminUserSelection.has(userId);
+      const rowClass = u.loginBlocked ? " class=\"adm-user-row--blocked\"" : "";
       const unitsLabel = Array.isArray(u.units) && u.units.length ? esc(u.units.join(", ")) : "–";
       return (
-        "<tr>" +
+        "<tr" +
+        rowClass +
+        ">" +
+        '<td class="adm-users-td-check">' +
+        (isProtected
+          ? '<span title="Eigener Benutzer">–</span>'
+          : `<input type="checkbox" data-user-select="${escAttr(userId)}"${
+              isSelected ? " checked" : ""
+            } aria-label="Benutzer auswählen">`) +
+        "</td>" +
         "<td>" +
         (u.personalnummer ? esc(u.personalnummer) : "-") +
         "</td>" +
@@ -1121,6 +1263,9 @@ function renderAdminUsersTableBody() {
         esc(systemPrivilegeRolesLabel(u)) +
         "</td>" +
         "<td>" +
+        esc(systemAppModuleRolesLabel(u)) +
+        "</td>" +
+        "<td>" +
         esc(userOrgRolesLabel(u)) +
         "</td>" +
         "<td>" +
@@ -1128,6 +1273,9 @@ function renderAdminUsersTableBody() {
         "</td>" +
         "<td>" +
         unitsLabel +
+        "</td>" +
+        "<td>" +
+        adminUserLoginBadge(u) +
         "</td>" +
         '<td style="white-space:nowrap">' +
         '<button type="button" class="btn btn-sm btn-outline" data-action="edit" data-user-id="' +
@@ -1142,6 +1290,11 @@ function renderAdminUsersTableBody() {
       );
     })
     .join("");
+  tbody.querySelectorAll("[data-user-select]").forEach((input) => {
+    input.addEventListener("change", () => {
+      toggleAdminUserSelection(input.getAttribute("data-user-select"), input.checked);
+    });
+  });
   tbody.querySelectorAll('[data-action="edit"]').forEach((btn) => {
     btn.addEventListener("click", () => {
       const user = adminUsersCache.find(
@@ -1215,14 +1368,19 @@ async function renderHeaderUnitSwitcher() {
   const bar = document.getElementById("headerUnitSwitcher");
   const tabs = document.getElementById("headerUnitTabs");
   if (!bar || !tabs) return;
-  if (!isSuperAdmin) {
+  if (!shouldShowHeaderUnitSwitcher()) {
     bar.style.display = "none";
     return;
   }
   await loadMasterUnitsCache();
-  const units = masterUnitsCache.map((u) => u.name);
+  let items;
+  if (isSuperAdmin || isAdmin) {
+    const units = masterUnitsCache.map((u) => u.name);
+    items = [{ id: "all", label: "Alle Units" }, ...units.map((name) => ({ id: name, label: name }))];
+  } else {
+    items = userUnits.map((name) => ({ id: name, label: name }));
+  }
   bar.style.display = "flex";
-  const items = [{ id: "all", label: "Alle Units" }, ...units.map((name) => ({ id: name, label: name }))];
   tabs.innerHTML = items
     .map(
       (item) =>
@@ -1242,6 +1400,12 @@ function refreshSuperAdminViews() {
   renderOverview();
   renderExportStats();
   if (isAdmin) renderAdminUsers();
+  if (document.getElementById("page-fortschritt")?.classList.contains("active")) {
+    renderFortschrittDashboard();
+  }
+  if (document.getElementById("page-demo-daten")?.classList.contains("active")) {
+    renderDemoDatenPage();
+  }
 }
 
 function setSuperAdminViewUnit(unit) {
@@ -1257,6 +1421,12 @@ function setSuperAdminViewUnit(unit) {
   renderOverview();
   renderExportStats();
   if (isAdmin) renderAdminUsers();
+  if (document.getElementById("page-fortschritt")?.classList.contains("active")) {
+    renderFortschrittDashboard();
+  }
+  if (document.getElementById("page-demo-daten")?.classList.contains("active")) {
+    renderDemoDatenPage();
+  }
 }
 
 function requireSaveUnit() {
@@ -1339,6 +1509,13 @@ function isAdminSession(role) {
   return role === "admin" || role === "super_admin";
 }
 
+function userIsAdminFromSession(user) {
+  if (!user) return false;
+  const roles = Array.isArray(user.roles) ? user.roles : [];
+  if (roles.includes("admin") || roles.includes("super_admin")) return true;
+  return isAdminSession(user.role);
+}
+
 function isUnitScopedSession(role) {
   return role === "unit_lead" || role === "mitarbeiter";
 }
@@ -1347,15 +1524,60 @@ function isMitarbeiterSession(role) {
   return role === "mitarbeiter";
 }
 
+const ELEVATED_UNIT_ROLES = ["unit_lead", "admin", "super_admin", "regionalleiter", "geschaeftsfuehrung"];
+
+function isPureMitarbeiterUser(userOrRole) {
+  if (typeof userOrRole === "string") {
+    return userOrRole === "mitarbeiter";
+  }
+  const user = userOrRole || {};
+  const roles = getUserRolesList(user);
+  if (!roles.includes("mitarbeiter")) return false;
+  return !roles.some((role) => ELEVATED_UNIT_ROLES.includes(role));
+}
+
+function getActiveAppPage() {
+  const el = document.querySelector(".page.active");
+  return el ? el.id.replace(/^page-/, "") : "portfolio";
+}
+
+const PHASE1_TAB_PAGES = ["portfolio", "organisation", "skills", "overview", "export"];
+const PHASE3_TAB_PAGES = ["fortschritt", "demo-daten"];
+
+function isPhase3AppPage(page) {
+  return PHASE3_TAB_PAGES.includes(page);
+}
+
+function isPhase3PageActive() {
+  return isPhase3AppPage(getActiveAppPage());
+}
+
+function updateMainTabsBar(page) {
+  const tabs = document.getElementById("tabs");
+  const phase1Nav = document.getElementById("tabsNavPhase1");
+  const phase3Nav = document.getElementById("tabsNavPhase3");
+  if (!tabs) return;
+  if (isMitarbeiter) {
+    tabs.style.display = "none";
+    return;
+  }
+  const onPhase3 = isPhase3AppPage(page);
+  const onPhase1 = PHASE1_TAB_PAGES.includes(page);
+  tabs.style.display = onPhase3 || onPhase1 ? "flex" : "none";
+  if (phase1Nav) phase1Nav.style.display = onPhase1 ? "flex" : "none";
+  if (phase3Nav) phase3Nav.style.display = onPhase3 ? "flex" : "none";
+}
+
 function applyMitarbeiterLayout() {
   document.body.classList.toggle("mitarbeiter-mode", isMitarbeiter);
 
-  const tabs = document.getElementById("tabs");
-  if (tabs) tabs.style.display = isMitarbeiter ? "none" : "flex";
+  updateMainTabsBar(getActiveAppPage());
 
-  const titleEl = document.querySelector(".header .title");
-  if (titleEl) {
-    titleEl.textContent = isMitarbeiter ? "Meine Skills" : "Unitleiter-Erfassung";
+  const subtitleEl = document.getElementById("appHeaderSubtitle");
+  if (subtitleEl) {
+    subtitleEl.textContent = isMitarbeiter
+      ? "Meine Fachskills und Soft Skills pflegen"
+      : "Portfolio, Organisation & Skill-Matrix · Transformation 2026–2029";
   }
 
   const readonlyFields = ["sk_personalnummer", "sk_nachname", "sk_vorname", "sk_email"];
@@ -1451,7 +1673,7 @@ async function refreshUnitContextPanels() {
 
   if (isSuperAdminViewAll()) {
     setAllUnitContextPanelsHtml(
-      '<p class="nav-empty-hint">Bitte oben im Bereich <strong>Unit-Ansicht</strong> eine konkrete Unit wählen.</p>'
+      '<p class="nav-empty-hint">Bitte oben im Bereich <strong>Filter</strong> eine konkrete Unit wählen.</p>'
     );
     return;
   }
@@ -1534,12 +1756,15 @@ function roleLabel(role) {
     regionalleiter: "Regionalleiter",
     unit_lead: "Unit Lead",
     mitarbeiter: "Mitarbeiter",
+    backcasting: "Phase 2 · Backcasting-Planung",
+    fortschritt: "Phase 3 · Fortschritt",
   };
   return labels[role] || role;
 }
 
 let editingUserUnits = [];
 let adminUsersCache = [];
+const adminUserSelection = new Set();
 let editingUserHadSuperAdmin = false;
 let editingUserSnapshot = null;
 
@@ -1562,6 +1787,7 @@ function userIsUnitLeaderCandidate(user) {
 
 const SYSTEM_HIERARCHY_ROLES = ["geschaeftsfuehrung", "regionalleiter", "unit_lead", "mitarbeiter"];
 const SYSTEM_PRIVILEGE_ROLES = ["admin", "super_admin"];
+const SYSTEM_APP_MODULE_ROLES = ["backcasting", "fortschritt"];
 const USER_STANDORTE = ["Essen", "Bremen"];
 
 function normalizeUserStandort(value) {
@@ -1645,6 +1871,20 @@ function systemPrivilegeRolesLabel(user) {
   return labels.length ? labels.join(", ") : "–";
 }
 
+function systemAppModuleRolesLabel(user) {
+  const labels = getUserRolesList(user)
+    .filter((role) => SYSTEM_APP_MODULE_ROLES.includes(role))
+    .map(roleLabel);
+  if (isAdminRoleClient(user)) {
+    return labels.length ? `${labels.join(", ")} (Admin)` : "alle (Admin)";
+  }
+  return labels.length ? labels.join(", ") : "–";
+}
+
+function isAdminRoleClient(user) {
+  return getUserRolesList(user).some((role) => SYSTEM_PRIVILEGE_ROLES.includes(role));
+}
+
 function userOrgRolesLabel(user) {
   const list = user?.userOrgRoles || [];
   return list.length ? list.join(", ") : "–";
@@ -1657,6 +1897,10 @@ function userPositionsLabel(user) {
 
 function adminPrivilegeRolesContainerId(prefix) {
   return prefix === "adm_" ? "adm_privilege_roles_select" : "adm_edit_privilege_roles_select";
+}
+
+function adminAppModuleRolesContainerId(prefix) {
+  return prefix === "adm_" ? "adm_app_module_roles_select" : "adm_edit_app_module_roles_select";
 }
 
 function adminUserOrgRolesContainerId(prefix) {
@@ -1679,10 +1923,17 @@ function getAdminPrivilegeRoles(prefix) {
   return getCheckedFromContainer(adminPrivilegeRolesContainerId(prefix), "data-admin-role");
 }
 
+function getAdminAppModuleRoles(prefix) {
+  if (!adminFormEligibleForAppModules(prefix)) return [];
+  if (adminFormHasPrivilegeAdmin(prefix)) return [...SYSTEM_APP_MODULE_ROLES];
+  return getCheckedFromContainer(adminAppModuleRolesContainerId(prefix), "data-app-module");
+}
+
 function getAdminFormRoles(prefix) {
   const privilege = getAdminPrivilegeRoles(prefix);
+  const appModules = getAdminAppModuleRoles(prefix);
   const hierarchy = deriveHierarchyRolesFromPositions(getAdminUserPositionNames(prefix));
-  return [...hierarchy, ...privilege];
+  return [...hierarchy, ...privilege, ...appModules];
 }
 
 function resolveUserOrgRoleIds(user) {
@@ -1903,8 +2154,66 @@ function setAdminSystemRoles(prefix, roles) {
   updateSuperAdminPasswordField(prefix, prefix === "adm_edit_" ? editingUserHadSuperAdmin : false);
 }
 
+function setAdminAppModuleRoles(prefix, roles) {
+  const list = new Set(Array.isArray(roles) ? roles : []);
+  const box = document.getElementById(adminAppModuleRolesContainerId(prefix));
+  box?.querySelectorAll("input[data-app-module]").forEach((el) => {
+    el.checked = list.has(el.getAttribute("data-app-module"));
+  });
+  syncAdminAppModuleRolesState(prefix);
+}
+
+function hasDeputyUnitLeaderPosition(prefix) {
+  const key = normalizePositionKey(DEPUTY_UNIT_LEADER_POSITION);
+  return getAdminUserPositionNames(prefix).some((position) => normalizePositionKey(position) === key);
+}
+
+function adminFormEligibleForAppModules(prefix) {
+  if (adminFormHasPrivilegeAdmin(prefix)) return true;
+  const hierarchy = deriveHierarchyRolesFromPositions(getAdminUserPositionNames(prefix));
+  if (hierarchy.includes("unit_lead") || hierarchy.includes("regionalleiter")) return true;
+  if (hasDeputyUnitLeaderPosition(prefix)) return true;
+  return false;
+}
+
+function updateAdminAppModuleSection(prefix) {
+  const section = document.getElementById(
+    prefix === "adm_edit_" ? "adm_edit_app_module_section" : "adm_app_module_section"
+  );
+  if (section) section.style.display = adminFormEligibleForAppModules(prefix) ? "" : "none";
+  syncAdminAppModuleRolesState(prefix);
+}
+
+function syncAdminAppModuleRolesState(prefix) {
+  const box = document.getElementById(adminAppModuleRolesContainerId(prefix));
+  if (!box) return;
+  const eligible = adminFormEligibleForAppModules(prefix);
+  const forceAll = adminFormHasPrivilegeAdmin(prefix);
+  const stored = editingUserSnapshot?.appModuleRoles || [];
+  box.querySelectorAll("input[data-app-module]").forEach((el) => {
+    const mod = el.getAttribute("data-app-module");
+    if (!eligible) {
+      el.checked = false;
+      el.disabled = true;
+    } else if (forceAll) {
+      el.checked = true;
+      el.disabled = true;
+    } else {
+      el.disabled = false;
+      if (prefix === "adm_edit_" && editingUserSnapshot) {
+        el.checked = stored.includes(mod);
+      }
+    }
+  });
+}
+
+function adminFormHasPrivilegeAdmin(prefix) {
+  return getAdminPrivilegeRoles(prefix).some((role) => SYSTEM_PRIVILEGE_ROLES.includes(role));
+}
+
 function setAdminFormRoles(prefix, roles) {
   setAdminSystemRoles(prefix, roles);
+  setAdminAppModuleRoles(prefix, roles);
 }
 
 function setAdminUserCatalogFields(prefix, userOrgRoleIds, userPositionIds) {
@@ -2003,25 +2312,50 @@ function renderAdminUserCatalogCheckboxes(prefix, selectedOrgRoleIds = null, sel
   setAdminUserCatalogFields(prefix, orgSelected, posSelected);
 }
 
-function renderGeschaeftsfuehrungSelect(selectId, selectedId, excludeUserId) {
-  const sel = document.getElementById(selectId);
-  if (!sel) return;
-  const options = adminUsersCache.filter(
-    (u) =>
-      userHasEffectiveHierarchyRole(u, "geschaeftsfuehrung") &&
-      String(u.id) !== String(excludeUserId || "")
-  );
-  const selected = selectedId ? String(selectedId) : "";
-  sel.innerHTML =
-    '<option value="">– optional –</option>' +
-    options
-      .map(
-        (gf) =>
-          `<option value="${gf.id}"${
-            String(gf.id) === selected ? " selected" : ""
-          }>${esc(gf.name)}</option>`
-      )
-      .join("");
+function adminGeschaeftsfuehrungContainerId(prefix) {
+  return prefix === "adm_" ? "adm_geschaeftsfuehrung_select" : "adm_edit_geschaeftsfuehrung_select";
+}
+
+function resolveGeschaeftsfuehrungIds(user) {
+  const ids = normalizeBigIntArrayClient(user?.geschaeftsfuehrungIds || user?.geschaeftsfuehrung_ids);
+  if (ids.length) return ids;
+  if (user?.geschaeftsfuehrung_id) return [Number(user.geschaeftsfuehrung_id)];
+  return [];
+}
+
+function getAdminGeschaeftsfuehrungIds(prefix) {
+  const box = document.getElementById(adminGeschaeftsfuehrungContainerId(prefix));
+  if (!box) return [];
+  return [...box.querySelectorAll('input[data-geschaeftsfuehrung-id]:checked')]
+    .map((el) => Number(el.getAttribute("data-geschaeftsfuehrung-id")))
+    .filter((id) => Number.isInteger(id) && id > 0);
+}
+
+function renderGeschaeftsfuehrungCheckboxes(prefix, selectedIds, excludeUserId) {
+  const box = document.getElementById(adminGeschaeftsfuehrungContainerId(prefix));
+  if (!box) return;
+  const selected = new Set(normalizeBigIntArrayClient(selectedIds));
+  const options = adminUsersCache
+    .filter(
+      (u) =>
+        userHasEffectiveHierarchyRole(u, "geschaeftsfuehrung") &&
+        String(u.id) !== String(excludeUserId || "")
+    )
+    .sort((a, b) => String(a.name || "").localeCompare(String(b.name || ""), "de"));
+  box.innerHTML = options.length
+    ? options
+        .map((gf) => {
+          const id = Number(gf.id);
+          const checked = selected.has(id) ? " checked" : "";
+          return (
+            `<label class="unit-checkbox-item">` +
+            `<input type="checkbox" data-geschaeftsfuehrung-id="${id}"${checked}> ` +
+            `${esc(gf.name)}` +
+            `</label>`
+          );
+        })
+        .join("")
+    : '<p style="color:var(--rc-muted);font-size:.75rem;margin:0">Keine Geschaeftsfuehrung im System.</p>';
 }
 
 function renderRegionalleiterSelect(selectId, selectedId) {
@@ -2085,9 +2419,13 @@ function userSupervisorLabel(user, allUsers) {
   }
 
   if (roles.includes("regionalleiter")) {
+    const gfIds = resolveGeschaeftsfuehrungIds(user);
+    const gfNames = gfIds
+      .map((id) => users.find((u) => String(u.id) === String(id))?.name)
+      .filter(Boolean);
+    if (gfNames.length) return esc(gfNames.join(", "));
     if (user.geschaeftsfuehrungName) return esc(user.geschaeftsfuehrungName);
-    const gf = users.find((u) => String(u.id) === String(user.geschaeftsfuehrung_id));
-    return gf?.name ? esc(gf.name) : "–";
+    return "–";
   }
 
   return "–";
@@ -2135,7 +2473,7 @@ async function onAdminAddRolesChange() {
   updateAdminRoleFieldsVisibility("adm_");
   updateSuperAdminPasswordField("adm_", false);
   if (adminFormRequiresRegionalleiterFields("adm_")) {
-    renderGeschaeftsfuehrungSelect("adm_geschaeftsfuehrung_id", null, null);
+    renderGeschaeftsfuehrungCheckboxes("adm_", [], null);
   }
   if (adminFormRequiresRegionalleiter("adm_")) {
     renderRegionalleiterSelect("adm_regionalleiter_id", null);
@@ -2231,11 +2569,14 @@ async function doLogin(){
     currentUnit = session.unit;
     currentName = session.name;
     currentEmail = session.email;
-    isAdmin = isAdminSession(session.role);
+    isAdmin = userIsAdminFromSession(session);
     isSuperAdmin = session.role === "super_admin";
-    isMitarbeiter = isMitarbeiterSession(session.role);
+    isMitarbeiter = isPureMitarbeiterUser(session);
     currentSkillEntryId = session.skillEntryId || null;
     currentPersonalnummer = session.personalnummer || "";
+    userUnits = normalizeUserUnits(session.units);
+    userModules = session.modules || { backcasting: false, fortschritt: false };
+    if (await maybeRedirectToReturnUrl(userModules)) return;
     await showApp();
   } catch (error) {
     errEl.textContent = error.message;
@@ -2245,7 +2586,7 @@ async function doLogin(){
 
 async function doLogout(){
   try { await api("/api/auth/logout", { method: "POST" }); } catch (_e) {}
-  currentUnit='';currentName='';currentEmail='';isAdmin=false;isSuperAdmin=false;isMitarbeiter=false;currentSkillEntryId=null;currentPersonalnummer='';superAdminViewUnit='all';
+  currentUnit='';currentName='';currentEmail='';isAdmin=false;isSuperAdmin=false;isMitarbeiter=false;userModules={ backcasting: false, fortschritt: false };currentSkillEntryId=null;currentPersonalnummer='';superAdminViewUnit='all';userUnits=[];
   document.body.classList.remove("mitarbeiter-mode");
   entryStore = { portfolio: [], organisation: [], skill: [] };
   document.getElementById('loginOverlay').style.display='flex';document.getElementById('appHeader').style.display='none';
@@ -2261,16 +2602,14 @@ async function showApp(){
   document.getElementById('appHeader').style.display='flex';
   document.getElementById('appMain').style.display='block';
   document.getElementById('headerName').textContent=currentName+' ('+currentEmail+')';
-  if (isSuperAdmin) superAdminViewUnit = "all";
+  initHeaderViewUnit();
   applyMitarbeiterLayout();
-  if (!isMitarbeiter) {
-    document.getElementById('tabs').style.display='flex';
-  }
   initHeaderUnitSwitcher();
   await renderHeaderUnitSwitcher();
   updateHeaderUnitDisplay();
   updateSuperAdminFormMode();
   checkAdmin();
+  updateAppModuleLauncher(userModules);
   if (isMitarbeiter) {
     await initMitarbeiterSkillView();
   } else {
@@ -2284,6 +2623,28 @@ async function showApp(){
   if (isAdmin) await initAdminPage();
   if (!isMitarbeiter) await refreshUnitContextPanels();
   collapseAllCollapsibleSections(document.getElementById("appMain"));
+  applyPageFromQuery();
+}
+
+function applyPageFromQuery() {
+  if (isMitarbeiter) return;
+  const page = new URLSearchParams(window.location.search).get("page");
+  if (page === "admin" && isAdmin) {
+    switchTab("admin");
+    initAdminPage();
+    if (window.history && window.history.replaceState) {
+      window.history.replaceState({}, "", "/");
+    }
+    return;
+  }
+  if (page === "fortschritt") {
+    if (!userModules?.fortschritt && !isAdmin) return;
+    switchTab("fortschritt");
+    renderFortschrittDashboard();
+    if (window.history && window.history.replaceState) {
+      window.history.replaceState({}, "", "/");
+    }
+  }
 }
 
 async function bootSession() {
@@ -2292,23 +2653,89 @@ async function bootSession() {
     currentUnit = me.unit;
     currentName = me.name;
     currentEmail = me.email;
-    isAdmin = isAdminSession(me.role);
+    isAdmin = userIsAdminFromSession(me);
     isSuperAdmin = me.role === "super_admin";
-    isMitarbeiter = isMitarbeiterSession(me.role);
+    isMitarbeiter = isPureMitarbeiterUser(me);
     currentSkillEntryId = me.skillEntryId || null;
     currentPersonalnummer = me.personalnummer || "";
+    userUnits = normalizeUserUnits(me.units);
+    userModules = me.modules || { backcasting: false, fortschritt: false };
+    if (await maybeRedirectToReturnUrl(userModules)) return;
     await showApp();
   } catch (_e) {}
 }
 
+function applyLoginModuleContext() {
+  const params = new URLSearchParams(window.location.search);
+  if (params.get("module") !== "backcasting") return;
+  const title = document.getElementById("loginTitle");
+  const subtitle = document.getElementById("loginSubtitle");
+  if (title) title.textContent = "Phase 2 · Backcasting-Planung";
+  if (subtitle) {
+    subtitle.innerHTML = "Phase 2 · Strategische Maßnahmenplanung 2026–2029<br>Anmeldung mit Ihrem realcore-Konto";
+  }
+}
+
+function getPostLoginRedirectUrl() {
+  const params = new URLSearchParams(window.location.search);
+  const ret = params.get("return");
+  if (!ret || !ret.startsWith("/") || ret.startsWith("//")) return "";
+  return ret;
+}
+
+async function maybeRedirectToReturnUrl(modules) {
+  const ret = getPostLoginRedirectUrl();
+  if (!ret) return false;
+  if (ret.startsWith("/backcasting") && !modules?.backcasting) return false;
+  window.location.replace(ret);
+  return true;
+}
+
+function updateAppModuleLauncher(modules) {
+  const phasesBar = document.getElementById("headerPhasesBar");
+  const link = document.getElementById("launcherBackcasting");
+  const fsLink = document.getElementById("launcherFortschritt");
+  if (!phasesBar) return;
+  const showBackcasting = Boolean(modules?.backcasting) || isAdmin;
+  const showFortschritt = (Boolean(modules?.fortschritt) || isAdmin) && !isMitarbeiter;
+  const showNav = showBackcasting || showFortschritt || !isMitarbeiter;
+  phasesBar.style.display = showNav ? "" : "none";
+  if (link) link.style.display = showBackcasting ? "" : "none";
+  if (fsLink) fsLink.style.display = showFortschritt ? "" : "none";
+}
+
+function bindAppModuleNavClicks() {
+  document.getElementById("launcherFortschritt")?.addEventListener("click", (e) => {
+    const appMain = document.getElementById("appMain");
+    if (!appMain || appMain.style.display === "none") return;
+    if (isMitarbeiter || (!userModules?.fortschritt && !isAdmin)) return;
+    e.preventDefault();
+    switchTab("fortschritt");
+    renderFortschrittDashboard();
+  });
+  document.getElementById("launcherPhase1")?.addEventListener("click", (e) => {
+    const appMain = document.getElementById("appMain");
+    if (!appMain || appMain.style.display === "none") return;
+    if (isMitarbeiter) return;
+    if (!isPhase3PageActive()) return;
+    e.preventDefault();
+    switchTab("portfolio");
+    renderPortfolio();
+    refreshUnitContextPanels();
+  });
+}
+
 // ===== TABS =====
-document.querySelectorAll('.tab').forEach(t=>{t.addEventListener('click',()=>{
+document.querySelectorAll("#tabs .tab").forEach((t) => {
+  t.addEventListener("click", () => {
   if (isMitarbeiter && t.dataset.page !== "skills") return;
   const p = t.dataset.page;
   switchTab(p);
   if (p === "overview") renderOverview();
   if (p === "export") renderExportStats();
   if (p === "admin") initAdminPage();
+  if (p === "fortschritt") renderFortschrittDashboard();
+  if (p === "demo-daten") renderDemoDatenPage();
   if (p === "portfolio") {
     renderPortfolio();
     refreshUnitContextPanels();
@@ -2323,12 +2750,46 @@ document.querySelectorAll('.tab').forEach(t=>{t.addEventListener('click',()=>{
       updateSkillDeleteButton();
     });
   }
-})});
+});
+});
+
+function updateAppModuleNavActive(page) {
+  const phase1 = document.getElementById("launcherPhase1");
+  const bcLink = document.getElementById("launcherBackcasting");
+  const fsLink = document.getElementById("launcherFortschritt");
+  const adminLink = document.getElementById("launcherAdmin");
+  const onPhase3 = isPhase3AppPage(page);
+  if (phase1) {
+    phase1.classList.toggle("is-active", !onPhase3);
+    if (onPhase3) phase1.removeAttribute("aria-current");
+    else phase1.setAttribute("aria-current", "page");
+  }
+  if (bcLink) bcLink.classList.remove("is-active");
+  if (fsLink) fsLink.classList.toggle("is-active", onPhase3);
+  if (adminLink) adminLink.classList.toggle("is-active", page === "admin");
+  const subtitleEl = document.getElementById("appHeaderSubtitle");
+  if (subtitleEl && !isMitarbeiter) {
+    if (onPhase3) {
+      subtitleEl.textContent =
+        page === "demo-daten"
+          ? "Demo-Datensätze für IST/SOLL-Tests je Unit"
+          : "IST vs. SOLL · Portfolio, Organisation & Skills gegen Backcasting-Plan";
+    } else if (page === "admin") {
+      subtitleEl.textContent = "Benutzer, Kataloge, Leitplanken und Organigramm";
+    } else {
+      subtitleEl.textContent =
+        "Portfolio, Organisation & Skill-Matrix · Transformation 2026–2029";
+    }
+  }
+}
 
 function switchTab(p){
   if (isMitarbeiter && p !== "skills") return;
-  document.querySelectorAll('.tab').forEach(t=>t.classList.toggle('active',t.dataset.page===p));
-  document.querySelectorAll('.page').forEach(pg=>pg.classList.toggle('active',pg.id==='page-'+p));
+  if (isPhase3AppPage(p) && !userModules?.fortschritt && !isAdmin) return;
+  document.querySelectorAll("#tabs .tab").forEach((t) => t.classList.toggle("active", t.dataset.page === p));
+  document.querySelectorAll("#appMain .page").forEach((pg) => pg.classList.toggle("active", pg.id === "page-" + p));
+  updateMainTabsBar(p);
+  updateAppModuleNavActive(p);
   const page = document.getElementById("page-" + p);
   if (page) collapseAllCollapsibleSections(page);
 }
@@ -2342,6 +2803,7 @@ function portfolioDomForCategory(category) {
       bezeichnung: "pf_prod_bezeichnung",
       beschreibung: "pf_prod_beschreibung",
       hinweis: "pf_prod_hinweis",
+      jahresumsatz_teur: "pf_prod_jahresumsatz_teur",
       jahresumsatz: "pf_prod_jahresumsatz",
       ampel: "pf_prod_ampel",
       cancelBtn: "btnPfProdCancel",
@@ -2356,6 +2818,7 @@ function portfolioDomForCategory(category) {
       bezeichnung: "pf_srv_bezeichnung",
       beschreibung: "pf_srv_beschreibung",
       hinweis: "pf_srv_hinweis",
+      jahresumsatz_teur: "pf_srv_jahresumsatz_teur",
       jahresumsatz: "pf_srv_jahresumsatz",
       ampel: "pf_srv_ampel",
       cancelBtn: "btnPfSrvCancel",
@@ -2370,6 +2833,7 @@ function portfolioDomForCategory(category) {
       bezeichnung: "pf_sol_bezeichnung",
       beschreibung: "pf_sol_beschreibung",
       hinweis: "pf_sol_hinweis",
+      jahresumsatz_teur: "pf_sol_jahresumsatz_teur",
       jahresumsatz: "pf_sol_jahresumsatz",
       ampel: "pf_sol_ampel",
       cancelBtn: "btnPfSolCancel",
@@ -2384,6 +2848,7 @@ function portfolioDomForCategory(category) {
       bezeichnung: "pf_pgs_bezeichnung",
       beschreibung: "pf_pgs_beschreibung",
       hinweis: "pf_pgs_hinweis",
+      jahresumsatz_teur: "pf_pgs_jahresumsatz_teur",
       jahresumsatz: "pf_pgs_jahresumsatz",
       ampel: "pf_pgs_ampel",
       cancelBtn: "btnPfPgsCancel",
@@ -2397,6 +2862,7 @@ function portfolioDomForCategory(category) {
     bezeichnung: "pf_pjg_bezeichnung",
     beschreibung: "pf_pjg_beschreibung",
     hinweis: "pf_pjg_hinweis",
+    jahresumsatz_teur: "pf_pjg_jahresumsatz_teur",
     jahresumsatz: "pf_pjg_jahresumsatz",
     ampel: "pf_pjg_ampel",
     cancelBtn: "btnPfPjgCancel",
@@ -2427,17 +2893,20 @@ async function onSubmitPortfolio(category, event) {
   const bezeichnung = document.getElementById(dom.bezeichnung)?.value.trim() || "";
   const beschreibung = document.getElementById(dom.beschreibung)?.value.trim() || "";
   const hinweis = document.getElementById(dom.hinweis)?.value.trim() || "";
-  const jahresumsatz = document.getElementById(dom.jahresumsatz)?.value.trim() || "";
+  const jahresumsatzText = document.getElementById(dom.jahresumsatz)?.value.trim() || "";
+  const jahresumsatzTeur = readTeurInputValue(document.getElementById(dom.jahresumsatz_teur));
   const ampel = document.getElementById(dom.ampel)?.value || "";
-  const entry = {
+  const entry = enrichPortfolioUmsatz({
     id: id || undefined,
     category,
     bezeichnung,
     beschreibung,
     hinweis,
-    jahresumsatz,
+    jahresumsatz_teur: jahresumsatzTeur,
+    jahresumsatz: jahresumsatzText || (jahresumsatzTeur != null ? formatUmsatzTeur(jahresumsatzTeur) : ""),
     ampel,
-  };
+    ampel_score: ampelToScore(ampel),
+  });
   try {
     await saveEntry("portfolio", entry);
     await refreshEntries();
@@ -2466,15 +2935,20 @@ function renderPortfolioCategory(category) {
 
   listEl.innerHTML = items
     .map((e) => {
-      const desc = esc((e.beschreibung || "").slice(0, 80));
-      const descMore = (e.beschreibung || "").length > 80 ? "…" : "";
-      const hint = esc((e.hinweis || "").slice(0, 60));
-      const hintMore = (e.hinweis || "").length > 60 ? "…" : "";
+      const enriched = enrichPortfolioUmsatz(e);
+      const desc = esc((enriched.beschreibung || "").slice(0, 80));
+      const descMore = (enriched.beschreibung || "").length > 80 ? "…" : "";
+      const hint = esc((enriched.hinweis || "").slice(0, 60));
+      const hintMore = (enriched.hinweis || "").length > 60 ? "…" : "";
+      const umsatzLabel =
+        enriched.jahresumsatz_teur != null
+          ? formatUmsatzTeur(enriched.jahresumsatz_teur)
+          : enriched.jahresumsatz || "–";
       return (
         "<tr>" +
-        `<td>${esc(e.bezeichnung || "–")}</td>` +
-        `<td style="text-align:center">${ampelHTML(e.ampel)}</td>` +
-        `<td>${esc(e.jahresumsatz || "–")}</td>` +
+        `<td>${esc(enriched.bezeichnung || "–")}</td>` +
+        `<td style="text-align:center">${ampelHTML(enriched.ampel)}</td>` +
+        `<td>${esc(umsatzLabel)}</td>` +
         `<td style="max-width:280px">${desc}${descMore}</td>` +
         `<td style="max-width:200px">${hint || "–"}${hintMore}</td>` +
         `<td style="white-space:nowrap">` +
@@ -2497,14 +2971,17 @@ function renderPortfolio() {
 
 function loadPortfolioEntry(entry) {
   if (!entry) return;
-  const category = String(entry.category || "").trim();
+  const enriched = enrichPortfolioUmsatz(entry);
+  const category = String(enriched.category || "").trim();
   const dom = portfolioDomForCategory(category);
-  document.getElementById(dom.editId).value = entry.id || "";
-  document.getElementById(dom.bezeichnung).value = entry.bezeichnung || "";
-  document.getElementById(dom.beschreibung).value = entry.beschreibung || "";
-  document.getElementById(dom.hinweis).value = entry.hinweis || "";
-  document.getElementById(dom.jahresumsatz).value = entry.jahresumsatz || "";
-  document.getElementById(dom.ampel).value = entry.ampel || "";
+  document.getElementById(dom.editId).value = enriched.id || "";
+  document.getElementById(dom.bezeichnung).value = enriched.bezeichnung || "";
+  document.getElementById(dom.beschreibung).value = enriched.beschreibung || "";
+  document.getElementById(dom.hinweis).value = enriched.hinweis || "";
+  const teurEl = document.getElementById(dom.jahresumsatz_teur);
+  if (teurEl) teurEl.value = enriched.jahresumsatz_teur != null ? enriched.jahresumsatz_teur : "";
+  document.getElementById(dom.jahresumsatz).value = enriched.jahresumsatz || "";
+  document.getElementById(dom.ampel).value = enriched.ampel || "";
   const cancel = document.getElementById(dom.cancelBtn);
   if (cancel) cancel.style.display = "";
   resetFormSaveButtonTracker(document.getElementById(dom.formId));
@@ -2539,46 +3016,7 @@ const ORG_PIE_COLORS = [
 ];
 
 function parseOrgUmsatzText(raw) {
-  if (!raw || !String(raw).trim()) return null;
-  let s = String(raw)
-    .trim()
-    .toLowerCase()
-    .replace(/\s+/g, "")
-    .replace(/€|eur/g, "");
-  let mult = 1;
-  if (/mio|million|mill\.?/.test(s)) {
-    mult = 1e6;
-    s = s.replace(/(mio\.?|million|mill\.?)/g, "");
-  } else if (/mrd|milliard/.test(s)) {
-    mult = 1e9;
-    s = s.replace(/(mrd\.?|milliard)/g, "");
-  } else if (/tsd|tausend/.test(s)) {
-    mult = 1e3;
-    s = s.replace(/(tsd\.?|tausend)/g, "");
-  } else if (/k$/.test(s)) {
-    mult = 1e3;
-    s = s.replace(/k$/, "");
-  }
-  const numMatch = s.match(/[\d.,]+/);
-  if (!numMatch) return null;
-  let numStr = numMatch[0];
-  if (numStr.includes(",") && numStr.includes(".")) {
-    if (numStr.lastIndexOf(",") > numStr.lastIndexOf(".")) {
-      numStr = numStr.replace(/\./g, "").replace(",", ".");
-    } else {
-      numStr = numStr.replace(/,/g, "");
-    }
-  } else if (numStr.includes(",")) {
-    const parts = numStr.split(",");
-    if (parts[1]?.length === 3 && parts[0].length <= 3) {
-      numStr = parts.join("");
-    } else {
-      numStr = numStr.replace(",", ".");
-    }
-  }
-  const n = parseFloat(numStr);
-  if (!Number.isFinite(n) || n < 0) return null;
-  return n * mult;
+  return parseUmsatzTextToEur(raw);
 }
 
 function formatOrgUmsatzValue(n) {
@@ -2647,11 +3085,16 @@ function collectOrgGliederungChartRows() {
     const bereich = readSelectWithOther(r, ".org-gli-select", ".org-gli-other") || "Ohne Bezeichnung";
     const hcRaw = r.querySelector(".org-gli-hc")?.value;
     const hc = hcRaw === "" ? null : parseInt(hcRaw, 10);
-    const umsatz = parseOrgUmsatzText(r.querySelector(".org-gli-umsatz")?.value);
+    const umsatzTeur = readTeurInputValue(r.querySelector(".org-gli-umsatz-teur"));
+    const umsatzText = r.querySelector(".org-gli-umsatz")?.value.trim() || "";
+    const umsatzEur =
+      umsatzTeur != null
+        ? teurToEur(umsatzTeur)
+        : parseOrgUmsatzText(umsatzText);
     rows.push({
       label: bereich,
       headcount: Number.isFinite(hc) && hc > 0 ? hc : 0,
-      umsatz: umsatz != null && umsatz > 0 ? umsatz : 0,
+      umsatz: umsatzEur != null && umsatzEur > 0 ? umsatzEur : 0,
     });
   });
   return rows;
@@ -2796,7 +3239,7 @@ function bindOrgGliederungRow(row, opts = {}) {
 }
 
 function addOrgGliederungRow(data) {
-  const d = data || {};
+  const d = enrichOrgGliederungUmsatz(data || {});
   const bereichR = resolveOrgSelect(d.bereich, ORG_TECH_BEREICHE);
   const container = document.getElementById("org_gliederung_rows");
   if (!container) return;
@@ -2830,8 +3273,10 @@ function addOrgGliederungRow(data) {
           <textarea class="org-gli-beschreibung" style="min-height:45px">${esc(d.beschreibung || "")}</textarea></div>
         <div><label>Headcount</label>
           <input type="number" class="org-gli-hc" min="0" value="${d.headcount != null && d.headcount !== "" ? escAttr(d.headcount) : ""}"></div>
-        <div><label>Umsatz</label>
-          <input type="text" class="org-gli-umsatz" placeholder="z.B. 1,2 Mio. EUR" value="${escAttr(d.umsatz || "")}"></div>
+        <div><label>Umsatz (TEUR)</label>
+          <input type="number" class="org-gli-umsatz-teur" min="0" step="1" value="${d.umsatz_teur != null && d.umsatz_teur !== "" ? escAttr(d.umsatz_teur) : ""}"></div>
+        <div class="span2"><label>Umsatz-Hinweis (optional)</label>
+          <input type="text" class="org-gli-umsatz" placeholder="Erlaeuterung oder Legacy-Angabe" value="${escAttr(d.umsatz || "")}"></div>
       </div>
     </div>`;
   container.appendChild(row);
@@ -2957,20 +3402,33 @@ function resetOrgRollenRows(rows) {
 
 function getOrganisationFormData() {
   const hat = document.getElementById("org_hat_gliederung")?.value || "";
+  const stichtag = document.getElementById("org_stichtag")?.value || "";
+  const erfassungsjahrRaw = document.getElementById("org_erfassungsjahr")?.value;
+  let erfassungsjahr =
+    erfassungsjahrRaw === "" || erfassungsjahrRaw == null
+      ? stichtag
+        ? parseInt(stichtag.slice(0, 4), 10)
+        : null
+      : parseInt(erfassungsjahrRaw, 10);
+  if (!Number.isFinite(erfassungsjahr)) erfassungsjahr = null;
   const gliederungen = [];
   if (hat === "ja") {
     document.querySelectorAll("#org_gliederung_rows .org-gliederung-row").forEach((r) => {
       const bereich = readSelectWithOther(r, ".org-gli-select", ".org-gli-other");
       const beschreibung = r.querySelector(".org-gli-beschreibung")?.value.trim() || "";
       const hcRaw = r.querySelector(".org-gli-hc")?.value;
-      const umsatz = r.querySelector(".org-gli-umsatz")?.value.trim() || "";
-      if (!bereich && !beschreibung && hcRaw === "" && !umsatz) return;
-      gliederungen.push({
-        bereich,
-        beschreibung,
-        headcount: hcRaw === "" ? null : parseInt(hcRaw, 10),
-        umsatz,
-      });
+      const umsatzText = r.querySelector(".org-gli-umsatz")?.value.trim() || "";
+      const umsatzTeur = readTeurInputValue(r.querySelector(".org-gli-umsatz-teur"));
+      if (!bereich && !beschreibung && hcRaw === "" && umsatzTeur == null && !umsatzText) return;
+      gliederungen.push(
+        enrichOrgGliederungUmsatz({
+          bereich,
+          beschreibung,
+          headcount: hcRaw === "" ? null : parseInt(hcRaw, 10),
+          umsatz_teur: umsatzTeur,
+          umsatz: umsatzText,
+        })
+      );
     });
   }
   const rollen = [];
@@ -2986,6 +3444,8 @@ function getOrganisationFormData() {
     });
   });
   return {
+    stichtag,
+    erfassungsjahr,
     hatTechnologischeGliederung: hat,
     gliederungen,
     rollen,
@@ -2993,6 +3453,12 @@ function getOrganisationFormData() {
 }
 
 function validateOrganisationForm() {
+  const stichtag = document.getElementById("org_stichtag");
+  if (!stichtag?.value) {
+    toast("Bitte einen Stichtag für die Statusaufnahme angeben.", "#e74c3c", 4000);
+    stichtag?.focus();
+    return false;
+  }
   const hat = document.getElementById("org_hat_gliederung");
   if (!hat?.value) {
     toast("Bitte angeben, ob eine organisatorische Unterteilung existiert.", "#e74c3c", 4000);
@@ -3029,6 +3495,17 @@ function validateOrganisationForm() {
 function loadOrganisationEntry(entry) {
   if (!entry) return;
   document.getElementById("org_editId").value = entry.id || "";
+  const stichtagEl = document.getElementById("org_stichtag");
+  const jahrEl = document.getElementById("org_erfassungsjahr");
+  if (stichtagEl) stichtagEl.value = entry.stichtag || "";
+  if (jahrEl) {
+    jahrEl.value =
+      entry.erfassungsjahr != null
+        ? entry.erfassungsjahr
+        : entry.stichtag
+          ? entry.stichtag.slice(0, 4)
+          : "";
+  }
   document.getElementById("org_hat_gliederung").value = entry.hatTechnologischeGliederung || "";
   updateOrgGliederungSectionVisibility();
   resetOrgGliederungRows(entry.hatTechnologischeGliederung === "ja" ? entry.gliederungen || [] : []);
@@ -3040,6 +3517,11 @@ function resetOrganisationForm() {
   const form = document.getElementById("organisationForm");
   if (form) form.reset();
   document.getElementById("org_editId").value = "";
+  const today = new Date().toISOString().slice(0, 10);
+  const stichtagEl = document.getElementById("org_stichtag");
+  const jahrEl = document.getElementById("org_erfassungsjahr");
+  if (stichtagEl) stichtagEl.value = today;
+  if (jahrEl) jahrEl.value = String(new Date().getFullYear());
   updateOrgGliederungSectionVisibility();
   resetOrgGliederungRows([]);
   resetOrgRollenRows([]);
@@ -3713,6 +4195,10 @@ function fillSkillEmployeeFields(e) {
   renderSkillEmployeeCatalogCheckboxes(e);
   updateSkillUnitDisplay(e);
   document.getElementById("sk_email").value = e.email || "";
+  const zertEl = document.getElementById("sk_zertifikate");
+  const zertFlagEl = document.getElementById("sk_zertifiziert");
+  if (zertEl) zertEl.value = e.zertifikate || "";
+  if (zertFlagEl) zertFlagEl.value = e.zertifiziert || "";
 }
 
 function updateSkillDeleteButton() {
@@ -3929,6 +4415,10 @@ document.getElementById("skillForm").addEventListener("submit", async (e) => {
   entry.unit = saveUnit;
   const personalnummer = document.getElementById("sk_personalnummer")?.value.trim() || "";
   if (personalnummer) entry.personalnummer = personalnummer;
+  const zertifikate = document.getElementById("sk_zertifikate")?.value.trim() || "";
+  const zertifiziert = document.getElementById("sk_zertifiziert")?.value || "";
+  if (zertifikate) entry.zertifikate = zertifikate;
+  if (zertifiziert) entry.zertifiziert = zertifiziert;
   const label = skillEmployeeLabel(entry);
   const eId = document.getElementById("sk_editId").value;
   if (eId) entry.id = eId;
@@ -4021,6 +4511,12 @@ function switchSuperAdminViewForEntry(entry) {
   renderOverview();
   renderExportStats();
   if (isAdmin) renderAdminUsers();
+  if (document.getElementById("page-fortschritt")?.classList.contains("active")) {
+    renderFortschrittDashboard();
+  }
+  if (document.getElementById("page-demo-daten")?.classList.contains("active")) {
+    renderDemoDatenPage();
+  }
 }
 
 function editEntry(type,id){
@@ -4186,7 +4682,8 @@ function dl(b,n){const a=document.createElement('a');a.href=URL.createObjectURL(
 
 
 function checkAdmin(){
-  document.getElementById('tabAdmin').style.display = isAdmin ? '' : 'none';
+  const adminHeaderBtn = document.getElementById('launcherAdmin');
+  if (adminHeaderBtn) adminHeaderBtn.style.display = isAdmin ? '' : 'none';
   const superCard = document.getElementById('superAdminUnitsCard');
   if (superCard) superCard.style.display = isSuperAdmin ? '' : 'none';
 }
@@ -4202,25 +4699,46 @@ function collapseAdminPanelDetails(panelId) {
 }
 
 function setAdminSubtab(mode) {
-  adminSubtab =
-    mode === "skills" ? "skills" : mode === "roles" ? "roles" : mode === "org" ? "org" : "users";
-  ["adminPanelUsers", "adminPanelSkills", "adminPanelRoles", "adminPanelOrg"].forEach(
-    collapseAdminPanelDetails
-  );
+  const valid = ["users", "skills", "roles", "leitplanken", "permissions", "org"];
+  adminSubtab = valid.includes(mode) ? mode : "users";
+  [
+    "adminPanelUsers",
+    "adminPanelSkills",
+    "adminPanelRoles",
+    "adminPanelLeitplanken",
+    "adminPanelPermissions",
+    "adminPanelOrg",
+  ].forEach(collapseAdminPanelDetails);
   document.getElementById("btnAdminSubtabUsers")?.classList.toggle("active", adminSubtab === "users");
   document.getElementById("btnAdminSubtabSkills")?.classList.toggle("active", adminSubtab === "skills");
   document.getElementById("btnAdminSubtabRoles")?.classList.toggle("active", adminSubtab === "roles");
+  document
+    .getElementById("btnAdminSubtabLeitplanken")
+    ?.classList.toggle("active", adminSubtab === "leitplanken");
+  document
+    .getElementById("btnAdminSubtabPermissions")
+    ?.classList.toggle("active", adminSubtab === "permissions");
   document.getElementById("btnAdminSubtabOrg")?.classList.toggle("active", adminSubtab === "org");
   const usersPanel = document.getElementById("adminPanelUsers");
   const skillsPanel = document.getElementById("adminPanelSkills");
   const rolesPanel = document.getElementById("adminPanelRoles");
+  const leitplankenPanel = document.getElementById("adminPanelLeitplanken");
+  const permissionsPanel = document.getElementById("adminPanelPermissions");
   const orgPanel = document.getElementById("adminPanelOrg");
   if (usersPanel) usersPanel.style.display = adminSubtab === "users" ? "" : "none";
   if (skillsPanel) skillsPanel.style.display = adminSubtab === "skills" ? "" : "none";
   if (rolesPanel) rolesPanel.style.display = adminSubtab === "roles" ? "" : "none";
+  if (leitplankenPanel) leitplankenPanel.style.display = adminSubtab === "leitplanken" ? "" : "none";
+  if (permissionsPanel) permissionsPanel.style.display = adminSubtab === "permissions" ? "" : "none";
   if (orgPanel) orgPanel.style.display = adminSubtab === "org" ? "" : "none";
   if (adminSubtab === "skills") renderAdminSkillCategories();
   if (adminSubtab === "roles") renderAdminRolesAndPositions();
+  if (adminSubtab === "leitplanken" && typeof initAdminLeitplanken === "function") {
+    initAdminLeitplanken();
+  }
+  if (adminSubtab === "permissions" && typeof renderAdminRolesPermissionsDoc === "function") {
+    renderAdminRolesPermissionsDoc();
+  }
   if (adminSubtab === "org") renderAdminOrgChart();
 }
 
@@ -4583,6 +5101,7 @@ const ADMIN_USER_EXPORT_HEADERS = [
   "regionalleiter_email",
   "geschaeftsfuehrung_email",
   "administration",
+  "login_gesperrt",
 ];
 
 function joinImportList(values) {
@@ -4594,9 +5113,11 @@ function userToAdminExportRow(user) {
   const nachname = (nameParts[0] || "").trim();
   const vorname = (nameParts[1] || "").trim();
   const rl = adminUsersCache.find((u) => String(u.id) === String(user.regionalleiter_id));
-  const gf = adminUsersCache.find((u) => String(u.id) === String(user.geschaeftsfuehrung_id));
+  const gfEmails = resolveGeschaeftsfuehrungIds(user)
+    .map((id) => adminUsersCache.find((u) => String(u.id) === String(id))?.email)
+    .filter(Boolean);
   const administration = (user.roles || []).filter((role) =>
-    SYSTEM_PRIVILEGE_ROLES.includes(role)
+    SYSTEM_PRIVILEGE_ROLES.includes(role) || SYSTEM_APP_MODULE_ROLES.includes(role)
   );
   return [
     user.personalnummer || "",
@@ -4608,8 +5129,9 @@ function userToAdminExportRow(user) {
     joinImportList(user.units),
     user.standort || "",
     rl?.email || "",
-    gf?.email || "",
+    joinImportList(gfEmails),
     joinImportList(administration),
+    user.loginBlocked ? "ja" : "nein",
   ];
 }
 
@@ -5155,14 +5677,20 @@ async function onAdminEditRolesChange() {
   updateAdminEditUnitsVisibility();
   const userId = document.getElementById("adm_edit_id")?.value || "";
   if (adminFormRequiresRegionalleiterFields("adm_edit_")) {
-    const currentGf = document.getElementById("adm_edit_geschaeftsfuehrung_id")?.value || "";
-    renderGeschaeftsfuehrungSelect("adm_edit_geschaeftsfuehrung_id", currentGf, userId);
+    const currentGfIds = getAdminGeschaeftsfuehrungIds("adm_edit_");
+    const fallbackGfIds = resolveGeschaeftsfuehrungIds(editingUserSnapshot || {});
+    renderGeschaeftsfuehrungCheckboxes(
+      "adm_edit_",
+      currentGfIds.length ? currentGfIds : fallbackGfIds,
+      userId
+    );
   }
   if (adminFormRequiresRegionalleiter("adm_edit_")) {
     const currentRl = document.getElementById("adm_edit_regionalleiter_id")?.value || "";
     renderRegionalleiterSelect("adm_edit_regionalleiter_id", currentRl);
   }
   updateMitarbeiterUnitLeadAutoHint("adm_edit_");
+  updateAdminAppModuleSection("adm_edit_");
   const pick = roles.includes("mitarbeiter") && selected.length > 1 ? [selected[0]] : selected;
   await refreshAdminUnitCheckboxes("adm_edit_units_select", pick);
 }
@@ -5181,8 +5709,10 @@ async function openAdminEditUser(user) {
   editingUserSnapshot = {
     standort: user.standort || "",
     geschaeftsfuehrung_id: user.geschaeftsfuehrung_id || "",
+    geschaeftsfuehrungIds: resolveGeschaeftsfuehrungIds(user),
     regionalleiter_id: user.regionalleiter_id || "",
     unit_lead_id: user.unit_lead_id || "",
+    appModuleRoles: getUserRolesList(user).filter((role) => SYSTEM_APP_MODULE_ROLES.includes(role)),
   };
   editingUserUnits = Array.isArray(user.units) ? [...user.units] : [];
   const editOrgRoleIds = resolveUserOrgRoleIds(user);
@@ -5196,21 +5726,24 @@ async function openAdminEditUser(user) {
   document.getElementById("adm_edit_vorname").value = nameParts[1] || "";
   document.getElementById("adm_edit_pw").value = "";
   document.getElementById("adm_edit_super_admin_pw").value = "";
+  const loginBlockedEl = document.getElementById("adm_edit_login_blocked");
+  if (loginBlockedEl) {
+    loginBlockedEl.checked = Boolean(user.loginBlocked);
+    loginBlockedEl.disabled = isAdminUserProtected(user);
+  }
   const personalnummerEl = document.getElementById("adm_edit_personalnummer");
   if (personalnummerEl) personalnummerEl.value = user.personalnummer || "";
   setPersonalnummerFieldEditable(canEditPersonalnummer());
   renderAdminUserCatalogCheckboxes("adm_edit_", editOrgRoleIds, editPositionIds);
   setAdminFormRoles(
     "adm_edit_",
-    getUserRolesList(user).filter((role) => SYSTEM_PRIVILEGE_ROLES.includes(role))
+    getUserRolesList(user).filter(
+      (role) => SYSTEM_PRIVILEGE_ROLES.includes(role) || SYSTEM_APP_MODULE_ROLES.includes(role)
+    )
   );
   setAdminUserCatalogFields("adm_edit_", editOrgRoleIds, editPositionIds);
   setAdminStandortSelect("adm_edit_standort", user.standort);
-  renderGeschaeftsfuehrungSelect(
-    "adm_edit_geschaeftsfuehrung_id",
-    user.geschaeftsfuehrung_id || "",
-    user.id
-  );
+  renderGeschaeftsfuehrungCheckboxes("adm_edit_", resolveGeschaeftsfuehrungIds(user), user.id);
   renderRegionalleiterSelect(
     "adm_edit_regionalleiter_id",
     user.regionalleiter_id || ""
@@ -5248,8 +5781,10 @@ async function saveAdminEditUser() {
   }
   const positions = getAdminUserPositionIds("adm_edit_");
   const privilege = getAdminPrivilegeRoles("adm_edit_");
-  if (!positions.length && !privilege.length) {
-    errEl.textContent = "Mindestens eine Position oder Administration-Rolle auswaehlen.";
+  const appModules = getAdminAppModuleRoles("adm_edit_");
+  if (!positions.length && !privilege.length && !appModules.length) {
+    errEl.textContent =
+      "Mindestens eine Position, Administration-Rolle oder Anwendungszugriff auswaehlen.";
     errEl.style.display = "block";
     return;
   }
@@ -5268,10 +5803,9 @@ async function saveAdminEditUser() {
       editingUserSnapshot?.standort ||
       ""
   );
-  const geschaeftsfuehrungId =
-    document.getElementById("adm_edit_geschaeftsfuehrung_id")?.value ||
-    editingUserSnapshot?.geschaeftsfuehrung_id ||
-    "";
+  const geschaeftsfuehrungIds = adminFormRequiresRegionalleiterFields("adm_edit_")
+    ? getAdminGeschaeftsfuehrungIds("adm_edit_")
+    : resolveGeschaeftsfuehrungIds(editingUserSnapshot || {});
   const regionalleiterId =
     document.getElementById("adm_edit_regionalleiter_id")?.value ||
     editingUserSnapshot?.regionalleiter_id ||
@@ -5315,7 +5849,7 @@ async function saveAdminEditUser() {
     };
     if (adminFormRequiresRegionalleiterFields("adm_edit_")) {
       payload.standort = standort;
-      if (geschaeftsfuehrungId) payload.geschaeftsfuehrungId = geschaeftsfuehrungId;
+      payload.geschaeftsfuehrungIds = geschaeftsfuehrungIds;
     }
     if (adminFormRequiresRegionalleiter("adm_edit_")) {
       payload.regionalleiterId = regionalleiterId;
@@ -5329,6 +5863,10 @@ async function saveAdminEditUser() {
     if (canEditPersonalnummer()) {
       payload.personalnummer =
         document.getElementById("adm_edit_personalnummer")?.value.trim() || "";
+    }
+    const loginBlockedEl = document.getElementById("adm_edit_login_blocked");
+    if (loginBlockedEl && !loginBlockedEl.disabled) {
+      payload.loginBlocked = loginBlockedEl.checked;
     }
     await api("/api/admin/users/" + id, {
       method: "PUT",
@@ -5851,6 +6389,16 @@ async function deleteAdminCategory(id) {
   toast("Kategorie geloescht.", "#e74c3c");
 }
 
+function mergeOrgDeputyLeadLists(left = [], right = []) {
+  const map = new Map();
+  [...left, ...right].forEach((person) => {
+    if (person?.id != null) map.set(String(person.id), person);
+  });
+  return [...map.values()].sort((a, b) =>
+    String(a.name || "").localeCompare(String(b.name || ""), "de")
+  );
+}
+
 function groupFlatOrgUnitsByLead(units) {
   const byLead = new Map();
   const withoutLead = [];
@@ -5860,12 +6408,20 @@ function groupFlatOrgUnitsByLead(units) {
       name: unit.name,
       mitarbeiter: unit.mitarbeiter || [],
     };
+    const unitDeputies = unit.deputyLead ? [unit.deputyLead] : unit.deputyLeads || [];
     if (lead?.id) {
       const leadId = String(lead.id);
       if (!byLead.has(leadId)) {
-        byLead.set(leadId, { branchType: "unit_lead", unitLead: lead, units: [] });
+        byLead.set(leadId, {
+          branchType: "unit_lead",
+          unitLead: lead,
+          deputyLeads: [],
+          units: [],
+        });
       }
-      byLead.get(leadId).units.push(unitNode);
+      const branch = byLead.get(leadId);
+      branch.units.push(unitNode);
+      branch.deputyLeads = mergeOrgDeputyLeadLists(branch.deputyLeads, unitDeputies);
     } else {
       withoutLead.push(unitNode);
     }
@@ -5874,7 +6430,7 @@ function groupFlatOrgUnitsByLead(units) {
     String(a.unitLead?.name || "").localeCompare(String(b.unitLead?.name || ""), "de")
   );
   if (withoutLead.length) {
-    unitLeads.push({ branchType: "orphan_units", unitLead: null, units: withoutLead });
+    unitLeads.push({ branchType: "orphan_units", unitLead: null, deputyLeads: [], units: withoutLead });
   }
   return unitLeads;
 }
@@ -5899,6 +6455,7 @@ function normalizeOrgChartRegionalleiter(reg) {
         unitLeads: reg.units.map((branch) => ({
           branchType: branch.branchType,
           unitLead: branch.unitLead,
+          deputyLeads: branch.deputyLeads || [],
           units: [],
           mitarbeiter: branch.mitarbeiter || [],
           name: branch.name,
@@ -5939,6 +6496,44 @@ function orgEmptyHtml(text) {
   return `<div class="org-empty-hint">${esc(text)}</div>`;
 }
 
+function renderOrgUnitLeadHead(unitLead, deputyLeads, extraHtml) {
+  const deputies = deputyLeads || [];
+  if (!unitLead) return "";
+  if (!deputies.length) {
+    return (
+      `<div class="org-node org-node--lead org-node--lead-compact">` +
+      (extraHtml || "") +
+      `<div class="org-node-name">${esc(unitLead.name)}</div>` +
+      `<div class="org-node-email">${esc(unitLead.email)}</div>` +
+      `</div>`
+    );
+  }
+  const entries = [
+    { role: "Unit Lead", name: unitLead.name, email: unitLead.email },
+    ...deputies.map((dep) => ({
+      role: "Stellv. Unit Leiter",
+      name: dep.name,
+      email: dep.email,
+    })),
+  ];
+  const peopleHtml = entries
+    .map(
+      (entry) =>
+        `<div class="org-lead-person">` +
+        `<div class="org-lead-person-role">${esc(entry.role)}</div>` +
+        `<div class="org-lead-person-name">${esc(entry.name)}</div>` +
+        `<div class="org-lead-person-email">${esc(entry.email)}</div>` +
+        `</div>`
+    )
+    .join("");
+  return (
+    `<div class="org-node org-node--lead org-node--lead-group">` +
+    (extraHtml || "") +
+    `<div class="org-lead-person-list">${peopleHtml}</div>` +
+    `</div>`
+  );
+}
+
 function renderOrgUnitWithStaff(unit) {
   const staffHtml = unit.mitarbeiter?.length
     ? unit.mitarbeiter.map((p) => orgNodeHtml(p, "org-node--mitarbeiter", "Mitarbeiter")).join("")
@@ -5958,7 +6553,20 @@ function renderOrgUnitWithStaff(unit) {
   );
 }
 
-function renderOrgUnitLeadDirectStaff(branch) {
+function renderOrgUnitLeadColumnLabel(branch, layout) {
+  if (!branch?.unitLead) return "";
+  const text = layout === "supervisors" ? "Vorgesetzter" : "Unit Lead";
+  return `<div class="org-tier-label org-unitlead-column-label">${text}</div>`;
+}
+
+function renderOrgUnitLeadRailDrop(showRailDrop) {
+  return showRailDrop
+    ? `<div class="org-connector-v org-connector-v--rail-drop" aria-hidden="true"></div>`
+    : "";
+}
+
+function renderOrgUnitLeadDirectStaff(branch, layout, options = {}) {
+  const showRailDrop = Boolean(options.showRailDrop);
   const staffHtml = branch.mitarbeiter?.length
     ? branch.mitarbeiter.map((p) => orgNodeHtml(p, "org-node--mitarbeiter", "Mitarbeiter")).join("")
     : orgEmptyHtml("Keine Mitarbeiter");
@@ -5969,7 +6577,7 @@ function renderOrgUnitLeadDirectStaff(branch) {
       branch.name && branch.name !== branch.unitLead.name
         ? `<div class="org-node-meta">${esc(branch.name)}</div>`
         : "";
-    headHtml = orgNodeHtml(branch.unitLead, "org-node--lead", "Unit Lead") + unitsHint;
+    headHtml = renderOrgUnitLeadHead(branch.unitLead, branch.deputyLeads, unitsHint);
   } else {
     headHtml =
       `<div class="org-node org-node--unit org-node--team">` +
@@ -5980,6 +6588,8 @@ function renderOrgUnitLeadDirectStaff(branch) {
 
   return (
     `<div class="org-unitlead-column org-supervisor-column">` +
+    renderOrgUnitLeadRailDrop(showRailDrop) +
+    renderOrgUnitLeadColumnLabel(branch, layout) +
     headHtml +
     `<div class="org-connector-v"></div>` +
     `<div class="org-tier org-tier--mitarbeiter">` +
@@ -5989,16 +6599,17 @@ function renderOrgUnitLeadDirectStaff(branch) {
   );
 }
 
-function renderOrgUnitLeadBranch(branch) {
+function renderOrgUnitLeadBranch(branch, layout, options = {}) {
+  const showRailDrop = Boolean(options.showRailDrop);
   if (!branch.units?.length) {
-    return renderOrgUnitLeadDirectStaff(branch);
+    return renderOrgUnitLeadDirectStaff(branch, layout, options);
   }
 
   const unitsHtml = branch.units.map((unit) => renderOrgUnitWithStaff(unit)).join("");
 
   let headHtml;
   if (branch.unitLead) {
-    headHtml = orgNodeHtml(branch.unitLead, "org-node--lead", "Unit Lead");
+    headHtml = renderOrgUnitLeadHead(branch.unitLead, branch.deputyLeads);
   } else {
     headHtml =
       `<div class="org-node org-node--unit org-node--team">` +
@@ -6009,6 +6620,8 @@ function renderOrgUnitLeadBranch(branch) {
 
   return (
     `<div class="org-unitlead-column">` +
+    renderOrgUnitLeadRailDrop(showRailDrop) +
+    renderOrgUnitLeadColumnLabel(branch, layout) +
     headHtml +
     `<div class="org-connector-v"></div>` +
     `<div class="org-tier org-tier--units">` +
@@ -6037,21 +6650,27 @@ function renderOrgRegionalHead(reg) {
 
 function renderOrgRegionalBranch(reg) {
   const useSupervisors = reg.layout === "supervisors";
-  const tierLabel = useSupervisors ? "Vorgesetzte & Teams" : "Unit Leads";
+  const tierLabel = useSupervisors ? "Vorgesetzte & Teams" : "";
   const emptyHint = useSupervisors
     ? "Keine Vorgesetzten oder Mitarbeiter zugewiesen"
     : "Keine Unit Leads oder Units zugewiesen";
   const unitLeads = reg.unitLeads || [];
+  const leadCount = unitLeads.length;
+  const isMulti = leadCount > 1;
+  const rowClass = isMulti ? " org-unitleads-row--multi" : " org-unitleads-row--single";
 
-  const branchesHtml = unitLeads.length
-    ? unitLeads.map((branch) => renderOrgUnitLeadBranch(branch)).join("")
+  const branchesHtml = leadCount
+    ? unitLeads.map((branch) =>
+        renderOrgUnitLeadBranch(branch, reg.layout, { showRailDrop: isMulti })
+      ).join("")
     : orgEmptyHtml(emptyHint);
 
   return (
-    `<div class="org-regional-column">` +
-    `<div class="org-connector-v"></div>` +
+    `<div class="org-unitleads-section${rowClass}">` +
+    `<div class="org-connector-v" aria-hidden="true"></div>` +
+    (isMulti ? `<div class="org-unitleads-rail" aria-hidden="true"></div>` : "") +
     `<div class="org-tier org-tier--units${useSupervisors ? " org-tier--supervisors" : " org-tier--unitleads"}">` +
-    `<div class="org-tier-label">${tierLabel}</div>` +
+    (tierLabel ? `<div class="org-tier-label">${tierLabel}</div>` : "") +
     `<div class="org-tier-columns org-unit-columns org-unitlead-columns">${branchesHtml}</div>` +
     `</div>` +
     `</div>`
@@ -6068,8 +6687,45 @@ function sortOrgRegionalleiter(regionalleiter) {
   });
 }
 
-function renderOrgGeschaeftsfuehrungTree(gf) {
-  const regionalList = sortOrgRegionalleiter(gf.regionalleiter);
+function sortOrgGeschaeftsfuehrung(geschaeftsfuehrung) {
+  return [...(geschaeftsfuehrung || [])].sort((a, b) =>
+    String(a.name || "").localeCompare(String(b.name || ""), "de")
+  );
+}
+
+function mergeRegionalleiterFromGeschaeftsfuehrung(gfList) {
+  const byId = new Map();
+  for (const gf of gfList || []) {
+    for (const reg of gf.regionalleiter || []) {
+      const key = String(reg.id);
+      if (!byId.has(key)) byId.set(key, reg);
+    }
+  }
+  return sortOrgRegionalleiter([...byId.values()]);
+}
+
+function renderOrgGfHeadGroup(gfList) {
+  const peopleHtml = gfList
+    .map(
+      (gf) =>
+        `<div class="org-gf-person">` +
+        `<div class="org-gf-person-name">${esc(gf.name)}</div>` +
+        `<div class="org-gf-person-email">${esc(gf.email)}</div>` +
+        `</div>`
+    )
+    .join("");
+
+  return (
+    `<div class="org-gf-head org-gf-head--group">` +
+    `<div class="org-node org-node--gf org-node--gf-group">` +
+    `<div class="org-node-role">Geschaeftsfuehrung</div>` +
+    `<div class="org-gf-person-list">${peopleHtml}</div>` +
+    `</div>` +
+    `</div>`
+  );
+}
+
+function renderOrgRegionalTier(regionalList) {
   const regionalCount = regionalList.length;
   const forkMod =
     regionalCount > 1 ? " org-fork--multi" : regionalCount === 1 ? " org-fork--single" : "";
@@ -6087,28 +6743,48 @@ function renderOrgGeschaeftsfuehrungTree(gf) {
     : `<div class="org-regional-branch org-regional-branch--empty">${orgEmptyHtml("Keine Regionalleiter zugewiesen")}</div>`;
 
   return (
-    `<section class="org-tree">` +
-    `<div class="org-tier org-tier--geschaeftsfuehrung">` +
-    `<div class="org-tier-label">Geschaeftsfuehrung</div>` +
-    `<div class="org-tier-nodes">${orgNodeHtml(gf, "org-node--gf", "Geschaeftsfuehrung")}</div>` +
-    `</div>` +
-    `<div class="org-fork${forkMod}">` +
+    `<div class="org-fork org-fork--regional${forkMod}">` +
     `<div class="org-fork-stem" aria-hidden="true"></div>` +
     `<div class="org-tier org-tier--regional">` +
     `<div class="org-tier-label">Regionalleitung</div>` +
     `<div class="org-tier-columns org-regional-columns org-fork-branches">${regionalHtml}</div>` +
     `</div>` +
+    `</div>`
+  );
+}
+
+function renderOrgChartTree(geschaeftsfuehrung) {
+  const gfList = sortOrgGeschaeftsfuehrung(geschaeftsfuehrung);
+  if (!gfList.length) {
+    return (
+      `<section class="org-tree">` +
+      `<div class="org-tier org-tier--geschaeftsfuehrung">` +
+      `<div class="org-tier-label">Geschaeftsfuehrung</div>` +
+      orgEmptyHtml("Geschaeftsfuehrung – Benutzer mit Rolle Geschaeftsfuehrung anlegen") +
+      `</div>` +
+      `</section>`
+    );
+  }
+
+  const regionalList = mergeRegionalleiterFromGeschaeftsfuehrung(gfList);
+
+  return (
+    `<section class="org-tree org-tree--single-apex">` +
+    `<div class="org-tier org-tier--geschaeftsfuehrung">` +
+    `<div class="org-tier-label">Geschaeftsfuehrung</div>` +
+    renderOrgGfHeadGroup(gfList) +
     `</div>` +
+    renderOrgRegionalTier(regionalList) +
     `</section>`
   );
 }
 
 function renderAdminOrgChartHtml(data) {
-  const trees = data.geschaeftsfuehrung?.length
-    ? data.geschaeftsfuehrung.map((gf) => renderOrgGeschaeftsfuehrungTree(gf)).join("")
+  const tree = data.geschaeftsfuehrung?.length
+    ? renderOrgChartTree(data.geschaeftsfuehrung)
     : orgEmptyHtml("Geschaeftsfuehrung – Benutzer mit Rolle Geschaeftsfuehrung anlegen");
 
-  return `<div class="org-chart org-chart--hierarchy">${trees}</div>`;
+  return `<div class="org-chart org-chart--hierarchy">${tree}</div>`;
 }
 
 function orgChartHasContent(data) {
@@ -6156,6 +6832,20 @@ document.getElementById("admUserFilterName")?.addEventListener("input", renderAd
 document.getElementById("admUserFilterUnit")?.addEventListener("change", renderAdminUsersTableBody);
 document.getElementById("admUserFilterPosition")?.addEventListener("change", renderAdminUsersTableBody);
 document.getElementById("admUserFilterOrgRole")?.addEventListener("change", renderAdminUsersTableBody);
+document.getElementById("admUserSelectAllVisible")?.addEventListener("change", (event) => {
+  const checked = event.target.checked;
+  getVisibleAdminUsers().forEach((u) => {
+    if (isAdminUserProtected(u)) return;
+    const key = String(u.id);
+    if (checked) adminUserSelection.add(key);
+    else adminUserSelection.delete(key);
+  });
+  renderAdminUsersTableBody();
+});
+document.getElementById("admUserSelectVisible")?.addEventListener("click", selectAllVisibleAdminUsers);
+document.getElementById("admUserClearSelection")?.addEventListener("click", clearAdminUserSelection);
+document.getElementById("admUserBulkBlockLogin")?.addEventListener("click", () => adminBulkSetLoginBlocked(true));
+document.getElementById("admUserBulkUnblockLogin")?.addEventListener("click", () => adminBulkSetLoginBlocked(false));
 document.getElementById("btnAdminExportUsers")?.addEventListener("click", adminExportUsers);
 document.getElementById("btnAdminImportUsers")?.addEventListener("click", adminImportUsers);
 document.getElementById("btnAdminExportSkillCategories")?.addEventListener("click", adminExportSkillCategories);
@@ -6167,6 +6857,12 @@ document.getElementById("btnAdminAddUnit")?.addEventListener("click", adminAddMa
 document.getElementById("btnAdminSubtabUsers")?.addEventListener("click", () => setAdminSubtab("users"));
 document.getElementById("btnAdminSubtabSkills")?.addEventListener("click", () => setAdminSubtab("skills"));
 document.getElementById("btnAdminSubtabRoles")?.addEventListener("click", () => setAdminSubtab("roles"));
+document
+  .getElementById("btnAdminSubtabLeitplanken")
+  ?.addEventListener("click", () => setAdminSubtab("leitplanken"));
+document
+  .getElementById("btnAdminSubtabPermissions")
+  ?.addEventListener("click", () => setAdminSubtab("permissions"));
 document.getElementById("btnAdminSubtabOrg")?.addEventListener("click", () => setAdminSubtab("org"));
 document.getElementById("btnAdminRoleNew")?.addEventListener("click", () => openAdminRoleEdit(null));
 document.getElementById("btnAdminPositionNew")?.addEventListener("click", () => openAdminPositionEdit(null));
@@ -6238,7 +6934,7 @@ document.getElementById("btnOrgGliederungAdd")?.addEventListener("click", () => 
   renderOrgGliederungCharts();
 });
 document.getElementById("org_gliederung_section")?.addEventListener("input", (e) => {
-  if (e.target.matches(".org-gli-hc, .org-gli-umsatz, .org-gli-other, .org-gli-beschreibung")) {
+  if (e.target.matches(".org-gli-hc, .org-gli-umsatz-teur, .org-gli-umsatz, .org-gli-other, .org-gli-beschreibung")) {
     renderOrgGliederungCharts();
   }
 });
@@ -6260,6 +6956,8 @@ document.getElementById("org_rollen_rows")?.addEventListener("change", (e) => {
 
 // Init
 updateAdminUnitsFieldVisibility();
+applyLoginModuleContext();
+bindAppModuleNavClicks();
 bootSession();
 
 window.doLogin = doLogin;

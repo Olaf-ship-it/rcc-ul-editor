@@ -6,6 +6,12 @@ const bcrypt = require("bcryptjs");
 const jwt = require("jsonwebtoken");
 const { Pool } = require("pg");
 require("dotenv").config();
+const {
+  DEMO_UNIT,
+  DEMO_UNITS,
+  buildDemoDataForUnit,
+} = require("./server/demo-data");
+const { buildDashboardSnapshot } = require("./server/dashboard-service");
 
 const app = express();
 const PORT = process.env.PORT || 3000;
@@ -97,7 +103,11 @@ const ROLE_PRIORITY = [
   "mitarbeiter",
   "regionalleiter",
   "geschaeftsfuehrung",
+  "backcasting",
+  "fortschritt",
 ];
+
+const APP_MODULE_ROLES = ["backcasting", "fortschritt"];
 
 function normalizeUserRoles(roles, fallbackRole = null) {
   const list = Array.isArray(roles) ? roles : roles ? [roles] : [];
@@ -164,11 +174,64 @@ function isMitarbeiterRole(roleOrUser) {
   return roleOrUser === "mitarbeiter";
 }
 
+function hasElevatedUnitAccess(roleOrUser) {
+  if (roleOrUser && typeof roleOrUser === "object") {
+    return userHasAnyRole(
+      roleOrUser,
+      "unit_lead",
+      "admin",
+      "super_admin",
+      "regionalleiter",
+      "geschaeftsfuehrung"
+    );
+  }
+  return (
+    roleOrUser === "unit_lead" ||
+    roleOrUser === "admin" ||
+    roleOrUser === "super_admin" ||
+    roleOrUser === "regionalleiter" ||
+    roleOrUser === "geschaeftsfuehrung"
+  );
+}
+
+/** Mitarbeiter ohne Unit-Lead-/Admin-Rechte – eingeschränkter Zugriff nur auf eigenes Skill-Profil */
+function isPureMitarbeiterRole(roleOrUser) {
+  return isMitarbeiterRole(roleOrUser) && !hasElevatedUnitAccess(roleOrUser);
+}
+
 function isOrgHierarchyRole(roleOrUser) {
   if (roleOrUser && typeof roleOrUser === "object") {
     return userHasAnyRole(roleOrUser, "geschaeftsfuehrung", "regionalleiter");
   }
   return roleOrUser === "geschaeftsfuehrung" || roleOrUser === "regionalleiter";
+}
+
+function isBackcastingModuleEnabled() {
+  return process.env.BACKCASTING_ENABLED !== "false";
+}
+
+function canAccessBackcasting(roleOrUser) {
+  if (!isBackcastingModuleEnabled()) return false;
+  if (isAdminRole(roleOrUser)) return true;
+  if (roleOrUser && typeof roleOrUser === "object") {
+    return userHasRole(roleOrUser, "backcasting");
+  }
+  return roleOrUser === "backcasting";
+}
+
+function canAccessFortschritt(roleOrUser) {
+  if (isAdminRole(roleOrUser)) return true;
+  if (roleOrUser && typeof roleOrUser === "object") {
+    return userHasRole(roleOrUser, "fortschritt");
+  }
+  return roleOrUser === "fortschritt";
+}
+
+function buildUserModules(user) {
+  return {
+    backcasting: canAccessBackcasting(user),
+    fortschritt: canAccessFortschritt(user),
+  };
 }
 
 function normalizeAssignableRole(role, fallback = "unit_lead") {
@@ -178,6 +241,8 @@ function normalizeAssignableRole(role, fallback = "unit_lead") {
   if (role === "regionalleiter") return "regionalleiter";
   if (role === "mitarbeiter") return "mitarbeiter";
   if (role === "unit_lead") return "unit_lead";
+  if (role === "backcasting") return "backcasting";
+  if (role === "fortschritt") return "fortschritt";
   return fallback;
 }
 
@@ -377,11 +442,24 @@ function deriveHierarchyRolesFromPositions(positions) {
   return roles;
 }
 
+function userEligibleForAppModules(inputRoles, positions) {
+  const privilege = normalizeUserRoles(inputRoles);
+  if (privilege.some((role) => role === "admin" || role === "super_admin")) return true;
+  const hierarchy = deriveHierarchyRolesFromPositions(positions);
+  if (hierarchy.includes("unit_lead") || hierarchy.includes("regionalleiter")) return true;
+  if (userHasDeputyUnitLeaderPosition(positions)) return true;
+  return false;
+}
+
 function mergeUserRolesFromInput(inputRoles, positions) {
   const privilege = normalizeUserRoles(inputRoles).filter(
-    (role) => role === "admin" || role === "super_admin"
+    (role) => role === "admin" || role === "super_admin" || APP_MODULE_ROLES.includes(role)
   );
-  return normalizeUserRoles([...deriveHierarchyRolesFromPositions(positions), ...privilege]);
+  const adminRoles = privilege.filter((role) => role === "admin" || role === "super_admin");
+  const appModules = userEligibleForAppModules(inputRoles, positions)
+    ? privilege.filter((role) => APP_MODULE_ROLES.includes(role))
+    : [];
+  return normalizeUserRoles([...deriveHierarchyRolesFromPositions(positions), ...adminRoles, ...appModules]);
 }
 
 const ORG_HIERARCHY_ROLES = ["geschaeftsfuehrung", "regionalleiter", "unit_lead", "mitarbeiter"];
@@ -398,8 +476,16 @@ function userHasEffectiveHierarchyRole(user, hierarchyRole) {
   return getEffectiveHierarchyRoles(user).includes(hierarchyRole);
 }
 
+function resolveGeschaeftsfuehrungIdsFromRow(row) {
+  const ids = normalizeBigIntArray(row?.geschaeftsfuehrung_ids);
+  if (ids.length) return ids;
+  if (row?.geschaeftsfuehrung_id) return [Number(row.geschaeftsfuehrung_id)];
+  return [];
+}
+
 function mapUserRow(row) {
   const roles = getUserRoles(row);
+  const geschaeftsfuehrungIds = resolveGeschaeftsfuehrungIdsFromRow(row);
   return {
     ...row,
     roles,
@@ -408,7 +494,9 @@ function mapUserRow(row) {
     standort: row.standort || "",
     regionalleiter_id: row.regionalleiter_id || null,
     regionalleiterName: row.regionalleiter_name ? String(row.regionalleiter_name) : null,
-    geschaeftsfuehrung_id: row.geschaeftsfuehrung_id || null,
+    geschaeftsfuehrung_id: geschaeftsfuehrungIds[0] || row.geschaeftsfuehrung_id || null,
+    geschaeftsfuehrung_ids: geschaeftsfuehrungIds,
+    geschaeftsfuehrungIds,
     geschaeftsfuehrungName: row.geschaeftsfuehrung_name ? String(row.geschaeftsfuehrung_name) : null,
     unit_lead_id: row.unit_lead_id || null,
     unitLeadName: row.unit_lead_name ? String(row.unit_lead_name) : null,
@@ -417,12 +505,13 @@ function mapUserRow(row) {
     userPositions: normalizeStringArray(row.user_positions),
     userOrgRoleIds: normalizeBigIntArray(row.user_org_role_ids),
     userPositionIds: normalizeBigIntArray(row.user_position_ids),
+    loginBlocked: Boolean(row.login_blocked),
   };
 }
 
 async function validateUserRolesAndOrg(
   roles,
-  { standort, regionalleiterId, geschaeftsfuehrungId, unitLeadId, units },
+  { standort, regionalleiterId, geschaeftsfuehrungId, geschaeftsfuehrungIds, unitLeadId, units },
   excludeUserId = null
 ) {
   const safeRoles = normalizeUserRoles(roles);
@@ -436,6 +525,7 @@ async function validateUserRolesAndOrg(
   let safeStandort = null;
   let safeRegionalleiterId = null;
   let safeGeschaeftsfuehrungId = null;
+  let safeGeschaeftsfuehrungIds = [];
   let safeUnitLeadId = null;
 
   if (safeRoles.includes("regionalleiter")) {
@@ -447,8 +537,12 @@ async function validateUserRolesAndOrg(
           : "Standort ist fuer Regionalleiter erforderlich.",
       };
     }
-    const gid = geschaeftsfuehrungId ? Number(geschaeftsfuehrungId) : null;
-    if (gid) {
+    const requestedGfIds = normalizeBigIntArray(geschaeftsfuehrungIds);
+    if (!requestedGfIds.length && geschaeftsfuehrungId) {
+      requestedGfIds.push(Number(geschaeftsfuehrungId));
+    }
+    const uniqueGfIds = [...new Set(requestedGfIds.filter((id) => Number.isInteger(id) && id > 0))];
+    for (const gid of uniqueGfIds) {
       const gfResult = await pool.query(
         `SELECT id FROM users
          WHERE id = $1
@@ -461,8 +555,9 @@ async function validateUserRolesAndOrg(
       if (excludeUserId && String(gid) === String(excludeUserId)) {
         return { error: "Regionalleiter kann sich nicht selbst als Geschaeftsfuehrung zuweisen." };
       }
-      safeGeschaeftsfuehrungId = gid;
+      safeGeschaeftsfuehrungIds.push(gid);
     }
+    safeGeschaeftsfuehrungId = safeGeschaeftsfuehrungIds[0] || null;
   }
 
   if (safeRoles.includes("unit_lead")) {
@@ -536,6 +631,7 @@ async function validateUserRolesAndOrg(
     standort: safeStandort,
     regionalleiterId: safeRegionalleiterId,
     geschaeftsfuehrungId: safeGeschaeftsfuehrungId,
+    geschaeftsfuehrungIds: safeGeschaeftsfuehrungIds,
     unitLeadId: safeUnitLeadId,
     units: unitCheck.units || [],
   };
@@ -829,6 +925,175 @@ async function ensureEntriesTypeConstraint() {
   `);
 }
 
+async function ensureDemoSchema() {
+  await pool.query(`
+    ALTER TABLE entries
+    ADD COLUMN IF NOT EXISTS is_demo BOOLEAN NOT NULL DEFAULT false
+  `);
+  await pool.query(`
+    CREATE TABLE IF NOT EXISTS backcasting_plans (
+      id TEXT PRIMARY KEY,
+      unit TEXT NOT NULL,
+      payload JSONB NOT NULL,
+      is_demo BOOLEAN NOT NULL DEFAULT false,
+      created_by_email TEXT NOT NULL,
+      updated_by_email TEXT NOT NULL,
+      created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+      updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+    )
+  `);
+  await pool.query(`
+    CREATE INDEX IF NOT EXISTS idx_backcasting_plans_unit ON backcasting_plans(unit)
+  `);
+}
+
+function backcastingPlanIdForUnit(unit, isDemo = false) {
+  const slug = String(unit || "")
+    .trim()
+    .replace(/\s+/g, "-")
+    .toLowerCase();
+  return isDemo ? `demo-plan-${slug}` : `plan-${slug}`;
+}
+
+function resolveDashboardUnit(req, requestedUnit) {
+  const unit = String(requestedUnit || "").trim();
+  if (isAdminRole(req.user)) {
+    if (unit) return { unit };
+    const fallback = req.user.unit || normalizeUnits(req.user.units)[0] || DEMO_UNIT;
+    return { unit: fallback };
+  }
+  if (isPureMitarbeiterRole(req.user)) {
+    return { error: "Kein Zugriff." };
+  }
+  const userUnits = normalizeUnits(req.user.units);
+  const userUnit = req.user.unit || userUnits[0] || "";
+  if (unit && userUnit && unit !== userUnit && !userUnits.includes(unit)) {
+    return { error: "Kein Zugriff auf diese Unit." };
+  }
+  return { unit: unit || userUnit };
+}
+
+async function fetchEntriesForUnit(unit) {
+  const result = await pool.query(
+    `SELECT id, type, unit, payload, is_demo, updated_at
+     FROM entries
+     WHERE unit = $1 AND type = ANY($2::text[])
+     ORDER BY updated_at DESC`,
+    [unit, ENTRY_TYPES]
+  );
+  return result.rows.map((row) => ({
+    ...(row.payload || {}),
+    id: row.id,
+    type: row.type,
+    unit: row.unit,
+    is_demo: row.is_demo,
+    updatedAt: row.updated_at,
+  }));
+}
+
+async function fetchBackcastingPlanForUnit(unit) {
+  const real = await pool.query(
+    `SELECT id, unit, payload, is_demo, updated_at
+     FROM backcasting_plans
+     WHERE unit = $1 AND is_demo = false
+     ORDER BY updated_at DESC
+     LIMIT 1`,
+    [unit]
+  );
+  const rows = real.rows.length
+    ? real.rows
+    : (
+        await pool.query(
+          `SELECT id, unit, payload, is_demo, updated_at
+           FROM backcasting_plans
+           WHERE unit = $1 AND is_demo = true
+           ORDER BY updated_at DESC
+           LIMIT 1`,
+          [unit]
+        )
+      ).rows;
+  if (!rows.length) return null;
+  const row = rows[0];
+  return {
+    id: row.id,
+    unit: row.unit,
+    is_demo: row.is_demo,
+    updatedAt: row.updated_at,
+    ...(row.payload || {}),
+  };
+}
+
+async function enrichBackcastingPlanMeta(unit, meta) {
+  const trimmedUnit = String(unit || "").trim();
+  const base = { ...(meta || {}), unit: trimmedUnit, bereich: trimmedUnit };
+  if (!trimmedUnit) return base;
+  const result = await pool.query(
+    `SELECT ul.name AS unit_lead_name, ul.email AS unit_lead_email
+     FROM units u
+     LEFT JOIN users ul ON ul.id = u.unit_lead_id
+     WHERE u.name = $1`,
+    [trimmedUnit]
+  );
+  const row = result.rows[0];
+  if (!row) return base;
+  return {
+    ...base,
+    leiter: row.unit_lead_name || base.leiter || "",
+    mail: row.unit_lead_email || base.mail || "",
+  };
+}
+
+async function upsertBackcastingPlan(unit, payload, email, isDemo) {
+  const id = backcastingPlanIdForUnit(unit, isDemo);
+  const now = new Date().toISOString();
+  await pool.query(
+    `INSERT INTO backcasting_plans (id, unit, payload, is_demo, created_by_email, updated_by_email, created_at, updated_at)
+     VALUES ($1, $2, $3::jsonb, $4, $5, $5, $6, $6)
+     ON CONFLICT (id) DO UPDATE SET
+       payload = EXCLUDED.payload,
+       is_demo = EXCLUDED.is_demo,
+       updated_by_email = EXCLUDED.updated_by_email,
+       updated_at = EXCLUDED.updated_at`,
+    [id, unit, JSON.stringify(payload), Boolean(isDemo), email, now]
+  );
+  return id;
+}
+
+async function removeDemoDataForUnit(unit) {
+  await pool.query("DELETE FROM entries WHERE unit = $1 AND is_demo = true", [unit]);
+  await pool.query("DELETE FROM backcasting_plans WHERE unit = $1 AND is_demo = true", [unit]);
+}
+
+async function insertDemoEntries(entries, email) {
+  const now = new Date().toISOString();
+  for (const entry of entries) {
+    const type = entry.type;
+    if (!ENTRY_TYPES.includes(type)) continue;
+    const payload = { ...entry, id: entry.id, type };
+    await pool.query(
+      `INSERT INTO entries (id, type, unit, workstream, payload, is_demo, created_by_email, updated_by_email, created_at, updated_at)
+       VALUES ($1, $2, $3, $4, $5::jsonb, true, $6, $6, $7, $7)
+       ON CONFLICT (id) DO UPDATE SET
+         type = EXCLUDED.type,
+         unit = EXCLUDED.unit,
+         workstream = EXCLUDED.workstream,
+         payload = EXCLUDED.payload,
+         is_demo = true,
+         updated_by_email = EXCLUDED.updated_by_email,
+         updated_at = EXCLUDED.updated_at`,
+      [
+        entry.id,
+        type,
+        entry.unit,
+        entry.workstream || "",
+        JSON.stringify(payload),
+        email,
+        now,
+      ]
+    );
+  }
+}
+
 async function ensureUsersSchema() {
   await pool.query(`
     ALTER TABLE users
@@ -878,7 +1143,24 @@ async function ensureUsersSchema() {
 
   await pool.query(`
     ALTER TABLE users
+    ADD COLUMN IF NOT EXISTS geschaeftsfuehrung_ids BIGINT[] NOT NULL DEFAULT '{}'
+  `);
+
+  await pool.query(`
+    UPDATE users
+    SET geschaeftsfuehrung_ids = ARRAY[geschaeftsfuehrung_id]::BIGINT[]
+    WHERE geschaeftsfuehrung_id IS NOT NULL
+      AND (geschaeftsfuehrung_ids IS NULL OR geschaeftsfuehrung_ids = '{}')
+  `);
+
+  await pool.query(`
+    ALTER TABLE users
     ADD COLUMN IF NOT EXISTS personalnummer TEXT
+  `);
+
+  await pool.query(`
+    ALTER TABLE users
+    ADD COLUMN IF NOT EXISTS login_blocked BOOLEAN NOT NULL DEFAULT false
   `);
 
   await pool.query(`
@@ -1915,6 +2197,7 @@ async function initDb() {
   `);
 
   await ensureEntriesTypeConstraint();
+  await ensureDemoSchema();
   await backfillSkillEntryPositionIds();
   await backfillSkillEntryCategoryIds();
 
@@ -1942,6 +2225,47 @@ async function initDb() {
 app.use(express.json());
 app.use(cookieParser());
 app.use("/vendor/xlsx", express.static(path.join(__dirname, "node_modules/xlsx/dist")));
+
+function isBackcastingPageRequest(req) {
+  const p = String(req.path || "").replace(/\/+$/, "") || "/";
+  return p === "/backcasting" || p === "/backcasting/index.html";
+}
+
+function isBackcastingPublicAsset(req) {
+  const p = String(req.path || "");
+  if (p === "/backcasting/forbidden.html" || p === "/backcasting/shell.js") return true;
+  if (p === "/backcasting/styles.css") return true;
+  if (p.startsWith("/backcasting/js/")) return true;
+  return false;
+}
+
+async function backcastingPageGuard(req, res, next) {
+  if (!String(req.path || "").startsWith("/backcasting")) return next();
+  if (isBackcastingPublicAsset(req)) return next();
+  if (!isBackcastingPageRequest(req)) return next();
+  if (!isBackcastingModuleEnabled()) {
+    return res.status(404).type("text/plain").send("Not found");
+  }
+  const token = req.cookies[TOKEN_COOKIE];
+  if (!token) {
+    const ret = encodeURIComponent(req.originalUrl || "/backcasting/");
+    return res.redirect(`/?module=backcasting&return=${ret}`);
+  }
+  try {
+    const jwtUser = jwt.verify(token, JWT_SECRET);
+    const result = await pool.query("SELECT role, roles FROM users WHERE id = $1", [jwtUser.sub]);
+    const user = result.rows[0];
+    if (!user || !canAccessBackcasting(user)) {
+      return res.redirect("/backcasting/forbidden.html");
+    }
+    return next();
+  } catch (_error) {
+    const ret = encodeURIComponent(req.originalUrl || "/backcasting/");
+    return res.redirect(`/?module=backcasting&return=${ret}`);
+  }
+}
+
+app.use(backcastingPageGuard);
 app.use(express.static(path.join(__dirname, "public")));
 
 function signToken(user, unit) {
@@ -1988,7 +2312,7 @@ function requireSuperAdmin(req, res, next) {
 }
 
 function canAccessUnit(req, entryUnit) {
-  if (isMitarbeiterRole(req.user)) {
+  if (isPureMitarbeiterRole(req.user)) {
     return req.user.unit === entryUnit;
   }
   return isAdminRole(req.user) || req.user.unit === entryUnit;
@@ -2003,7 +2327,7 @@ async function getUserSkillEntryId(req) {
 async function canAccessEntry(req, entry) {
   if (!entry) return false;
   if (isAdminRole(req.user)) return true;
-  if (isMitarbeiterRole(req.user)) {
+  if (isPureMitarbeiterRole(req.user)) {
     if (entry.type !== "skill") return false;
     const skillEntryId = await getUserSkillEntryId(req);
     return skillEntryId && entry.id === skillEntryId && req.user.unit === entry.unit;
@@ -2062,11 +2386,14 @@ app.post("/api/auth/login", async (req, res) => {
   }
 
   const result = await pool.query(
-    "SELECT id, email, name, role, roles, password_hash, units, skill_entry_id, personalnummer FROM users WHERE email = $1",
+    "SELECT id, email, name, role, roles, password_hash, units, skill_entry_id, personalnummer, login_blocked FROM users WHERE email = $1",
     [String(email).trim().toLowerCase()]
   );
   const user = result.rows[0];
   if (!user) return res.status(401).json({ error: "E-Mail-Adresse nicht bekannt." });
+  if (user.login_blocked) {
+    return res.status(403).json({ error: "Login fuer diesen Benutzer ist gesperrt." });
+  }
   if (!bcrypt.compareSync(password, user.password_hash)) {
     return res.status(401).json({ error: "Falsches Passwort." });
   }
@@ -2097,6 +2424,7 @@ app.post("/api/auth/login", async (req, res) => {
     unit: selectedUnit,
     skillEntryId: user.skill_entry_id || null,
     personalnummer: user.personalnummer ? String(user.personalnummer) : "",
+    modules: buildUserModules(user),
   });
 });
 
@@ -2129,6 +2457,7 @@ app.get("/api/auth/me", auth, async (req, res) => {
     units: dbUnits,
     skillEntryId: user.skill_entry_id || null,
     personalnummer: user.personalnummer ? String(user.personalnummer) : "",
+    modules: buildUserModules(user),
   });
 });
 
@@ -2204,7 +2533,7 @@ app.get("/api/auth/unit-context", auth, async (req, res) => {
 
 app.get("/api/entries", auth, async (req, res) => {
   let result;
-  if (isMitarbeiterRole(req.user)) {
+  if (isPureMitarbeiterRole(req.user)) {
     const skillEntryId = await getUserSkillEntryId(req);
     if (!skillEntryId) {
       return res.json([]);
@@ -2243,7 +2572,7 @@ app.get("/api/entries", auth, async (req, res) => {
 });
 
 app.get("/api/skill-personalnummer-lookup", auth, async (req, res) => {
-  if (isMitarbeiterRole(req.user)) {
+  if (isPureMitarbeiterRole(req.user)) {
     return res.status(403).json({ error: "Kein Zugriff." });
   }
   const result = await pool.query(
@@ -2379,7 +2708,7 @@ async function normalizeEntryForSave(type, entry, reqUser) {
 
 app.post("/api/entries", auth, async (req, res) => {
   const { type, entry } = req.body || {};
-  if (isMitarbeiterRole(req.user)) {
+  if (isPureMitarbeiterRole(req.user)) {
     return res.status(403).json({ error: "Mitarbeiter duerfen keine neuen Eintraege anlegen." });
   }
   if (!ENTRY_TYPES.includes(type)) {
@@ -2461,7 +2790,7 @@ app.put("/api/entries/:id", auth, async (req, res) => {
     return res.status(400).json({ error: normalized.error });
   }
   let { entry: safeEntry, workstream } = normalized;
-  if (isMitarbeiterRole(req.user)) {
+  if (isPureMitarbeiterRole(req.user)) {
     safeEntry = restrictSkillEntryForMitarbeiter(existing.payload || {}, safeEntry);
     workstream = safeEntry.workstream || workstream || "";
   }
@@ -2512,7 +2841,7 @@ app.delete("/api/entries/:id", auth, async (req, res) => {
   if (LEGACY_ENTRY_TYPES.includes(existing.type)) {
     return res.status(404).json({ error: "Eintrag nicht gefunden." });
   }
-  if (isMitarbeiterRole(req.user)) {
+  if (isPureMitarbeiterRole(req.user)) {
     return res.status(403).json({ error: "Mitarbeiter duerfen keine Eintraege loeschen." });
   }
   if (!(await canAccessEntry(req, existing))) {
@@ -2525,8 +2854,268 @@ app.delete("/api/entries/:id", auth, async (req, res) => {
   return res.json({ ok: true });
 });
 
+app.get("/api/dashboard/snapshot", auth, async (req, res) => {
+  if (!canAccessFortschritt(req.user)) {
+    return res.status(403).json({ error: "Kein Zugriff auf Phase 3 · Fortschritt." });
+  }
+  const resolved = resolveDashboardUnit(req, req.query.unit);
+  if (resolved.error) return res.status(403).json({ error: resolved.error });
+  const unit = resolved.unit;
+  if (!unit) return res.status(400).json({ error: "Unit fehlt." });
+  if (!(await canAccessUnit(req, unit))) {
+    return res.status(403).json({ error: "Kein Zugriff auf diese Unit." });
+  }
+  const year = parseInt(req.query.year, 10) || new Date().getFullYear();
+  const entries = await fetchEntriesForUnit(unit);
+  const planRow = await fetchBackcastingPlanForUnit(unit);
+  const snapshot = buildDashboardSnapshot(entries, planRow || { measures: {}, meta: {} }, year);
+  const demoEntries = entries.filter((e) => e.is_demo).length;
+  const demoPlan = Boolean(planRow?.is_demo);
+  return res.json({
+    unit,
+    demo: { entries: demoEntries, plan: demoPlan, active: demoEntries > 0 || demoPlan },
+    ...snapshot,
+  });
+});
+
+app.get("/api/demo/status", auth, async (req, res) => {
+  if (!canAccessFortschritt(req.user) && !canAccessBackcasting(req.user) && !isAdminRole(req.user)) {
+    return res.status(403).json({ error: "Kein Zugriff." });
+  }
+
+  if (req.query.all === "true") {
+    if (!isAdminRole(req.user)) {
+      return res.status(403).json({ error: "Status für alle Units nur für Admins." });
+    }
+    const units = [];
+    for (const demoUnit of DEMO_UNITS) {
+      const entryCount = await pool.query(
+        "SELECT COUNT(*)::int AS count FROM entries WHERE unit = $1 AND is_demo = true",
+        [demoUnit]
+      );
+      const planCount = await pool.query(
+        "SELECT COUNT(*)::int AS count FROM backcasting_plans WHERE unit = $1 AND is_demo = true",
+        [demoUnit]
+      );
+      const phase1DemoEntries = entryCount.rows[0]?.count || 0;
+      const backcastingDemoPlan = (planCount.rows[0]?.count || 0) > 0;
+      units.push({
+        unit: demoUnit,
+        phase1DemoEntries,
+        backcastingDemoPlan,
+        active: phase1DemoEntries > 0 || backcastingDemoPlan,
+      });
+    }
+    const activeCount = units.filter((row) => row.active).length;
+    return res.json({
+      all: true,
+      units,
+      activeCount,
+      totalUnits: DEMO_UNITS.length,
+      demoUnits: DEMO_UNITS,
+      active: activeCount > 0,
+    });
+  }
+
+  const resolved = resolveDashboardUnit(req, req.query.unit);
+  if (resolved.error) return res.status(403).json({ error: resolved.error });
+  const unit = resolved.unit;
+  if (!unit) return res.status(400).json({ error: "Unit fehlt." });
+  if (!(await canAccessUnit(req, unit))) {
+    return res.status(403).json({ error: "Kein Zugriff auf diese Unit." });
+  }
+  const entryCount = await pool.query(
+    "SELECT COUNT(*)::int AS count FROM entries WHERE unit = $1 AND is_demo = true",
+    [unit]
+  );
+  const planCount = await pool.query(
+    "SELECT COUNT(*)::int AS count FROM backcasting_plans WHERE unit = $1 AND is_demo = true",
+    [unit]
+  );
+  return res.json({
+    unit,
+    phase1DemoEntries: entryCount.rows[0]?.count || 0,
+    backcastingDemoPlan: (planCount.rows[0]?.count || 0) > 0,
+    active: (entryCount.rows[0]?.count || 0) > 0 || (planCount.rows[0]?.count || 0) > 0,
+    demoUnits: DEMO_UNITS,
+  });
+});
+
+async function loadDemoDataForUnit(unit, email) {
+  await removeDemoDataForUnit(unit);
+  const { entries, plan } = buildDemoDataForUnit(unit);
+  await insertDemoEntries(entries, email);
+  await upsertBackcastingPlan(unit, { meta: plan.meta, measures: plan.measures }, email, true);
+  return { unit, entryCount: entries.length };
+}
+
+app.get("/api/demo/units", auth, async (req, res) => {
+  if (isPureMitarbeiterRole(req.user)) {
+    return res.status(403).json({ error: "Kein Zugriff." });
+  }
+  return res.json({ units: DEMO_UNITS, defaultUnit: DEMO_UNIT });
+});
+
+app.post("/api/demo/load", auth, async (req, res) => {
+  if (isPureMitarbeiterRole(req.user)) {
+    return res.status(403).json({ error: "Kein Zugriff." });
+  }
+  if (
+    !isAdminRole(req.user) &&
+    !canAccessBackcasting(req.user) &&
+    !canAccessFortschritt(req.user)
+  ) {
+    return res.status(403).json({ error: "Kein Zugriff auf Demo-Daten." });
+  }
+
+  const loadAll = Boolean(req.body?.allUnits);
+  if (loadAll) {
+    if (!isAdminRole(req.user)) {
+      return res.status(403).json({ error: "Demo für alle Units nur für Admins." });
+    }
+    const loaded = [];
+    for (const unit of DEMO_UNITS) {
+      loaded.push(await loadDemoDataForUnit(unit, req.user.email));
+    }
+    const totalEntries = loaded.reduce((sum, row) => sum + row.entryCount, 0);
+    return res.json({
+      ok: true,
+      units: loaded,
+      message: `Demo-Daten für ${loaded.length} Units geladen (${totalEntries} Phase-1-Einträge + ${loaded.length} Backcasting-Pläne).`,
+    });
+  }
+
+  const requestedUnit = req.body?.unit || DEMO_UNIT;
+  const resolved = resolveDashboardUnit(req, requestedUnit);
+  if (resolved.error) return res.status(403).json({ error: resolved.error });
+  const unit = resolved.unit || DEMO_UNIT;
+  if (!(await canAccessUnit(req, unit))) {
+    return res.status(403).json({ error: "Kein Zugriff auf diese Unit." });
+  }
+
+  const result = await loadDemoDataForUnit(unit, req.user.email);
+  return res.json({
+    ok: true,
+    unit: result.unit,
+    phase1DemoEntries: result.entryCount,
+    backcastingDemoPlan: true,
+    message: `Demo-Daten für ${unit} geladen (${result.entryCount} Phase-1-Einträge + Backcasting-Plan).`,
+  });
+});
+
+app.delete("/api/demo/remove", auth, async (req, res) => {
+  if (isPureMitarbeiterRole(req.user)) {
+    return res.status(403).json({ error: "Kein Zugriff." });
+  }
+  if (
+    !isAdminRole(req.user) &&
+    !canAccessBackcasting(req.user) &&
+    !canAccessFortschritt(req.user)
+  ) {
+    return res.status(403).json({ error: "Kein Zugriff auf Demo-Daten." });
+  }
+  const loadAll = req.body?.allUnits === true || req.query?.allUnits === "true";
+  if (loadAll) {
+    if (!isAdminRole(req.user)) {
+      return res.status(403).json({ error: "Demo für alle Units nur für Admins." });
+    }
+    let removedEntries = 0;
+    let removedPlans = 0;
+    for (const demoUnit of DEMO_UNITS) {
+      const delEntries = await pool.query(
+        "DELETE FROM entries WHERE unit = $1 AND is_demo = true RETURNING id",
+        [demoUnit]
+      );
+      const delPlans = await pool.query(
+        "DELETE FROM backcasting_plans WHERE unit = $1 AND is_demo = true RETURNING id",
+        [demoUnit]
+      );
+      removedEntries += delEntries.rowCount;
+      removedPlans += delPlans.rowCount;
+    }
+    return res.json({
+      ok: true,
+      units: DEMO_UNITS,
+      removedEntries,
+      removedPlans,
+    });
+  }
+
+  const resolved = resolveDashboardUnit(req, req.body?.unit || req.query?.unit);
+  if (resolved.error) return res.status(403).json({ error: resolved.error });
+  const unit = resolved.unit;
+  if (!unit) return res.status(400).json({ error: "Unit fehlt." });
+  if (!(await canAccessUnit(req, unit))) {
+    return res.status(403).json({ error: "Kein Zugriff auf diese Unit." });
+  }
+
+  const delEntries = await pool.query(
+    "DELETE FROM entries WHERE unit = $1 AND is_demo = true RETURNING id",
+    [unit]
+  );
+  const delPlans = await pool.query(
+    "DELETE FROM backcasting_plans WHERE unit = $1 AND is_demo = true RETURNING id",
+    [unit]
+  );
+  return res.json({
+    ok: true,
+    unit,
+    removedEntries: delEntries.rowCount,
+    removedPlans: delPlans.rowCount,
+  });
+});
+
+app.get("/api/backcasting/plan", auth, async (req, res) => {
+  if (!canAccessBackcasting(req.user)) {
+    return res.status(403).json({ error: "Kein Zugriff auf Backcasting." });
+  }
+  const resolved = resolveDashboardUnit(req, req.query.unit);
+  if (resolved.error) return res.status(403).json({ error: resolved.error });
+  const unit = resolved.unit;
+  if (!unit) return res.status(400).json({ error: "Unit fehlt." });
+  if (!(await canAccessUnit(req, unit))) {
+    return res.status(403).json({ error: "Kein Zugriff auf diese Unit." });
+  }
+  const plan = await fetchBackcastingPlanForUnit(unit);
+  if (!plan) return res.json({ unit, plan: null });
+  return res.json({
+    unit,
+    plan: {
+      meta: plan.meta || {},
+      measures: plan.measures || {},
+      is_demo: plan.is_demo,
+      updatedAt: plan.updatedAt,
+    },
+  });
+});
+
+app.put("/api/backcasting/plan", auth, async (req, res) => {
+  if (!canAccessBackcasting(req.user)) {
+    return res.status(403).json({ error: "Kein Zugriff auf Backcasting." });
+  }
+  if (isPureMitarbeiterRole(req.user)) {
+    return res.status(403).json({ error: "Kein Zugriff." });
+  }
+  const { unit: bodyUnit, meta, measures, is_demo: isDemoBody } = req.body || {};
+  const resolved = resolveDashboardUnit(req, bodyUnit || meta?.unit);
+  if (resolved.error) return res.status(403).json({ error: resolved.error });
+  const unit = resolved.unit || String(meta?.unit || "").trim();
+  if (!unit) return res.status(400).json({ error: "Unit fehlt." });
+  if (!(await canAccessUnit(req, unit))) {
+    return res.status(403).json({ error: "Kein Zugriff auf diese Unit." });
+  }
+  const enrichedMeta = await enrichBackcastingPlanMeta(unit, meta || {});
+  const payload = {
+    meta: enrichedMeta,
+    measures: measures || {},
+  };
+  const isDemo = Boolean(isDemoBody);
+  const id = await upsertBackcastingPlan(unit, payload, req.user.email, isDemo);
+  return res.json({ ok: true, id, unit, is_demo: isDemo });
+});
+
 app.delete("/api/entries", auth, async (req, res) => {
-  if (isMitarbeiterRole(req.user)) {
+  if (isPureMitarbeiterRole(req.user)) {
     return res.status(403).json({ error: "Mitarbeiter duerfen keine Eintraege loeschen." });
   }
   if (isAdminRole(req.user)) {
@@ -2979,7 +3568,7 @@ app.delete("/api/admin/app-positions/:id", auth, requireAdmin, async (req, res) 
 
 app.get("/api/admin/org-chart", auth, requireAdmin, async (_req, res) => {
   const usersResult = await pool.query(
-    `SELECT id, email, name, role, roles, units, standort, regionalleiter_id, geschaeftsfuehrung_id, unit_lead_id, user_positions
+    `SELECT id, email, name, role, roles, units, standort, regionalleiter_id, geschaeftsfuehrung_id, geschaeftsfuehrung_ids, unit_lead_id, user_positions
      FROM users ORDER BY name`
   );
   const users = usersResult.rows.map((row) => ({
@@ -2992,7 +3581,7 @@ app.get("/api/admin/org-chart", auth, requireAdmin, async (_req, res) => {
   const userById = new Map(users.map((u) => [Number(u.id), u]));
 
   const unitsResult = await pool.query(
-    `SELECT name, unit_lead_id FROM units ORDER BY name`
+    `SELECT name, unit_lead_id, deputy_lead_id FROM units ORDER BY name`
   );
   const masterUnits = unitsResult.rows;
 
@@ -3003,6 +3592,57 @@ app.get("/api/admin/org-chart", auth, requireAdmin, async (_req, res) => {
     role: primaryRoleFromRoles(getUserRoles(u)) || u.role,
     roles: getUserRoles(u),
   });
+
+  const userAppearsAsMitarbeiterInOrg = (user) => {
+    if (!user) return false;
+    const positions = normalizeStringArray(user.user_positions);
+    if (
+      positions.some((name) => {
+        const key = normalizePositionKey(name);
+        return key === "mitarbeiter" || key === "berater";
+      })
+    ) {
+      return true;
+    }
+    return userHasEffectiveHierarchyRole(user, "mitarbeiter");
+  };
+
+  const collectDeputyLeadsForUnitNames = (unitNames) => {
+    const nameSet = new Set((unitNames || []).filter(Boolean));
+    const deputies = new Map();
+    for (const row of masterUnits) {
+      if (!nameSet.has(row.name) || !row.deputy_lead_id) continue;
+      const user = userById.get(Number(row.deputy_lead_id));
+      if (user) deputies.set(Number(user.id), mapPerson(user));
+    }
+    for (const user of users) {
+      if (!userHasDeputyUnitLeaderPosition(user.user_positions)) continue;
+      if (!normalizeUnits(user.units).some((unitName) => nameSet.has(unitName))) continue;
+      deputies.set(Number(user.id), mapPerson(user));
+    }
+    return [...deputies.values()].sort((a, b) => a.name.localeCompare(b.name, "de"));
+  };
+
+  const attachDeputyLeadsToBranch = (branch) => {
+    const unitNames = new Set((branch.units || []).map((unit) => unit.name).filter(Boolean));
+    if (!unitNames.size && branch.name) {
+      String(branch.name)
+        .split(",")
+        .map((part) => part.trim())
+        .filter(Boolean)
+        .forEach((name) => unitNames.add(name));
+    }
+    branch.deputyLeads = collectDeputyLeadsForUnitNames([...unitNames]);
+    return branch;
+  };
+
+  const mergeDeputyLeadLists = (left = [], right = []) => {
+    const map = new Map();
+    [...left, ...right].forEach((person) => {
+      if (person?.id != null) map.set(Number(person.id), person);
+    });
+    return [...map.values()].sort((a, b) => a.name.localeCompare(b.name, "de"));
+  };
 
   const isUserInRegionalSubtree = (user, rId) => {
     if (Number(user.regionalleiter_id) === rId) return true;
@@ -3043,7 +3683,7 @@ app.get("/api/admin/org-chart", auth, requireAdmin, async (_req, res) => {
   const mitarbeiterForUnitInRegionalSubtree = (unitName, rId) =>
     users
       .filter((m) => {
-        if (!userHasEffectiveHierarchyRole(m, "mitarbeiter")) return false;
+        if (!userAppearsAsMitarbeiterInOrg(m)) return false;
         if (!normalizeUnits(m.units).includes(unitName)) return false;
         return isUserInRegionalSubtree(m, rId);
       })
@@ -3085,16 +3725,20 @@ app.get("/api/admin/org-chart", auth, requireAdmin, async (_req, res) => {
       )
       .sort((a, b) => a.name.localeCompare(b.name, "de"));
 
-    const branches = unitLeadUsers.map((ul) => ({
-      branchType: "unit_lead",
-      unitLead: mapPerson(ul),
-      units: [...unitNamesForUnitLead(ul)]
-        .sort((a, b) => a.localeCompare(b, "de"))
-        .map((unitName) => ({
-          name: unitName,
-          mitarbeiter: mitarbeiterForUnitInRegionalSubtree(unitName, rId),
-        })),
-    }));
+    const branches = unitLeadUsers.map((ul) => {
+      const branch = {
+        branchType: "unit_lead",
+        regionalleiterId: rId,
+        unitLead: mapPerson(ul),
+        units: [...unitNamesForUnitLead(ul)]
+          .sort((a, b) => a.localeCompare(b, "de"))
+          .map((unitName) => ({
+            name: unitName,
+            mitarbeiter: mitarbeiterForUnitInRegionalSubtree(unitName, rId),
+          })),
+      };
+      return attachDeputyLeadsToBranch(branch);
+    });
 
     const coveredUnitNames = new Set();
     for (const branch of branches) {
@@ -3124,8 +3768,10 @@ app.get("/api/admin/org-chart", auth, requireAdmin, async (_req, res) => {
           if (!orphansByLead.has(leadId)) {
             orphansByLead.set(leadId, {
               branchType: "unit_lead",
+              regionalleiterId: rId,
               unitLead: unit.unitLead,
               units: [],
+              deputyLeads: [],
             });
           }
           orphansByLead.get(leadId).units.push({
@@ -3144,21 +3790,31 @@ app.get("/api/admin/org-chart", auth, requireAdmin, async (_req, res) => {
         if (existing) {
           existing.units.push(...branch.units);
           existing.units.sort((a, b) => a.name.localeCompare(b.name, "de"));
+          existing.deputyLeads = mergeDeputyLeadLists(
+            existing.deputyLeads,
+            attachDeputyLeadsToBranch({ ...branch, regionalleiterId: rId }).deputyLeads
+          );
         } else {
-          branches.push(branch);
+          branches.push(attachDeputyLeadsToBranch({ ...branch, regionalleiterId: rId }));
         }
       }
 
       if (withoutLead.length) {
-        branches.push({
-          branchType: "orphan_units",
-          unitLead: null,
-          units: withoutLead,
-        });
+        branches.push(
+          attachDeputyLeadsToBranch({
+            branchType: "orphan_units",
+            regionalleiterId: rId,
+            unitLead: null,
+            units: withoutLead,
+          })
+        );
       }
     }
 
     return branches
+      .map((branch) =>
+        branch.deputyLeads ? branch : attachDeputyLeadsToBranch({ ...branch, regionalleiterId: rId })
+      )
       .filter((branch) => branch.unitLead || branch.units?.length)
       .sort((a, b) => {
         const an = a.unitLead?.name || "";
@@ -3179,24 +3835,25 @@ app.get("/api/admin/org-chart", auth, requireAdmin, async (_req, res) => {
 
     const branches = unitLeadUsers.map((ul) => {
       const unitLabel = normalizeUnits(ul.units).filter(Boolean).join(", ");
-      return {
+      return attachDeputyLeadsToBranch({
         name: unitLabel || ul.name,
         branchType: "unit_lead",
+        regionalleiterId: rId,
         unitLead: mapPerson(ul),
+        units: [],
         mitarbeiter: users
           .filter(
             (m) =>
-              userHasEffectiveHierarchyRole(m, "mitarbeiter") &&
-              Number(m.unit_lead_id) === Number(ul.id)
+              userAppearsAsMitarbeiterInOrg(m) && Number(m.unit_lead_id) === Number(ul.id)
           )
           .map(mapPerson)
           .sort((a, b) => a.name.localeCompare(b.name, "de")),
-      };
+      });
     });
 
     const directMitarbeiter = users
       .filter((m) => {
-        if (!userHasEffectiveHierarchyRole(m, "mitarbeiter")) return false;
+        if (!userAppearsAsMitarbeiterInOrg(m)) return false;
         if (Number(m.regionalleiter_id) !== rId) return false;
         if (m.unit_lead_id && unitLeadIds.has(Number(m.unit_lead_id))) return false;
         return true;
@@ -3227,6 +3884,7 @@ app.get("/api/admin/org-chart", auth, requireAdmin, async (_req, res) => {
         unitLeads: buildSupervisorBranchesForRegionalleiter(r).map((branch) => ({
           branchType: branch.branchType,
           unitLead: branch.unitLead,
+          deputyLeads: branch.deputyLeads || [],
           units: [],
           mitarbeiter: branch.mitarbeiter,
           name: branch.name,
@@ -3249,8 +3907,9 @@ app.get("/api/admin/org-chart", auth, requireAdmin, async (_req, res) => {
     users
       .filter((u) => {
         if (!userHasEffectiveHierarchyRole(u, "regionalleiter")) return false;
-        if (Number(u.geschaeftsfuehrung_id) === Number(gfId)) return true;
-        if (!u.geschaeftsfuehrung_id && soleGeschaeftsfuehrungId === Number(gfId)) return true;
+        const gfIds = resolveGeschaeftsfuehrungIdsFromRow(u);
+        if (gfIds.includes(Number(gfId))) return true;
+        if (!gfIds.length && soleGeschaeftsfuehrungId === Number(gfId)) return true;
         return false;
       })
       .map(buildRegionalleiterNode)
@@ -3269,8 +3928,8 @@ app.get("/api/admin/org-chart", auth, requireAdmin, async (_req, res) => {
 app.get("/api/admin/users", auth, requireAdmin, async (_req, res) => {
   const result = await pool.query(
     `SELECT u.id, u.email, u.name, u.role, u.roles, u.units, u.standort,
-            u.regionalleiter_id, u.geschaeftsfuehrung_id, u.unit_lead_id, u.personalnummer,
-            u.skill_entry_id,
+            u.regionalleiter_id, u.geschaeftsfuehrung_id, u.geschaeftsfuehrung_ids, u.unit_lead_id, u.personalnummer,
+            u.skill_entry_id, u.login_blocked,
             u.user_org_roles, u.user_positions, u.user_org_role_ids, u.user_position_ids,
             u.created_at, u.updated_at,
             rl.name AS regionalleiter_name,
@@ -3297,6 +3956,7 @@ app.post("/api/admin/users", auth, requireAdmin, async (req, res) => {
     standort,
     regionalleiterId,
     geschaeftsfuehrungId,
+    geschaeftsfuehrungIds,
     unitLeadId,
     superAdminGrantPassword,
     personalnummer,
@@ -3328,6 +3988,7 @@ app.post("/api/admin/users", auth, requireAdmin, async (req, res) => {
       standort: null,
       regionalleiterId: null,
       geschaeftsfuehrungId: null,
+      geschaeftsfuehrungIds: [],
       unitLeadId: null,
     };
   } else {
@@ -3340,15 +4001,15 @@ app.post("/api/admin/users", auth, requireAdmin, async (req, res) => {
     if (superAdminError) return res.status(400).json({ error: superAdminError });
     validated = await validateUserRolesAndOrg(
       mergedRoles,
-      { standort, regionalleiterId, geschaeftsfuehrungId, unitLeadId, units },
+      { standort, regionalleiterId, geschaeftsfuehrungId, geschaeftsfuehrungIds, unitLeadId, units },
       null
     );
     if (validated.error) return res.status(400).json({ error: validated.error });
   }
   try {
     const result = await pool.query(
-      `INSERT INTO users (email, name, password_hash, role, roles, units, standort, regionalleiter_id, geschaeftsfuehrung_id, unit_lead_id, personalnummer, user_org_roles, user_positions, user_org_role_ids, user_position_ids)
-       VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15)
+      `INSERT INTO users (email, name, password_hash, role, roles, units, standort, regionalleiter_id, geschaeftsfuehrung_id, geschaeftsfuehrung_ids, unit_lead_id, personalnummer, user_org_roles, user_positions, user_org_role_ids, user_position_ids)
+       VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16)
        RETURNING id`,
       [
         String(email).trim().toLowerCase(),
@@ -3360,6 +4021,7 @@ app.post("/api/admin/users", auth, requireAdmin, async (req, res) => {
         validated.standort,
         validated.regionalleiterId,
         validated.geschaeftsfuehrungId,
+        validated.geschaeftsfuehrungIds || [],
         validated.unitLeadId,
         personalnummer !== undefined ? String(personalnummer).trim() || null : null,
         catalog.userOrgRoles,
@@ -3377,6 +4039,28 @@ app.post("/api/admin/users", auth, requireAdmin, async (req, res) => {
   }
 });
 
+app.post("/api/admin/users/bulk-login-block", auth, requireAdmin, async (req, res) => {
+  const { userIds, loginBlocked } = req.body || {};
+  const ids = normalizeBigIntArray(userIds);
+  if (!ids.length) {
+    return res.status(400).json({ error: "Mindestens einen Benutzer auswaehlen." });
+  }
+  if (typeof loginBlocked !== "boolean") {
+    return res.status(400).json({ error: "loginBlocked (true/false) erforderlich." });
+  }
+  const selfId = Number(req.user?.sub);
+  const targetIds = ids.filter((id) => !selfId || id !== selfId);
+  if (!targetIds.length) {
+    return res.status(400).json({ error: "Der eigene Benutzer kann nicht gesperrt werden." });
+  }
+  const now = new Date().toISOString();
+  const result = await pool.query(
+    `UPDATE users SET login_blocked = $1, updated_at = $2 WHERE id = ANY($3::bigint[]) RETURNING id`,
+    [loginBlocked, now, targetIds]
+  );
+  return res.json({ ok: true, updated: result.rowCount });
+});
+
 app.put("/api/admin/users/:id", auth, requireAdmin, async (req, res) => {
   const { id } = req.params;
   const {
@@ -3389,6 +4073,7 @@ app.put("/api/admin/users/:id", auth, requireAdmin, async (req, res) => {
     standort,
     regionalleiterId,
     geschaeftsfuehrungId,
+    geschaeftsfuehrungIds,
     unitLeadId,
     superAdminGrantPassword,
     personalnummer,
@@ -3396,9 +4081,10 @@ app.put("/api/admin/users/:id", auth, requireAdmin, async (req, res) => {
     userPositions,
     userOrgRoleIds,
     userPositionIds,
+    loginBlocked,
   } = req.body || {};
   const userFull = await pool.query(
-    `SELECT id, email, role, roles, standort, regionalleiter_id, geschaeftsfuehrung_id, unit_lead_id, units, personalnummer, user_org_roles, user_positions, user_org_role_ids, user_position_ids
+    `SELECT id, email, role, roles, standort, regionalleiter_id, geschaeftsfuehrung_id, geschaeftsfuehrung_ids, unit_lead_id, units, personalnummer, user_org_roles, user_positions, user_org_role_ids, user_position_ids
      FROM users WHERE id = $1`,
     [id]
   );
@@ -3488,6 +4174,10 @@ app.put("/api/admin/users/:id", auth, requireAdmin, async (req, res) => {
           regionalleiterId !== undefined ? regionalleiterId : cur.regionalleiter_id,
         geschaeftsfuehrungId:
           geschaeftsfuehrungId !== undefined ? geschaeftsfuehrungId : cur.geschaeftsfuehrung_id,
+        geschaeftsfuehrungIds:
+          geschaeftsfuehrungIds !== undefined
+            ? geschaeftsfuehrungIds
+            : resolveGeschaeftsfuehrungIdsFromRow(cur),
         unitLeadId: unitLeadId !== undefined ? unitLeadId : cur.unit_lead_id,
         units: units !== undefined ? units : normalizeUnits(cur.units),
       },
@@ -3506,6 +4196,8 @@ app.put("/api/admin/users/:id", auth, requireAdmin, async (req, res) => {
     updates.push(`regionalleiter_id = $${params.length}`);
     params.push(validated.geschaeftsfuehrungId);
     updates.push(`geschaeftsfuehrung_id = $${params.length}`);
+    params.push(validated.geschaeftsfuehrungIds || []);
+    updates.push(`geschaeftsfuehrung_ids = $${params.length}`);
     params.push(validated.unitLeadId);
     updates.push(`unit_lead_id = $${params.length}`);
   } else {
@@ -3516,6 +4208,7 @@ app.put("/api/admin/users/:id", auth, requireAdmin, async (req, res) => {
           standort: cur.standort,
           regionalleiterId: cur.regionalleiter_id,
           geschaeftsfuehrungId: cur.geschaeftsfuehrung_id,
+          geschaeftsfuehrungIds: resolveGeschaeftsfuehrungIdsFromRow(cur),
           unitLeadId: cur.unit_lead_id,
           units,
         },
@@ -3529,6 +4222,7 @@ app.put("/api/admin/users/:id", auth, requireAdmin, async (req, res) => {
       standort !== undefined ||
       regionalleiterId !== undefined ||
       geschaeftsfuehrungId !== undefined ||
+      geschaeftsfuehrungIds !== undefined ||
       unitLeadId !== undefined
     ) {
       const validated = await validateUserRolesAndOrg(
@@ -3539,6 +4233,10 @@ app.put("/api/admin/users/:id", auth, requireAdmin, async (req, res) => {
             regionalleiterId !== undefined ? regionalleiterId : cur.regionalleiter_id,
           geschaeftsfuehrungId:
             geschaeftsfuehrungId !== undefined ? geschaeftsfuehrungId : cur.geschaeftsfuehrung_id,
+          geschaeftsfuehrungIds:
+            geschaeftsfuehrungIds !== undefined
+              ? geschaeftsfuehrungIds
+              : resolveGeschaeftsfuehrungIdsFromRow(cur),
           unitLeadId: unitLeadId !== undefined ? unitLeadId : cur.unit_lead_id,
           units: normalizeUnits(cur.units),
         },
@@ -3551,6 +4249,8 @@ app.put("/api/admin/users/:id", auth, requireAdmin, async (req, res) => {
       updates.push(`regionalleiter_id = $${params.length}`);
       params.push(validated.geschaeftsfuehrungId);
       updates.push(`geschaeftsfuehrung_id = $${params.length}`);
+      params.push(validated.geschaeftsfuehrungIds || []);
+      updates.push(`geschaeftsfuehrung_ids = $${params.length}`);
       params.push(validated.unitLeadId);
       updates.push(`unit_lead_id = $${params.length}`);
     }
@@ -3582,6 +4282,14 @@ app.put("/api/admin/users/:id", auth, requireAdmin, async (req, res) => {
     params.push(bcrypt.hashSync(String(password), 10));
     updates.push(`password_hash = $${params.length}`);
   }
+  if (loginBlocked !== undefined) {
+    const blocked = Boolean(loginBlocked);
+    if (blocked && String(id) === String(req.user?.sub)) {
+      return res.status(400).json({ error: "Der eigene Benutzer kann nicht gesperrt werden." });
+    }
+    params.push(blocked);
+    updates.push(`login_blocked = $${params.length}`);
+  }
   if (!updates.length) return res.status(400).json({ error: "Keine Aenderungen." });
   params.push(new Date().toISOString());
   updates.push(`updated_at = $${params.length}`);
@@ -3611,6 +4319,15 @@ async function lookupUserIdByEmail(email) {
   const result = await pool.query("SELECT id FROM users WHERE email = $1", [safeEmail]);
   const id = result.rows[0]?.id;
   return id != null ? Number(id) : null;
+}
+
+async function lookupUserIdsByEmailList(emailList) {
+  const ids = [];
+  for (const email of parseImportList(emailList)) {
+    const id = await lookupUserIdByEmail(email);
+    if (id) ids.push(id);
+  }
+  return [...new Set(ids)];
 }
 
 function isFullUserImportRow(row) {
@@ -3661,7 +4378,7 @@ async function applyFullUserImportRow(row, results) {
   const userOrgRoles = row.rollenOrganisation || [];
   const userPositions = row.positionen || [];
   const administration = (row.administration || []).filter((role) =>
-    ["admin", "super_admin"].includes(role)
+    ["admin", "super_admin", ...APP_MODULE_ROLES].includes(role)
   );
 
   if (administration.includes("super_admin")) {
@@ -3697,7 +4414,8 @@ async function applyFullUserImportRow(row, results) {
   }
 
   const regionalleiterId = await lookupUserIdByEmail(row.regionalleiterEmail);
-  const geschaeftsfuehrungId = await lookupUserIdByEmail(row.geschaeftsfuehrungEmail);
+  const geschaeftsfuehrungIds = await lookupUserIdsByEmailList(row.geschaeftsfuehrungEmail);
+  const geschaeftsfuehrungId = geschaeftsfuehrungIds[0] || null;
   const existing = await pool.query(
     `SELECT id, roles FROM users WHERE email = $1`,
     [email]
@@ -3710,6 +4428,7 @@ async function applyFullUserImportRow(row, results) {
       standort: row.standort || "",
       regionalleiterId,
       geschaeftsfuehrungId,
+      geschaeftsfuehrungIds,
       unitLeadId: null,
       units,
     },
@@ -3731,14 +4450,15 @@ async function applyFullUserImportRow(row, results) {
          standort = $5,
          regionalleiter_id = $6,
          geschaeftsfuehrung_id = $7,
-         unit_lead_id = $8,
-         personalnummer = $9,
-         user_org_roles = $10,
-         user_positions = $11,
-         user_org_role_ids = $12,
-         user_position_ids = $13,
-         updated_at = $14
-       WHERE id = $15`,
+         geschaeftsfuehrung_ids = $8,
+         unit_lead_id = $9,
+         personalnummer = $10,
+         user_org_roles = $11,
+         user_positions = $12,
+         user_org_role_ids = $13,
+         user_position_ids = $14,
+         updated_at = $15
+       WHERE id = $16`,
       [
         name,
         validated.role,
@@ -3747,6 +4467,7 @@ async function applyFullUserImportRow(row, results) {
         validated.standort,
         validated.regionalleiterId,
         validated.geschaeftsfuehrungId,
+        validated.geschaeftsfuehrungIds || [],
         validated.unitLeadId,
         personalnummer,
         catalog.userOrgRoles,
@@ -3762,8 +4483,8 @@ async function applyFullUserImportRow(row, results) {
   }
 
   await pool.query(
-    `INSERT INTO users (email, name, password_hash, role, roles, units, standort, regionalleiter_id, geschaeftsfuehrung_id, unit_lead_id, personalnummer, user_org_roles, user_positions, user_org_role_ids, user_position_ids)
-     VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15)`,
+    `INSERT INTO users (email, name, password_hash, role, roles, units, standort, regionalleiter_id, geschaeftsfuehrung_id, geschaeftsfuehrung_ids, unit_lead_id, personalnummer, user_org_roles, user_positions, user_org_role_ids, user_position_ids)
+     VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16)`,
     [
       email,
       name,
@@ -3774,6 +4495,7 @@ async function applyFullUserImportRow(row, results) {
       validated.standort,
       validated.regionalleiterId,
       validated.geschaeftsfuehrungId,
+      validated.geschaeftsfuehrungIds || [],
       validated.unitLeadId,
       personalnummer,
       catalog.userOrgRoles,
@@ -4050,7 +4772,7 @@ async function importAdminUsersFromRows(rows) {
       geschaeftsfuehrungEmail: String(row.geschaeftsfuehrungEmail || "").trim().toLowerCase(),
       administration: parseImportList(row.administration)
         .map((role) => role.toLowerCase().replace(/\s+/g, "_"))
-        .filter((role) => role === "admin" || role === "super_admin"),
+        .filter((role) => role === "admin" || role === "super_admin" || APP_MODULE_ROLES.includes(role)),
     };
 
     try {
@@ -4101,7 +4823,8 @@ app.delete("/api/admin/users/:id", auth, requireAdmin, async (req, res) => {
   return res.json({ ok: true });
 });
 
-app.get(/.*/, (_req, res) => {
+app.get(/.*/, (req, res, next) => {
+  if (String(req.path || "").startsWith("/backcasting")) return next();
   res.sendFile(path.join(__dirname, "public", "index.html"));
 });
 

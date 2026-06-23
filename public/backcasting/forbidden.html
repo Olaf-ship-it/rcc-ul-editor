@@ -1,0 +1,24 @@
+<!DOCTYPE html>
+<html lang="de">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Kein Zugriff – Backcasting</title>
+<link rel="stylesheet" href="/styles.css">
+<style>
+body.rc-app-forbidden{display:flex;align-items:center;justify-content:center;min-height:100vh;padding:1.5rem}
+.rc-app-forbidden .card{max-width:480px;text-align:center;border-left-color:var(--rc-orange)}
+.rc-app-forbidden .btn-group{justify-content:center}
+</style>
+</head>
+<body class="rc-app-forbidden">
+<div class="card">
+  <h3>Kein Zugriff auf Backcasting</h3>
+  <p style="color:var(--rc-muted);line-height:1.5;margin-bottom:1rem">Ihr Konto hat keine Berechtigung für Phase 2 (Backcasting-Planung). Bitte wenden Sie sich an einen Administrator.</p>
+  <div class="btn-group" style="margin-top:0">
+    <a class="btn btn-primary" href="/">Zur Phase 1 · Status Aufnahme</a>
+    <a class="btn btn-outline" href="javascript:history.back()">Zurück</a>
+  </div>
+</div>
+</body>
+</html>
