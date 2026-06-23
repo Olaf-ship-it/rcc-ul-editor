@@ -7,10 +7,14 @@
 <link rel="stylesheet" href="/styles.css">
 
 </head>
-<body>
+<body class="session-booting">
+
+<div class="session-boot-splash" id="sessionBootSplash" aria-live="polite">
+  <div class="session-boot-splash__box">Session wird geladen…</div>
+</div>
 
 <!-- LOGIN -->
-<div class="login-overlay" id="loginOverlay">
+<div class="login-overlay" id="loginOverlay" style="display:none">
 <div class="login-box">
   <h2 id="loginTitle">Phase 1 · Status Aufnahme</h2>
   <p id="loginSubtitle">Portfolio, Organisation &amp; Skill-Matrix<br>Transformation 2026–2029</p>
@@ -589,6 +593,9 @@
       <button type="button" class="btn btn-danger btn-sm btn-outline" id="btnFortschrittDemoRemoveAll" style="display:none">Demo alle Units entfernen</button>
       <span class="fortschritt-demo-badge" id="fortschrittDemoBadge">–</span>
     </div>
+    <div class="demo-daten-load-status" id="demoDatenLoadStatus" aria-live="polite">
+      <div class="demo-daten-load-status__inner">Lade Demo-Status…</div>
+    </div>
     <div class="fortschritt-demo-info__body demo-daten-info">
       <h4 class="fortschritt-demo-info__h">Inhalt je Unit</h4>
       <ul class="fortschritt-demo-info__list">
@@ -637,6 +644,7 @@
       </ul>
       <p class="fortschritt-demo-info__hint">
         Für den IST/SOLL-Vergleich im Register <em>Fortschritt</em> oben im <em>Filter</em> eine konkrete Unit wählen.
+        Nach „Demo alle Units laden“ wird der Filter automatisch auf die erste Standard-Unit gesetzt, damit die Daten in allen Phasen sichtbar sind.
       </p>
       <div id="fortschrittDemoInfoStatus" class="fortschritt-demo-info__status" aria-live="polite"></div>
     </div>

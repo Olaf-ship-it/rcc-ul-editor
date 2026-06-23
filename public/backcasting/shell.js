@@ -5,16 +5,30 @@
 (function () {
   const LOGIN_URL = "/?module=backcasting&return=" + encodeURIComponent(window.location.pathname);
 
+  function setSessionBootState(state) {
+    const body = document.body;
+    if (!body) return;
+    body.classList.toggle("session-booting", state === "booting");
+    const splash = document.getElementById("sessionBootSplash");
+    if (splash) splash.style.display = state === "booting" ? "" : "none";
+  }
+
   function showBootError(message) {
     const meta = document.getElementById("planMeta");
     if (meta) meta.textContent = message;
   }
 
   async function bootBackcastingShell() {
+    setSessionBootState("booting");
     try {
       const res = await fetch("/api/auth/me", { credentials: "same-origin" });
-      if (!res.ok) {
+      if (res.status === 401 || res.status === 403) {
         window.location.replace(LOGIN_URL);
+        return;
+      }
+      if (!res.ok) {
+        setSessionBootState("authenticated");
+        showBootError("Session konnte nicht geladen werden.");
         return;
       }
       const me = await res.json();
@@ -52,16 +66,15 @@
       if (adminLink) adminLink.style.display = isAdmin ? "" : "none";
       const fsLink = document.getElementById("bcLauncherFortschritt");
       if (fsLink) fsLink.style.display = me.modules?.fortschritt || isAdmin ? "" : "none";
+      setSessionBootState("authenticated");
       document.dispatchEvent(
         new CustomEvent("rc-backcasting-ready", {
           detail: { ...me, roles, units, isSuperAdmin, isAdmin },
         })
       );
     } catch (_error) {
+      setSessionBootState("authenticated");
       showBootError("Session konnte nicht geladen werden.");
-      window.setTimeout(function () {
-        window.location.replace(LOGIN_URL);
-      }, 1200);
     }
   }
 

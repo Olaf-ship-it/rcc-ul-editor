@@ -24,9 +24,29 @@ function statusFromDelta(deltaPct, invert) {
   return "risk";
 }
 
+function organisationEntryScore(entry) {
+  let score = 0;
+  if (entry?.is_demo) score += 1000;
+  if (entry?.hatTechnologischeGliederung) score += 10;
+  score += (entry?.gliederungen?.length || 0) * 5;
+  score += (entry?.rollen?.length || 0) * 2;
+  if (entry?.stichtag) score += 1;
+  return score;
+}
+
+function pickOrganisationEntry(entries) {
+  const orgs = entries.filter(
+    (e) => e.type === "organisation" || e.hatTechnologischeGliederung != null
+  );
+  if (!orgs.length) return null;
+  return orgs.reduce((best, entry) =>
+    organisationEntryScore(entry) > organisationEntryScore(best) ? entry : best
+  );
+}
+
 function aggregatePhase1Entries(entries) {
   const portfolio = entries.filter((e) => e.type === "portfolio" || (!e.type && e.category));
-  const organisation = entries.find((e) => e.type === "organisation" || e.hatTechnologischeGliederung != null);
+  const organisation = pickOrganisationEntry(entries);
   const skills = entries.filter((e) => e.type === "skill" || (e.skills && e.nachname));
 
   const byCategory = {};

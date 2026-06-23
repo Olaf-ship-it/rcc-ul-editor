@@ -17,6 +17,16 @@ const app = express();
 const PORT = process.env.PORT || 3000;
 const JWT_SECRET = process.env.JWT_SECRET;
 const TOKEN_COOKIE = "rc_ul_token";
+
+function cookieOptions() {
+  return {
+    httpOnly: true,
+    sameSite: "lax",
+    secure: process.env.NODE_ENV === "production",
+    path: "/",
+    maxAge: 12 * 60 * 60 * 1000,
+  };
+}
 const DATABASE_URL = process.env.DATABASE_URL;
 
 if (!DATABASE_URL) {
@@ -991,6 +1001,21 @@ async function fetchEntriesForUnit(unit) {
   }));
 }
 
+function backcastingPlanHasMeasures(payload) {
+  const measures = payload?.measures || {};
+  return Object.values(measures).some((list) => Array.isArray(list) && list.length > 0);
+}
+
+function mapBackcastingPlanRow(row) {
+  return {
+    id: row.id,
+    unit: row.unit,
+    is_demo: row.is_demo,
+    updatedAt: row.updated_at,
+    ...(row.payload || {}),
+  };
+}
+
 async function fetchBackcastingPlanForUnit(unit) {
   const real = await pool.query(
     `SELECT id, unit, payload, is_demo, updated_at
@@ -1000,27 +1025,26 @@ async function fetchBackcastingPlanForUnit(unit) {
      LIMIT 1`,
     [unit]
   );
-  const rows = real.rows.length
-    ? real.rows
-    : (
-        await pool.query(
-          `SELECT id, unit, payload, is_demo, updated_at
-           FROM backcasting_plans
-           WHERE unit = $1 AND is_demo = true
-           ORDER BY updated_at DESC
-           LIMIT 1`,
-          [unit]
-        )
-      ).rows;
-  if (!rows.length) return null;
-  const row = rows[0];
-  return {
-    id: row.id,
-    unit: row.unit,
-    is_demo: row.is_demo,
-    updatedAt: row.updated_at,
-    ...(row.payload || {}),
-  };
+  const demo = await pool.query(
+    `SELECT id, unit, payload, is_demo, updated_at
+     FROM backcasting_plans
+     WHERE unit = $1 AND is_demo = true
+     ORDER BY updated_at DESC
+     LIMIT 1`,
+    [unit]
+  );
+  const realRow = real.rows[0];
+  const demoRow = demo.rows[0];
+  if (realRow && backcastingPlanHasMeasures(realRow.payload)) {
+    return mapBackcastingPlanRow(realRow);
+  }
+  if (demoRow) {
+    return mapBackcastingPlanRow(demoRow);
+  }
+  if (realRow) {
+    return mapBackcastingPlanRow(realRow);
+  }
+  return null;
 }
 
 async function enrichBackcastingPlanMeta(unit, meta) {
@@ -2271,6 +2295,7 @@ app.use(express.static(path.join(__dirname, "public")));
 function signToken(user, unit) {
   const roles = getUserRoles(user);
   const role = primaryRoleFromRoles(roles) || user.role;
+  const units = normalizeUnits(user.units);
   return jwt.sign(
     {
       sub: user.id,
@@ -2279,6 +2304,7 @@ function signToken(user, unit) {
       role,
       roles,
       unit,
+      units,
       skillEntryId: user.skill_entry_id || null,
     },
     JWT_SECRET,
@@ -2315,7 +2341,11 @@ function canAccessUnit(req, entryUnit) {
   if (isPureMitarbeiterRole(req.user)) {
     return req.user.unit === entryUnit;
   }
-  return isAdminRole(req.user) || req.user.unit === entryUnit;
+  if (isAdminRole(req.user)) return true;
+  if (req.user.unit === entryUnit) return true;
+  const jwtUnits = normalizeUnits(req.user.units);
+  if (jwtUnits.includes(entryUnit)) return true;
+  return false;
 }
 
 async function getUserSkillEntryId(req) {
@@ -2410,12 +2440,7 @@ app.post("/api/auth/login", async (req, res) => {
 
   const token = signToken(user, selectedUnit);
   const roles = getUserRoles(user);
-  res.cookie(TOKEN_COOKIE, token, {
-    httpOnly: true,
-    sameSite: "lax",
-    secure: process.env.NODE_ENV === "production",
-    maxAge: 12 * 60 * 60 * 1000,
-  });
+  res.cookie(TOKEN_COOKIE, token, cookieOptions());
   return res.json({
     email: user.email,
     name: user.name,
@@ -2429,7 +2454,7 @@ app.post("/api/auth/login", async (req, res) => {
 });
 
 app.post("/api/auth/logout", (_req, res) => {
-  res.clearCookie(TOKEN_COOKIE);
+  res.clearCookie(TOKEN_COOKIE, { ...cookieOptions(), maxAge: 0 });
   return res.json({ ok: true });
 });
 
@@ -2878,6 +2903,36 @@ app.get("/api/dashboard/snapshot", auth, async (req, res) => {
   });
 });
 
+async function fetchDemoStatusForUnit(unit) {
+  const typeCounts = await pool.query(
+    `SELECT type, COUNT(*)::int AS count
+     FROM entries
+     WHERE unit = $1 AND is_demo = true
+     GROUP BY type`,
+    [unit]
+  );
+  const counts = { portfolio: 0, organisation: 0, skill: 0 };
+  typeCounts.rows.forEach((row) => {
+    if (counts[row.type] != null) counts[row.type] = row.count;
+  });
+  const planResult = await pool.query(
+    `SELECT COUNT(*)::int AS count FROM backcasting_plans WHERE unit = $1 AND is_demo = true`,
+    [unit]
+  );
+  const planCount = planResult.rows[0]?.count || 0;
+  const phase1DemoEntries = counts.portfolio + counts.organisation + counts.skill;
+  return {
+    unit,
+    phase1DemoEntries,
+    portfolioEntries: counts.portfolio,
+    organisationEntries: counts.organisation,
+    skillEntries: counts.skill,
+    backcastingDemoPlan: planCount > 0,
+    planCount,
+    active: phase1DemoEntries > 0 || planCount > 0,
+  };
+}
+
 app.get("/api/demo/status", auth, async (req, res) => {
   if (!canAccessFortschritt(req.user) && !canAccessBackcasting(req.user) && !isAdminRole(req.user)) {
     return res.status(403).json({ error: "Kein Zugriff." });
@@ -2889,27 +2944,20 @@ app.get("/api/demo/status", auth, async (req, res) => {
     }
     const units = [];
     for (const demoUnit of DEMO_UNITS) {
-      const entryCount = await pool.query(
-        "SELECT COUNT(*)::int AS count FROM entries WHERE unit = $1 AND is_demo = true",
-        [demoUnit]
-      );
-      const planCount = await pool.query(
-        "SELECT COUNT(*)::int AS count FROM backcasting_plans WHERE unit = $1 AND is_demo = true",
-        [demoUnit]
-      );
-      const phase1DemoEntries = entryCount.rows[0]?.count || 0;
-      const backcastingDemoPlan = (planCount.rows[0]?.count || 0) > 0;
-      units.push({
-        unit: demoUnit,
-        phase1DemoEntries,
-        backcastingDemoPlan,
-        active: phase1DemoEntries > 0 || backcastingDemoPlan,
-      });
+      units.push(await fetchDemoStatusForUnit(demoUnit));
     }
     const activeCount = units.filter((row) => row.active).length;
+    const totals = {
+      phase1DemoEntries: units.reduce((sum, row) => sum + row.phase1DemoEntries, 0),
+      portfolioEntries: units.reduce((sum, row) => sum + row.portfolioEntries, 0),
+      organisationEntries: units.reduce((sum, row) => sum + row.organisationEntries, 0),
+      skillEntries: units.reduce((sum, row) => sum + row.skillEntries, 0),
+      planCount: units.reduce((sum, row) => sum + row.planCount, 0),
+    };
     return res.json({
       all: true,
       units,
+      totals,
       activeCount,
       totalUnits: DEMO_UNITS.length,
       demoUnits: DEMO_UNITS,
@@ -2917,26 +2965,19 @@ app.get("/api/demo/status", auth, async (req, res) => {
     });
   }
 
-  const resolved = resolveDashboardUnit(req, req.query.unit);
+  const requestedUnit = String(req.query.unit || "").trim();
+  if (!requestedUnit) {
+    return res.status(400).json({ error: "Unit fehlt oder all=true verwenden." });
+  }
+  const resolved = resolveDashboardUnit(req, requestedUnit);
   if (resolved.error) return res.status(403).json({ error: resolved.error });
   const unit = resolved.unit;
   if (!unit) return res.status(400).json({ error: "Unit fehlt." });
   if (!(await canAccessUnit(req, unit))) {
     return res.status(403).json({ error: "Kein Zugriff auf diese Unit." });
   }
-  const entryCount = await pool.query(
-    "SELECT COUNT(*)::int AS count FROM entries WHERE unit = $1 AND is_demo = true",
-    [unit]
-  );
-  const planCount = await pool.query(
-    "SELECT COUNT(*)::int AS count FROM backcasting_plans WHERE unit = $1 AND is_demo = true",
-    [unit]
-  );
   return res.json({
-    unit,
-    phase1DemoEntries: entryCount.rows[0]?.count || 0,
-    backcastingDemoPlan: (planCount.rows[0]?.count || 0) > 0,
-    active: (entryCount.rows[0]?.count || 0) > 0 || (planCount.rows[0]?.count || 0) > 0,
+    ...(await fetchDemoStatusForUnit(unit)),
     demoUnits: DEMO_UNITS,
   });
 });

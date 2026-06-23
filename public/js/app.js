@@ -993,6 +993,36 @@ function load(type) {
   return all;
 }
 
+function refreshPhase1ViewsAfterDataChange() {
+  if (isMitarbeiter) return;
+  renderPortfolio();
+  renderOrganisation();
+  renderSkillEmployeeNav();
+  updateSkillDeleteButton();
+  renderOverview();
+  renderExportStats();
+  void refreshUnitContextPanels();
+}
+
+function focusFilterAfterDemoLoad(target) {
+  const value = String(target || "").trim();
+  if (!value) {
+    refreshPhase1ViewsAfterDataChange();
+    return false;
+  }
+  if (!shouldShowHeaderUnitSwitcher()) {
+    refreshPhase1ViewsAfterDataChange();
+    return false;
+  }
+  const next = value === "all" ? "all" : value;
+  if (superAdminViewUnit !== next) {
+    setSuperAdminViewUnit(next);
+    return true;
+  }
+  refreshPhase1ViewsAfterDataChange();
+  return false;
+}
+
 function getViewUnitLabel() {
   if ((isSuperAdmin || isAdmin) && superAdminViewUnit === "all") return "Alle Units";
   if (superAdminViewUnit && superAdminViewUnit !== "all") return superAdminViewUnit;
@@ -1426,6 +1456,8 @@ function setSuperAdminViewUnit(unit) {
   }
   if (document.getElementById("page-demo-daten")?.classList.contains("active")) {
     renderDemoDatenPage();
+  } else if (typeof updateFortschrittDemoControls === "function") {
+    updateFortschrittDemoControls();
   }
 }
 
@@ -2558,6 +2590,27 @@ function pickUnitsFromMaster(preselected) {
   });
 }
 
+function setSessionBootState(state) {
+  const body = document.body;
+  if (!body) return;
+  body.classList.toggle("session-booting", state === "booting");
+  body.classList.toggle("session-unauthenticated", state === "unauthenticated");
+  const splash = document.getElementById("sessionBootSplash");
+  if (splash) splash.style.display = state === "booting" ? "" : "none";
+}
+
+function showLoginScreen() {
+  setSessionBootState("unauthenticated");
+  const login = document.getElementById("loginOverlay");
+  if (login) login.style.display = "flex";
+  const header = document.getElementById("appHeader");
+  const tabs = document.getElementById("tabs");
+  const main = document.getElementById("appMain");
+  if (header) header.style.display = "none";
+  if (tabs) tabs.style.display = "none";
+  if (main) main.style.display = "none";
+}
+
 async function doLogin(){
   const email=document.getElementById('loginEmail').value.trim().toLowerCase();
   const password=document.getElementById('loginPassword').value;
@@ -2589,11 +2642,11 @@ async function doLogout(){
   currentUnit='';currentName='';currentEmail='';isAdmin=false;isSuperAdmin=false;isMitarbeiter=false;userModules={ backcasting: false, fortschritt: false };currentSkillEntryId=null;currentPersonalnummer='';superAdminViewUnit='all';userUnits=[];
   document.body.classList.remove("mitarbeiter-mode");
   entryStore = { portfolio: [], organisation: [], skill: [] };
-  document.getElementById('loginOverlay').style.display='flex';document.getElementById('appHeader').style.display='none';
-  document.getElementById('tabs').style.display='none';document.getElementById('appMain').style.display='none';
+  showLoginScreen();
 }
 
 async function showApp(){
+  setSessionBootState("authenticated");
   await loadSkillCategoriesFromApi();
   await loadAppRolePositionCatalogFromApi();
   await refreshEntries();
@@ -2648,6 +2701,7 @@ function applyPageFromQuery() {
 }
 
 async function bootSession() {
+  setSessionBootState("booting");
   try {
     const me = await api("/api/auth/me");
     currentUnit = me.unit;
@@ -2662,7 +2716,9 @@ async function bootSession() {
     userModules = me.modules || { backcasting: false, fortschritt: false };
     if (await maybeRedirectToReturnUrl(userModules)) return;
     await showApp();
-  } catch (_e) {}
+  } catch (_e) {
+    showLoginScreen();
+  }
 }
 
 function applyLoginModuleContext() {
@@ -2705,6 +2761,12 @@ function updateAppModuleLauncher(modules) {
 }
 
 function bindAppModuleNavClicks() {
+  document.getElementById("launcherBackcasting")?.addEventListener("click", (e) => {
+    const appMain = document.getElementById("appMain");
+    if (!appMain || appMain.style.display === "none") return;
+    e.preventDefault();
+    window.location.assign("/backcasting/");
+  });
   document.getElementById("launcherFortschritt")?.addEventListener("click", (e) => {
     const appMain = document.getElementById("appMain");
     if (!appMain || appMain.style.display === "none") return;

@@ -689,7 +689,8 @@ async function loadDemoAllUnitsFromApi(){
     });
     const data = await res.json();
     if(!res.ok) throw new Error(data.error || 'Demo laden fehlgeschlagen');
-    toast(data.message || 'Demo-Daten für alle Units geladen');
+    await setBcViewUnit('all');
+    toast((data.message || 'Demo-Daten für alle Units geladen') + ' · Filter: Alle Units');
   } catch (err) {
     toast(err.message || 'Demo laden fehlgeschlagen');
   }
@@ -733,12 +734,13 @@ async function loadDemoFromApi(){
     });
     const data = await res.json();
     if(!res.ok) throw new Error(data.error || 'Demo laden fehlgeschlagen');
+    await setBcViewUnit(unit);
     await loadPlanFromApi();
     await syncPlanMetaFromContext();
     initSelectors();
     updateMeta();
     reviewSelected = { ws: workstreams()[0] || '', year: 2026 };
-    toast(data.message || 'Demo-Daten geladen');
+    toast((data.message || 'Demo-Daten geladen') + ` · Filter: ${unit}`);
   } catch (err) {
     toast(err.message || 'Demo laden fehlgeschlagen');
   }
