@@ -3,31 +3,50 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>Phase 1 · Status Aufnahme – realcore Transformation 2026–2029</title>
+<title>RCC Strategische Planung</title>
 <link rel="stylesheet" href="/styles.css">
 
 </head>
 <body class="session-booting">
 
 <div class="session-boot-splash" id="sessionBootSplash" aria-live="polite">
-  <div class="session-boot-splash__box">Session wird geladen…</div>
+  <div class="session-boot-splash__box">RCC Strategische Planung wird geladen…</div>
 </div>
 
 <!-- LOGIN -->
-<div class="login-overlay" id="loginOverlay" style="display:none">
-<div class="login-box">
-  <h2 id="loginTitle">Phase 1 · Status Aufnahme</h2>
-  <p id="loginSubtitle">Portfolio, Organisation &amp; Skill-Matrix<br>Transformation 2026–2029</p>
-  <p style="color:var(--rc-muted);font-size:.75rem;text-align:left;margin:-.6rem 0 1rem">Anmeldung mit E-Mail und Passwort. Ihre Unit wird aus der Benutzerverwaltung übernommen.</p>
-  <label style="text-align:left">E-Mail-Adresse *</label>
-  <input type="email" id="loginEmail" placeholder="vorname.nachname@realcore.de" style="text-align:left">
-  <label style="text-align:left">Passwort *</label>
-  <input type="password" id="loginPassword" placeholder="Passwort eingeben" style="text-align:left">
-  <p id="loginError" style="color:#c0392b;font-size:.8rem;font-weight:600;display:none;margin-bottom:.5rem"></p>
-  <div class="btn-group" style="justify-content:center">
-    <button class="btn btn-primary" onclick="doLogin()">Anmelden &amp; starten</button>
+<div class="login-overlay login-overlay--auth" id="loginOverlay" style="display:none">
+  <div class="login-shell">
+    <aside class="login-brand" aria-hidden="true">
+      <div class="login-brand__mark">RCC</div>
+      <h1 class="login-brand__title">Strategische<br>Planung</h1>
+      <p class="login-brand__tagline">realcore · Transformation 2026–2029</p>
+      <ul class="login-brand__phases">
+        <li><span>1</span> Status Aufnahme</li>
+        <li><span>2</span> Backcasting-Planung</li>
+        <li><span>3</span> Fortschritt</li>
+      </ul>
+    </aside>
+    <div class="login-box">
+      <div class="login-box__header">
+        <p class="login-box__eyebrow">RCC Strategische Planung</p>
+      </div>
+      <form class="login-form" onsubmit="event.preventDefault(); doLogin();">
+        <label class="login-form__label" for="loginEmail">E-Mail-Adresse</label>
+        <input type="email" id="loginEmail" class="login-form__input" placeholder="vorname.nachname@realcore.de" autocomplete="username" required>
+        <label class="login-form__label" for="loginPassword">Passwort</label>
+        <div class="login-form__password-wrap">
+          <input type="password" id="loginPassword" class="login-form__input" placeholder="Passwort eingeben" autocomplete="current-password" required>
+          <button type="button" class="login-form__password-toggle" id="loginPasswordToggle" aria-label="Passwort anzeigen" aria-pressed="false" title="Passwort anzeigen">
+            <svg class="login-form__eye login-form__eye--show" viewBox="0 0 24 24" width="18" height="18" aria-hidden="true" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M2 12s3-7 10-7 10 7 10 7-3 7-10 7-10-7-10-7Z"/><circle cx="12" cy="12" r="3"/></svg>
+            <svg class="login-form__eye login-form__eye--hide" viewBox="0 0 24 24" width="18" height="18" aria-hidden="true" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" hidden><path d="M9.88 9.88a3 3 0 1 0 4.24 4.24"/><path d="M10.73 5.08A10.43 10.43 0 0 1 12 5c7 0 10 7 10 7a13.16 13.16 0 0 1-1.67 2.68"/><path d="M6.61 6.61A13.52 13.52 0 0 0 2 12s3 7 10 7a9.74 9.74 0 0 0 5.39-1.61"/><line x1="2" y1="2" x2="22" y2="22"/></svg>
+          </button>
+        </div>
+        <p id="loginError" class="login-form__error" role="alert"></p>
+        <button type="submit" class="btn btn-primary login-form__submit">Anmelden</button>
+      </form>
+      <p class="login-box__hint">Ihre Unit wird aus der Benutzerverwaltung übernommen.</p>
+    </div>
   </div>
-</div>
 </div>
 
 <!-- HEADER -->
@@ -58,8 +77,10 @@
           <nav class="app-module-nav" id="appModuleNav" aria-label="Phasen">
             <a class="app-module-link is-active" href="/" id="launcherPhase1" aria-current="page">Phase 1 · Status Aufnahme</a>
             <a class="app-module-link" href="/backcasting/" id="launcherBackcasting" style="display:none">Phase 2 · Backcasting-Planung</a>
-            <a class="app-module-link" href="/?page=fortschritt" id="launcherFortschritt" style="display:none">Phase 3 · Fortschritt</a>
+            <a class="app-module-link" href="/?page=gesamtfortschritt" id="launcherFortschritt" style="display:none">Phase 3 · Fortschritt</a>
           </nav>
+          <span class="header-phases-sep" id="headerPhasesSep" style="display:none" aria-hidden="true"></span>
+          <button type="button" class="app-module-link app-module-link--demo" id="launcherDemoDaten" style="display:none">🧪 Demo-Daten</button>
         </div>
         <div class="subtitle" id="appHeaderSubtitle">Portfolio, Organisation &amp; Skill-Matrix · Transformation 2026–2029</div>
       </div>
@@ -76,8 +97,8 @@
     <div class="tab" data-page="export">📤 Export</div>
   </div>
   <div class="tabs-nav-main" id="tabsNavPhase3" style="display:none">
-    <div class="tab active" data-page="fortschritt">📊 Fortschritt</div>
-    <div class="tab" data-page="demo-daten">🧪 Demo-Daten</div>
+    <div class="tab active" data-page="gesamtfortschritt">📈 Gesamtfortschritt</div>
+    <div class="tab" data-page="fortschritt">📊 Detailfortschritt</div>
   </div>
 </div>
 
@@ -543,18 +564,44 @@
   </div>
 </div>
 
+<!-- ===== GESAMTFORTSCHRITT (Zeitstrahl 2026–2029) ===== -->
+<div class="page" id="page-gesamtfortschritt">
+  <div class="card" style="border-left-color:var(--rc-accent2);margin-bottom:1rem">
+    <div class="ft-tip-title-row ft-has-tip" tabindex="0" role="button" aria-expanded="false" aria-label="Gesamtfortschritt – Klicken für Erklärung">
+      <span class="ft-stat-tip-icon" aria-hidden="true">i</span>
+      <h3 style="margin:0">Gesamtfortschritt · Zeitstrahl 2026–2029</h3>
+      <div class="ft-stat-tooltip ft-stat-tooltip--title" role="dialog" aria-label="Erklärung Gesamtfortschritt">
+        <button type="button" class="ft-stat-tip-close" aria-label="Schließen">×</button>
+        <strong>Gesamtfortschritt · Zeitstrahl 2026–2029</strong>
+        <p>Zeigt den Planverlauf der drei Kern-KPIs (Umsatz, Headcount, Zertifizierung) über die Jahre 2026 bis 2029.</p>
+        <p><b>SOLL (durchgezogene Linie)</b> – jährliche Zielwerte aus Backcasting-Meilensteinen. <b>IST (gestrichelte Linie)</b> – projizierter Verlauf vom Ist-Stand 2026 linear zum Soll-Ziel 2029.</p>
+        <p>Bei <b>Alle Units</b> (Admin) werden alle Standard-Units farblich überlagert. Für IST/SOLL-Details je Unit nutzen Sie das Register <em>Detailfortschritt</em>.</p>
+      </div>
+    </div>
+    <p style="color:var(--rc-muted);font-size:.8rem;margin-bottom:.75rem">
+      Überblick über Plan-Meilensteine und projizierten Ist-Verlauf – je Unit oder alle Standard-Units.
+    </p>
+    <div class="fortschritt-toolbar">
+      <div class="fortschritt-toolbar-actions">
+        <button type="button" class="btn btn-outline btn-sm" id="btnGesamtfortschrittReload">Aktualisieren</button>
+      </div>
+    </div>
+  </div>
+  <div id="gesamtfortschrittContent"></div>
+</div>
+
 <!-- ===== FORTSCHRITT (IST vs. SOLL) ===== -->
 <div class="page" id="page-fortschritt">
   <div class="card" style="border-left-color:var(--rc-accent2);margin-bottom:1rem">
-    <div class="ft-tip-title-row ft-has-tip" tabindex="0" role="button" aria-expanded="false" aria-label="Management-Fortschritt – Klicken für Erklärung">
+    <div class="ft-tip-title-row ft-has-tip" tabindex="0" role="button" aria-expanded="false" aria-label="Detailfortschritt – Klicken für Erklärung">
       <span class="ft-stat-tip-icon" aria-hidden="true">i</span>
-      <h3 style="margin:0">Management-Fortschritt · IST vs. SOLL</h3>
-      <div class="ft-stat-tooltip ft-stat-tooltip--title" role="dialog" aria-label="Erklärung Management-Fortschritt">
+      <h3 style="margin:0">Detailfortschritt · IST vs. SOLL</h3>
+      <div class="ft-stat-tooltip ft-stat-tooltip--title" role="dialog" aria-label="Erklärung Detailfortschritt">
         <button type="button" class="ft-stat-tip-close" aria-label="Schließen">×</button>
-        <strong>Management-Fortschritt · IST vs. SOLL</strong>
+        <strong>Detailfortschritt · IST vs. SOLL</strong>
         <p>Diese Ansicht vergleicht den <b>Ist-Stand</b> aus Phase&nbsp;1 (Status Aufnahme) mit den <b>Soll-Vorgaben</b> aus der Backcasting-Planung (Phase&nbsp;2) für die gewählte Unit.</p>
         <p><b>IST</b> = aktuelle Erfassung (Portfolio, Organisation, Skills). <b>SOLL</b> = aggregierte Zielwerte aus Plan-Meilensteinen des gewählten Jahres.</p>
-        <p>Das Jahr steuert, welche Meilensteine und Ziel-KPIs herangezogen werden. Demo-Datensätze zum Testen pflegen Sie im Register <em>Demo-Daten</em>.</p>
+        <p>Den Zeitstrahl 2026–2029 finden Sie im Register <em>Gesamtfortschritt</em>. Das Jahr steuert hier die Detail-Ansicht (KPI-Karten, Meilensteine). Demo-Datensätze pflegen Sie über den Button <em>Demo-Daten</em> bei den Phasen.</p>
       </div>
     </div>
     <p style="color:var(--rc-muted);font-size:.8rem;margin-bottom:.75rem">
@@ -583,15 +630,16 @@
   <div class="card demo-daten-card" style="border-left-color:var(--rc-orange);margin-bottom:1rem">
     <h3 style="margin:0 0 .35rem">Demo-Daten</h3>
     <p class="demo-daten-lead">
-      Beispieldaten für Phase&nbsp;1 und Phase&nbsp;2 je Unit – zum Testen des IST/SOLL-Vergleichs im Register Fortschritt.
-      Demo-Einträge werden separat markiert und überschreiben keine echten Erfassungen oder Planungen.
+      Lädt je Unit vollständige <strong>Phase&nbsp;1</strong>-Daten (Portfolio, Organisation, Skills) und einen
+      <strong>Phase&nbsp;2</strong>-Backcasting-Plan (Meilensteine 2026–2029).
+      Den IST/SOLL-Vergleich finden Sie im Register <strong>Detailfortschritt</strong>, den Zeitstrahl im Register <strong>Gesamtfortschritt</strong>.
+      Demo-Einträge sind markiert und überschreiben keine echten Daten.
     </p>
     <div class="demo-daten-actions">
       <button type="button" class="btn btn-outline btn-sm" id="btnFortschrittDemoLoad">Demo-Daten laden</button>
       <button type="button" class="btn btn-outline btn-sm" id="btnFortschrittDemoLoadAll" style="display:none">Demo alle Units laden</button>
       <button type="button" class="btn btn-danger btn-sm btn-outline" id="btnFortschrittDemoRemove">Demo entfernen</button>
       <button type="button" class="btn btn-danger btn-sm btn-outline" id="btnFortschrittDemoRemoveAll" style="display:none">Demo alle Units entfernen</button>
-      <span class="fortschritt-demo-badge" id="fortschrittDemoBadge">–</span>
     </div>
     <div class="demo-daten-load-status" id="demoDatenLoadStatus" aria-live="polite">
       <div class="demo-daten-load-status__inner">Lade Demo-Status…</div>
@@ -601,6 +649,7 @@
       <ul class="fortschritt-demo-info__list">
         <li><b>Phase 1</b> – Portfolio-Positionen, Organisation (Gliederungen, Rollen) und Skill-Matrix mit Mitarbeitenden</li>
         <li><b>Phase 2</b> – Backcasting-Plan mit Meilensteinen für 2026–2029 (Umsatz, Headcount, Zertifizierung, Skill-Ziele)</li>
+        <li><b>Phase 3</b> – daraus abgeleitete Auswertungen: Zeitstrahl im Register <em>Gesamtfortschritt</em>, IST/SOLL-Details im Register <em>Detailfortschritt</em></li>
       </ul>
       <h4 class="fortschritt-demo-info__h">Standard-Units &amp; Profile</h4>
       <div class="tbl-wrap">
@@ -643,10 +692,9 @@
         <li><b>Demo entfernen</b> – löscht ausschließlich Demo-Einträge und Demo-Pläne; echte Daten bleiben erhalten</li>
       </ul>
       <p class="fortschritt-demo-info__hint">
-        Für den IST/SOLL-Vergleich im Register <em>Fortschritt</em> oben im <em>Filter</em> eine konkrete Unit wählen.
-        Nach „Demo alle Units laden“ wird der Filter automatisch auf die erste Standard-Unit gesetzt, damit die Daten in allen Phasen sichtbar sind.
+        Der Zeitstrahl (2026–2029) ist im Register <em>Gesamtfortschritt</em> einsehbar.
+        IST/SOLL-Details je Unit im Register <em>Detailfortschritt</em> (konkrete Unit im Filter wählen).
       </p>
-      <div id="fortschrittDemoInfoStatus" class="fortschritt-demo-info__status" aria-live="polite"></div>
     </div>
   </div>
 </div>
@@ -1165,7 +1213,7 @@
         <label class="unit-checkbox-item"><input type="checkbox" data-app-module="backcasting"> Phase 2 · Backcasting-Planung</label>
         <label class="unit-checkbox-item"><input type="checkbox" data-app-module="fortschritt"> Phase 3 · Fortschritt</label>
       </div>
-      <p style="color:var(--rc-muted);font-size:.75rem;margin:0">Freischaltung von Phase 2 (<code>/backcasting/</code>) und Phase 3 (Tab Fortschritt) für <strong>Unit Leiter</strong>, <strong>Stellv. Unit Leiter</strong>, <strong>CC Leiter</strong> und <strong>Regionalleiter</strong>. Bei <strong>Admin</strong> oder <strong>Super Admin</strong> sind beide Phasen automatisch aktiv und nicht änderbar.</p>
+      <p style="color:var(--rc-muted);font-size:.75rem;margin:0">Freischaltung von Phase 2 (<code>/backcasting/</code>) und Phase 3 (Gesamtfortschritt / Detailfortschritt) für <strong>Unit Leiter</strong>, <strong>Stellv. Unit Leiter</strong>, <strong>CC Leiter</strong> und <strong>Regionalleiter</strong>. Bei <strong>Admin</strong> oder <strong>Super Admin</strong> sind beide Phasen automatisch aktiv und nicht änderbar. <strong>Demo-Daten</strong> ist über den Button neben den Phasen erreichbar.</p>
     </div>
     <div class="admin-user-section" style="margin-bottom:.65rem">
       <h4 style="margin:0 0 .35rem;font-size:.9rem">Rollen (Organisation)</h4>
@@ -1217,7 +1265,7 @@
 <script src="/js/soft-skill-ref-data.js"></script>
 <script src="/js/organisation-ref-data.js"></script>
 <script src="/js/harmonization-data.js"></script>
-<script src="/js/fortschritt-dashboard.js"></script>
+<script src="/js/fortschritt-dashboard.js?v=20260624d"></script>
 <script src="/backcasting/js/embedded-data.js"></script>
 <script src="/backcasting/js/guidelines.js"></script>
 <script src="/js/roles-permissions-doc.js"></script>

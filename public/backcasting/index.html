@@ -52,33 +52,17 @@
 
 <div class="tabs" id="bcTabs">
   <div class="tabs-nav-main">
-    <div class="tab active" data-tab="leitplanken">① Leitplanken</div>
-    <div class="tab" data-tab="planung">② Planung</div>
-    <div class="tab" data-tab="review">③ Review</div>
+    <div class="tab active" data-tab="planung">① Planung</div>
+    <div class="tab" data-tab="review">② Review</div>
+    <div class="tab" data-tab="leitplanken">③ Leitplanken</div>
     <div class="tab" data-tab="export">④ Export</div>
   </div>
 </div>
 
 <div class="main" id="bcMain">
 
-<!-- LEITPLANKEN -->
-<div class="page active" id="page-leitplanken">
-  <div class="card">
-    <div class="filter-row">
-      <div><label>Workstream</label><select id="lpWs" onchange="renderLeitplanken()"></select></div>
-      <div><label>Priorität</label><select id="lpPrio" onchange="renderLeitplanken()"><option value="">Alle</option><option>H</option><option>M</option><option>N</option></select></div>
-      <div style="flex:1;min-width:200px"><label>Suche</label><input type="text" id="lpSearch" oninput="renderLeitplanken()" placeholder="Volltext…"></div>
-    </div>
-    <div class="tbl-wrap bc-table-scroll">
-      <table class="entries" id="lpTable"><thead><tr>
-        <th>Prio</th><th>Workstream</th><th>Kategorie</th><th>Leitfrage</th><th>Konkrete Festlegung</th><th>Zielwert / Horizont</th><th>Verantwortlich</th>
-      </tr></thead><tbody></tbody></table>
-    </div>
-  </div>
-</div>
-
 <!-- PLANUNG -->
-<div class="page" id="page-planung">
+<div class="page active" id="page-planung">
   <div class="unit-save-notice" id="bcUnitSaveNotice" style="display:none" role="status">
     <strong>Speichern nicht möglich:</strong> Oben ist <em>Alle Units</em> aktiv.
     Bitte im <strong>Filter</strong> eine konkrete Unit wählen, dann planen und speichern.
@@ -239,6 +223,22 @@
         <p class="bc-muted" style="margin-bottom:.65rem">Verdichtete Steuerungssicht über alle Jahre und Workstreams.</p>
         <div id="reviewRiskBoard"></div>
       </div>
+    </div>
+  </div>
+</div>
+
+<!-- LEITPLANKEN -->
+<div class="page" id="page-leitplanken">
+  <div class="card">
+    <div class="filter-row">
+      <div><label>Workstream</label><select id="lpWs" onchange="renderLeitplanken()"></select></div>
+      <div><label>Priorität</label><select id="lpPrio" onchange="renderLeitplanken()"><option value="">Alle</option><option>H</option><option>M</option><option>N</option></select></div>
+      <div style="flex:1;min-width:200px"><label>Suche</label><input type="text" id="lpSearch" oninput="renderLeitplanken()" placeholder="Volltext…"></div>
+    </div>
+    <div class="tbl-wrap bc-table-scroll">
+      <table class="entries" id="lpTable"><thead><tr>
+        <th>Prio</th><th>Workstream</th><th>Kategorie</th><th>Leitfrage</th><th>Konkrete Festlegung</th><th>Zielwert / Horizont</th><th>Verantwortlich</th>
+      </tr></thead><tbody></tbody></table>
     </div>
   </div>
 </div>

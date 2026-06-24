@@ -3,6 +3,11 @@
  * Alle Einträge werden mit is_demo=true in der DB gespeichert.
  */
 
+const { buildDemoEvaluationSummary } = require("./dashboard-service");
+
+const DEMO_REFERENCE_YEAR = 2026;
+const DEMO_MILESTONE_YEARS = [2026, 2027, 2028, 2029];
+
 const DEMO_UNITS = [
   "SAP Infrastructure",
   "SAP Engineers",
@@ -56,12 +61,7 @@ const UNIT_PROFILES = {
       { slug: "hoffmann", vorname: "Jan", nachname: "Hoffmann", role: "Projektmanager", zert: "nein", skills: [["Low-Code / No-Code", 2], ["Integration & Middleware", 2]] },
       { slug: "becker", vorname: "Nina", nachname: "Becker", role: "Consultant / Berater", zert: "ja", skills: [["AI & Machine Learning", 3], ["Cloud & Infrastructure", 3]] },
     ],
-    planTargets: {
-      2026: { umsatz: 5200, headcount: 22, zertPct: 100, skillCat: "Integration & Middleware", skillMin: 3 },
-      2027: { umsatz: 5800, headcount: 24, zertPct: 50, skillCat: "AI & Machine Learning", skillMin: 3 },
-      2028: { umsatz: 6400, headcount: 26, zertPct: 60, skillCat: "Cloud & Infrastructure", skillMin: 3 },
-      2029: { umsatz: 7000, headcount: 28, zertPct: 70, skillCat: "Data & Analytics", skillMin: 3 },
-    },
+    demoScenario: { umsatzDeltaPct: 10, headcountDelta: 3, zertDelta: 12, skillMin: 3 },
   },
   "SAP Infrastructure": {
     leiter: "Demo Bereichsleiter Infrastructure",
@@ -93,12 +93,7 @@ const UNIT_PROFILES = {
       { slug: "richter", vorname: "Julia", nachname: "Richter", role: "Delivery Manager", zert: "ja", skills: [["Security & Compliance", 3]] },
       { slug: "wolf", vorname: "Markus", nachname: "Wolf", role: "Projektmanager", zert: "nein", skills: [["Low-Code / No-Code", 2]] },
     ],
-    planTargets: {
-      2026: { umsatz: 6200, headcount: 31, zertPct: 80, skillCat: "Cloud & Infrastructure", skillMin: 3 },
-      2027: { umsatz: 6800, headcount: 33, zertPct: 60, skillCat: "Security & Compliance", skillMin: 3 },
-      2028: { umsatz: 7200, headcount: 34, zertPct: 70, skillCat: "Business Tools & Plattformen", skillMin: 3 },
-      2029: { umsatz: 7600, headcount: 35, zertPct: 75, skillCat: "Integration & Middleware", skillMin: 3 },
-    },
+    demoScenario: { umsatzDeltaPct: 8, headcountDelta: 4, zertDelta: 38, skillMin: 3 },
   },
   "SAP Engineers": {
     leiter: "Demo Bereichsleiter Engineers",
@@ -132,12 +127,7 @@ const UNIT_PROFILES = {
       { slug: "lange", vorname: "Mia", nachname: "Lange", role: "Solution Architect", zert: "ja", skills: [["Cloud & Infrastructure", 4], ["Security & Compliance", 3]] },
       { slug: "schmitz", vorname: "Jonas", nachname: "Schmitz", role: "Projektmanager", zert: "nein", skills: [["Integration & Middleware", 2]] },
     ],
-    planTargets: {
-      2026: { umsatz: 4800, headcount: 25, zertPct: 70, skillCat: "Development & Automation", skillMin: 4 },
-      2027: { umsatz: 5400, headcount: 27, zertPct: 75, skillCat: "AI & Machine Learning", skillMin: 3 },
-      2028: { umsatz: 5900, headcount: 28, zertPct: 80, skillCat: "Low-Code / No-Code", skillMin: 3 },
-      2029: { umsatz: 6300, headcount: 29, zertPct: 85, skillCat: "Cloud & Infrastructure", skillMin: 4 },
-    },
+    demoScenario: { umsatzDeltaPct: -10, headcountDelta: 2, zertDelta: 8, skillMin: 4 },
   },
   "SAP Architecture": {
     leiter: "Demo Bereichsleiter Architecture",
@@ -169,17 +159,74 @@ const UNIT_PROFILES = {
       { slug: "krause", vorname: "Martin", nachname: "Krause", role: "Solution Architect", zert: "nein", skills: [["Integration & Middleware", 3], ["Development & Automation", 2]] },
       { slug: "meier", vorname: "Sandra", nachname: "Meier", role: "Projektmanager", zert: "ja", skills: [["Low-Code / No-Code", 2]] },
     ],
-    planTargets: {
-      2026: { umsatz: 4600, headcount: 19, zertPct: 90, skillCat: "Business Tools & Plattformen", skillMin: 4 },
-      2027: { umsatz: 5100, headcount: 20, zertPct: 85, skillCat: "Integration & Middleware", skillMin: 4 },
-      2028: { umsatz: 5600, headcount: 21, zertPct: 90, skillCat: "AI & Machine Learning", skillMin: 3 },
-      2029: { umsatz: 6000, headcount: 22, zertPct: 95, skillCat: "Cloud & Infrastructure", skillMin: 4 },
-    },
+    demoScenario: { umsatzDeltaPct: 6, headcountDelta: 2, zertDelta: 6, skillMin: 4 },
   },
 };
 
 function getUnitProfile(unit) {
-  return UNIT_PROFILES[unit] || UNIT_PROFILES[DEMO_UNIT];
+  const base = UNIT_PROFILES[unit] || UNIT_PROFILES[DEMO_UNIT];
+  return { ...base, planTargets: derivePlanTargets(base) };
+}
+
+function sumPortfolioTeur(profile) {
+  return (profile.portfolio || []).reduce((sum, item) => sum + (Number(item.teur) || 0), 0);
+}
+
+function sumHeadcount(profile) {
+  return (profile.gliederungen || []).reduce((sum, item) => sum + (Number(item.headcount) || 0), 0);
+}
+
+function zertQuotePct(profile) {
+  const employees = profile.employees || [];
+  if (!employees.length) return 0;
+  const certified = employees.filter((emp) => emp.zert === "ja").length;
+  return Math.round((certified / employees.length) * 1000) / 10;
+}
+
+function primarySkillCategory(profile) {
+  const counts = new Map();
+  (profile.employees || []).forEach((emp) => {
+    (emp.skills || []).forEach(([category]) => {
+      counts.set(category, (counts.get(category) || 0) + 1);
+    });
+  });
+  let best = "Integration & Middleware";
+  let bestCount = 0;
+  counts.forEach((count, category) => {
+    if (count > bestCount) {
+      best = category;
+      bestCount = count;
+    }
+  });
+  return best;
+}
+
+/** Soll-KPIs aus Phase-1-IST ableiten – für nachvollziehbaren IST/SOLL-Vergleich in Fortschritt. */
+function derivePlanTargets(profile) {
+  const scenario = profile.demoScenario || {};
+  const istUmsatz = sumPortfolioTeur(profile);
+  const istHeadcount = sumHeadcount(profile);
+  const istZert = zertQuotePct(profile);
+  const skillCat = primarySkillCategory(profile);
+  const umsatzDeltaPct = Number(scenario.umsatzDeltaPct ?? 8);
+  const headcountDelta = Number(scenario.headcountDelta ?? 2);
+  const zertDelta = Number(scenario.zertDelta ?? 10);
+  const skillMinBase = Number(scenario.skillMin ?? 3);
+
+  const years = [2026, 2027, 2028, 2029];
+  const targets = {};
+  years.forEach((year, index) => {
+    const growth = 1 + index * 0.04;
+    const sollUmsatzTotal = istUmsatz / (1 - (umsatzDeltaPct + index * 2) / 100);
+    targets[year] = {
+      umsatz: Math.round((sollUmsatzTotal * growth) / 1.15),
+      headcount: istHeadcount + headcountDelta + index,
+      zertPct: Math.min(100, Math.round(istZert + zertDelta + index * 3)),
+      skillCat,
+      skillMin: skillMinBase + (index >= 2 ? 1 : 0),
+    };
+  });
+  return targets;
 }
 
 function ampelScore(ampel) {
@@ -365,13 +412,39 @@ function buildBackcastingDemoPlan(unit = DEMO_UNIT) {
   };
 }
 
+function buildDemoStatusSummary(entries, plan, year = DEMO_REFERENCE_YEAR) {
+  const portfolioEntries = entries.filter((e) => e.type === "portfolio").length;
+  const organisationEntries = entries.filter((e) => e.type === "organisation").length;
+  const skillEntries = entries.filter((e) => e.type === "skill").length;
+  const evaluation = buildDemoEvaluationSummary(entries, plan, year);
+  return {
+    referenceYear: year,
+    phase1DemoEntries: entries.length,
+    portfolioEntries,
+    organisationEntries,
+    skillEntries,
+    planCount: 1,
+    backcastingDemoPlan: true,
+    milestoneCount: evaluation.milestoneCountTotal,
+    milestoneYears: DEMO_MILESTONE_YEARS,
+    phase3Year: evaluation.year,
+    phase3KpiCount: evaluation.kpiCount,
+    phase3SkillGapCount: evaluation.skillGapCount,
+    phase3MilestoneCount: evaluation.milestoneCountYear,
+    phase3Evaluations: evaluation.phase3Evaluations,
+  };
+}
+
 function buildDemoDataForUnit(unit) {
   const phase1 = buildPhase1DemoEntries(unit);
   const plan = buildBackcastingDemoPlan(unit);
+  const entries = phase1.entries;
+  const summary = buildDemoStatusSummary(entries, plan);
   return {
     unit,
-    entries: phase1.entries,
+    entries,
     plan,
+    summary,
   };
 }
 
@@ -382,11 +455,14 @@ function buildDemoDataForAllUnits() {
 module.exports = {
   DEMO_UNIT,
   DEMO_UNITS,
+  DEMO_REFERENCE_YEAR,
+  DEMO_MILESTONE_YEARS,
   DEMO_ID_PREFIX: "demo-",
   slugifyUnit,
   demoId,
   buildPhase1DemoEntries,
   buildBackcastingDemoPlan,
+  buildDemoStatusSummary,
   buildDemoDataForUnit,
   buildDemoDataForAllUnits,
   wsMeasureKey,

@@ -5,8 +5,10 @@
 let fortschrittYear = new Date().getFullYear();
 let fortschrittSnapshot = null;
 let fortschrittInitDone = false;
+let gesamtfortschrittInitDone = false;
 let demoDatenInitDone = false;
 let fortschrittTipDocBound = false;
+let demoLoadPanelState = null;
 
 async function afterDemoDataChanged(options) {
   const opts =
@@ -20,7 +22,6 @@ async function afterDemoDataChanged(options) {
 
   await refreshEntries();
   await refreshFortschrittDemoStatus();
-  await refreshFortschrittDemoInfoStatus();
 
   if (filterMode === "all") {
     focusFilterAfterDemoLoad("all");
@@ -30,13 +31,41 @@ async function afterDemoDataChanged(options) {
     refreshPhase1ViewsAfterDataChange();
   }
 
-  if (document.getElementById("page-fortschritt")?.classList.contains("active")) {
+  if (opts.showFortschritt === true) {
+    const fortschrittUnit =
+      filterMode === "unit" ? unit : resolveDemoFortschrittUnitFromPanel();
+    await openFortschrittAfterDemoLoad(fortschrittUnit);
+  } else if (document.getElementById("page-gesamtfortschritt")?.classList.contains("active")) {
+    await loadGesamtfortschrittDashboard();
+  } else if (document.getElementById("page-fortschritt")?.classList.contains("active")) {
     if (filterMode !== "all") {
       await ensureFortschrittViewUnit();
     }
     await loadFortschrittDashboard();
     await refreshFortschrittDemoStatus();
   }
+}
+
+function resolveDemoFortschrittUnitFromPanel() {
+  if (demoLoadPanelState?.units?.length) {
+    const done = demoLoadPanelState.units.find((row) => row.status === "done");
+    if (done?.unit) return done.unit;
+  }
+  return STANDARD_DEMO_UNITS[0] || "";
+}
+
+async function openFortschrittAfterDemoLoad(unit) {
+  if (typeof isMitarbeiter !== "undefined" && isMitarbeiter) return;
+  if (typeof userModules !== "undefined" && !userModules?.fortschritt && typeof isAdmin !== "undefined" && !isAdmin) {
+    return;
+  }
+  const targetUnit = String(unit || resolveDemoFortschrittUnitFromPanel() || "").trim();
+  if (!targetUnit) return;
+  focusFilterAfterDemoLoad(targetUnit);
+  if (typeof switchTab === "function") {
+    switchTab("fortschritt");
+  }
+  await prepareFortschrittView();
 }
 
 function ftEscAttr(s) {
@@ -92,50 +121,65 @@ const FORTSCHRITT_TIPS = {
   meilensteine: `<strong>Plan-Meilensteine</strong>
     <p>Meilensteine aus dem Backcasting-Plan für das gewählte Jahr (Workstream × Jahr).</p>
     <p>Tags zeigen strukturierte Zielwerte (<em>ziel_umsatz_teur</em>, <em>ziel_headcount</em>). Der Text ist ein Auszug aus Ergebnis/KPIs des Meilensteins – maximal acht Einträge.</p>`,
+  zeitstrahl: `<strong>Zeitstrahl 2026–2029</strong>
+    <p>Zeigt den Planverlauf aller drei Kern-KPIs über die Jahre 2026 bis 2029.</p>
+    <ul>
+      <li><b>SOLL (durchgezogene Linie)</b> – jährliche Zielwerte aus Backcasting-Meilensteinen</li>
+      <li><b>IST (gestrichelte Linie)</b> – projizierter Verlauf vom Ist-Stand 2026 linear zum Soll-Ziel 2029</li>
+      <li>Bei <b>Alle Units</b> werden alle Standard-Units farblich überlagert; die Legende zeigt Linienart und Unit-Farben getrennt</li>
+    </ul>`,
 };
 
+function fortschrittTipPageIds() {
+  return ["page-fortschritt", "page-gesamtfortschritt"];
+}
+
 function closeFortschrittTipPopovers(exceptCard) {
-  document.querySelectorAll("#page-fortschritt .ft-has-tip").forEach((card) => {
-    if (exceptCard && card === exceptCard) return;
-    card.classList.remove("ft-tip-open");
-    card.setAttribute("aria-expanded", "false");
+  fortschrittTipPageIds().forEach((pageId) => {
+    document.querySelectorAll(`#${pageId} .ft-has-tip`).forEach((card) => {
+      if (exceptCard && card === exceptCard) return;
+      card.classList.remove("ft-tip-open");
+      card.setAttribute("aria-expanded", "false");
+    });
   });
 }
 
 function initFortschrittTipPopovers() {
-  const root = document.getElementById("page-fortschritt");
-  if (!root) return;
+  fortschrittTipPageIds().forEach((pageId) => {
+    const root = document.getElementById(pageId);
+    if (!root) return;
 
-  root.querySelectorAll(".ft-has-tip").forEach((card) => {
-    if (card.dataset.ftTipBound) return;
-    card.dataset.ftTipBound = "1";
+    root.querySelectorAll(".ft-has-tip").forEach((card) => {
+      if (card.dataset.ftTipBound) return;
+      card.dataset.ftTipBound = "1";
 
-    card.addEventListener("click", (e) => {
-      if (e.target.closest(".ft-stat-tip-close")) return;
-      if (e.target.closest(".ft-stat-tooltip") && card.classList.contains("ft-tip-open")) {
+      card.addEventListener("click", (e) => {
+        if (e.target.closest(".ft-stat-tip-close")) return;
+        if (e.target.closest(".ft-stat-tooltip") && card.classList.contains("ft-tip-open")) {
+          e.stopPropagation();
+          return;
+        }
+        const open = card.classList.contains("ft-tip-open");
+        closeFortschrittTipPopovers();
+        if (!open) {
+          card.classList.add("ft-tip-open");
+          card.setAttribute("aria-expanded", "true");
+        }
         e.stopPropagation();
-        return;
-      }
-      const open = card.classList.contains("ft-tip-open");
-      closeFortschrittTipPopovers();
-      if (!open) {
-        card.classList.add("ft-tip-open");
-        card.setAttribute("aria-expanded", "true");
-      }
-      e.stopPropagation();
-    });
+      });
 
-    card.addEventListener("keydown", (e) => {
-      if (e.key === "Enter" || e.key === " ") {
-        e.preventDefault();
-        card.click();
-      }
-      if (e.key === "Escape") closeFortschrittTipPopovers();
-    });
+      card.addEventListener("keydown", (e) => {
+        if (e.key === "Enter" || e.key === " ") {
+          e.preventDefault();
+          card.click();
+        }
+        if (e.key === "Escape") closeFortschrittTipPopovers();
+      });
 
-    card.querySelector(".ft-stat-tip-close")?.addEventListener("click", (e) => {
-      closeFortschrittTipPopovers();
-      e.stopPropagation();
+      card.querySelector(".ft-stat-tip-close")?.addEventListener("click", (e) => {
+        closeFortschrittTipPopovers();
+        e.stopPropagation();
+      });
     });
   });
 
@@ -150,6 +194,242 @@ function initFortschrittTipPopovers() {
 
 function fortschrittUnit() {
   return typeof getSaveUnit === "function" ? String(getSaveUnit() || "").trim() : "";
+}
+
+function isFortschrittAllUnitsMode() {
+  return typeof isSuperAdminViewAll === "function" && isSuperAdminViewAll();
+}
+
+const FORTSCHRITT_UNIT_COLORS = ["#0f3460", "#3498db", "#27ae60", "#e67e22"];
+
+function ftFormatTimelineTick(value, unit) {
+  if (value == null || !Number.isFinite(value)) return "–";
+  if (unit === "TEUR") {
+    if (value >= 1000) return Math.round(value / 100) / 10 + "k";
+    return String(Math.round(value));
+  }
+  if (unit === "%") return Math.round(value) + "%";
+  return String(Math.round(value));
+}
+
+function ftTimelineSeriesForKpi(timelineData, kpiKey, allUnits) {
+  if (allUnits && timelineData?.units) {
+    return timelineData.units
+      .map((row, index) => {
+        const kpi = (row.kpis || []).find((k) => k.key === kpiKey);
+        if (!kpi?.hasData) return null;
+        return {
+          unit: row.unit,
+          color: FORTSCHRITT_UNIT_COLORS[index % FORTSCHRITT_UNIT_COLORS.length],
+          soll: kpi.soll,
+          ist: kpi.ist,
+        };
+      })
+      .filter(Boolean);
+  }
+  const kpi = (timelineData?.kpis || []).find((k) => k.key === kpiKey);
+  if (!kpi?.hasData) return [];
+  return [
+    {
+      unit: timelineData.unit || fortschrittUnit(),
+      color: FORTSCHRITT_UNIT_COLORS[0],
+      soll: kpi.soll,
+      ist: kpi.ist,
+    },
+  ];
+}
+
+function ftTimelineLineSwatch(kind, color = "#334155") {
+  const dash = kind === "ist" ? ' stroke-dasharray="8 5"' : "";
+  return `<svg class="ft-tl-legend-line" width="40" height="14" viewBox="0 0 40 14" aria-hidden="true">
+    <line x1="2" y1="7" x2="38" y2="7" stroke="${color}" stroke-width="3.5" stroke-linecap="round"${dash}/>
+  </svg>`;
+}
+
+function renderFortschrittTimelineStyleLegend(color = "#334155", extraClass = "") {
+  const cls = extraClass ? `fortschritt-timeline-style ${extraClass}` : "fortschritt-timeline-style";
+  return `<div class="${cls}">
+    <span class="fortschritt-timeline-legend-item ft-tl-legend-item--soll">
+      ${ftTimelineLineSwatch("soll", color)}
+      <span><strong>SOLL</strong> · Plan-Meilensteine <span class="ft-tl-legend-hint">(durchgezogen)</span></span>
+    </span>
+    <span class="fortschritt-timeline-legend-item ft-tl-legend-item--ist">
+      ${ftTimelineLineSwatch("ist", color)}
+      <span><strong>IST</strong> · projiziert 2026→2029 <span class="ft-tl-legend-hint">(gestrichelt)</span></span>
+    </span>
+  </div>`;
+}
+
+function ftBuildTimelinePath(values, years, xAt, yAt) {
+  let d = "";
+  values.forEach((value, index) => {
+    if (value == null || !Number.isFinite(value)) return;
+    const cmd = d ? "L" : "M";
+    d += `${cmd}${xAt(index).toFixed(1)},${yAt(value).toFixed(1)} `;
+  });
+  return d.trim();
+}
+
+function renderFortschrittTimelineSvg(kpi, years, seriesList) {
+  if (!seriesList.length) {
+    return '<p class="fortschritt-empty">Keine Plan-Daten für diese Kennzahl.</p>';
+  }
+
+  const W = 720;
+  const H = 240;
+  const pad = { l: 44, r: 10, t: 14, b: 30 };
+  const allValues = [];
+  seriesList.forEach((series) => {
+    series.soll.forEach((v) => {
+      if (v != null && Number.isFinite(v)) allValues.push(v);
+    });
+    series.ist.forEach((v) => {
+      if (v != null && Number.isFinite(v)) allValues.push(v);
+    });
+  });
+  if (!allValues.length) {
+    return '<p class="fortschritt-empty">Keine Plan-Daten für diese Kennzahl.</p>';
+  }
+
+  let min = Math.min(...allValues);
+  let max = Math.max(...allValues);
+  if (min === max) {
+    min -= min * 0.1 || 1;
+    max += max * 0.1 || 1;
+  }
+  const range = max - min || 1;
+  const innerW = W - pad.l - pad.r;
+  const innerH = H - pad.t - pad.b;
+  const xAt = (index) => pad.l + (index / Math.max(years.length - 1, 1)) * innerW;
+  const yAt = (value) => pad.t + (1 - (value - min) / range) * innerH;
+
+  const yTicks = [min, min + range / 2, max];
+  const gridLines = yTicks
+    .map((tick) => {
+      const y = yAt(tick).toFixed(1);
+      return `<line class="ft-tl-grid" x1="${pad.l}" y1="${y}" x2="${W - pad.r}" y2="${y}"/>`;
+    })
+    .join("");
+
+  const yLabels = yTicks
+    .map((tick) => {
+      const y = yAt(tick).toFixed(1);
+      return `<text class="ft-tl-axis-label" x="${pad.l - 6}" y="${y}" text-anchor="end" dominant-baseline="middle">${ftFormatTimelineTick(tick, kpi.unit)}</text>`;
+    })
+    .join("");
+
+  const xLabels = years
+    .map((year, index) => {
+      const x = xAt(index).toFixed(1);
+      return `<text class="ft-tl-axis-label" x="${x}" y="${H - 8}" text-anchor="middle">${year}</text>`;
+    })
+    .join("");
+
+  const paths = seriesList
+    .map((series) => {
+      const sollD = ftBuildTimelinePath(series.soll, years, xAt, yAt);
+      const istD = ftBuildTimelinePath(series.ist, years, xAt, yAt);
+      let html = "";
+      if (sollD) {
+        html += `<path class="ft-tl-line ft-tl-line--soll" stroke="${series.color}" d="${sollD}"/>`;
+      }
+      if (istD) {
+        html += `<path class="ft-tl-line ft-tl-line--ist" stroke="${series.color}" d="${istD}"/>`;
+      }
+      return html;
+    })
+    .join("");
+
+  const dots = seriesList
+    .flatMap((series) =>
+      years.map((year, index) => {
+        const soll = series.soll[index];
+        const parts = [];
+        if (soll != null && Number.isFinite(soll)) {
+          parts.push(
+            `<circle class="ft-tl-dot ft-tl-dot--soll" cx="${xAt(index).toFixed(1)}" cy="${yAt(soll).toFixed(1)}" r="3" fill="${series.color}"/>`
+          );
+        }
+        const ist = series.ist[index];
+        if (ist != null && Number.isFinite(ist)) {
+          parts.push(
+            `<circle class="ft-tl-dot ft-tl-dot--ist" cx="${xAt(index).toFixed(1)}" cy="${yAt(ist).toFixed(1)}" r="2.5" fill="#fff" stroke="${series.color}" stroke-width="1.5"/>`
+          );
+        }
+        return parts.join("");
+      })
+    )
+    .join("");
+
+  return `<svg class="ft-tl-svg" viewBox="0 0 ${W} ${H}" role="img" aria-label="${ftEscAttr(kpi.label)} Zeitstrahl">
+    ${gridLines}
+    <line class="ft-tl-axis" x1="${pad.l}" y1="${pad.t}" x2="${pad.l}" y2="${H - pad.b}"/>
+    <line class="ft-tl-axis" x1="${pad.l}" y1="${H - pad.b}" x2="${W - pad.r}" y2="${H - pad.b}"/>
+    ${yLabels}
+    ${xLabels}
+    ${paths}
+    ${dots}
+  </svg>`;
+}
+
+function renderFortschrittAllUnitsLegend(timelineData) {
+  const items = (timelineData?.units || [])
+    .map((row, index) => {
+      if (!row.hasData) return "";
+      const color = FORTSCHRITT_UNIT_COLORS[index % FORTSCHRITT_UNIT_COLORS.length];
+      return `<span class="fortschritt-timeline-legend-item"><i class="ft-tl-unit-dot" style="background:${color}"></i>${esc(row.unit)}</span>`;
+    })
+    .filter(Boolean)
+    .join("");
+  if (!items) return "";
+  return `<div class="fortschritt-timeline-legend fortschritt-timeline-legend--global"><span class="ft-tl-legend-units-label">Units:</span>${items}</div>`;
+}
+
+function renderFortschrittTimeline(timelineData, allUnits) {
+  const years = timelineData?.years || [2026, 2027, 2028, 2029];
+  const kpiKeys = ["umsatz", "headcount", "zertifizierung"];
+  const kpiLabels = {
+    umsatz: "Umsatz (TEUR)",
+    headcount: "Headcount",
+    zertifizierung: "Zertifizierungsquote (%)",
+  };
+
+  const charts = kpiKeys
+    .map((key) => {
+      const seriesList = ftTimelineSeriesForKpi(timelineData, key, allUnits);
+      const kpiMeta = (timelineData.kpis || []).find((k) => k.key === key) || {
+        key,
+        label: kpiLabels[key],
+        unit: key === "umsatz" ? "TEUR" : key === "zertifizierung" ? "%" : "MA",
+      };
+      return `<div class="fortschritt-timeline-chart">
+        <h4 class="fortschritt-timeline-chart__title">${esc(kpiMeta.label || kpiLabels[key])}</h4>
+        ${renderFortschrittTimelineSvg(kpiMeta, years, seriesList)}
+      </div>`;
+    })
+    .join("");
+
+  const subtitle = allUnits
+    ? "Alle Standard-Units · SOLL aus Plan-Meilensteinen, IST linear 2026→2029"
+    : `Unit: ${esc(timelineData.unit || fortschrittUnit())} · SOLL aus Plan-Meilensteinen, IST linear 2026→2029`;
+  const legendColor = allUnits ? "#334155" : FORTSCHRITT_UNIT_COLORS[0];
+
+  return `<div class="card fortschritt-timeline-card">
+    ${fortschrittSectionHeader("Zeitstrahl · Unit-Planung 2026–2029", "Zeitstrahl – Klicken für Erklärung", FORTSCHRITT_TIPS.zeitstrahl)}
+    <p class="fortschritt-hint">${subtitle}</p>
+    ${renderFortschrittTimelineStyleLegend(legendColor, "fortschritt-timeline-style--global")}
+    ${allUnits ? renderFortschrittAllUnitsLegend(timelineData) : ""}
+    <div class="fortschritt-timeline-grid">${charts}</div>
+  </div>`;
+}
+
+async function loadFortschrittTimeline() {
+  if (isFortschrittAllUnitsMode()) {
+    return api("/api/dashboard/timeline?all=true");
+  }
+  const unit = fortschrittUnit();
+  if (!unit) return null;
+  return api(`/api/dashboard/timeline?unit=${encodeURIComponent(unit)}`);
 }
 
 function fortschrittStatusClass(status) {
@@ -249,6 +529,28 @@ function renderFortschrittMilestones(milestones) {
     .join("");
 }
 
+const STANDARD_DEMO_UNITS = [
+  "SAP Infrastructure",
+  "SAP Engineers",
+  "SAP Integration",
+  "SAP Architecture",
+];
+
+async function fetchDemoUnitNames() {
+  try {
+    const data = await api("/api/demo/status?all=true");
+    if (Array.isArray(data?.demoUnits) && data.demoUnits.length) {
+      return data.demoUnits;
+    }
+    if (Array.isArray(data?.units) && data.units.length) {
+      return data.units.map((row) => row.unit).filter(Boolean);
+    }
+  } catch (_e) {
+    /* fallback below */
+  }
+  return [...STANDARD_DEMO_UNITS];
+}
+
 function isAdminDemoBulkEnabled() {
   return Boolean(typeof isAdmin !== "undefined" && isAdmin);
 }
@@ -313,23 +615,6 @@ function demoAllUnitsStatusSummary(data) {
   return { activeCount, totalUnits, units };
 }
 
-function formatDemoAllUnitsBadge(data) {
-  if (!data?.all) return "Demo-Status unbekannt";
-  if (!data.active) return "Keine Demo-Daten (alle Units)";
-  const { activeCount, totalUnits } = demoAllUnitsStatusSummary(data);
-  return `Demo aktiv in ${activeCount}/${totalUnits} Standard-Units`;
-}
-
-function formatDemoUnitBadge(data, unit) {
-  if (!data?.active) return "Keine Demo-Daten";
-  const entries = data.phase1DemoEntries ?? 0;
-  const plan = data.backcastingDemoPlan ? ", Plan" : "";
-  const label = unit || data.unit || "";
-  return label
-    ? `Demo aktiv · ${label} (${entries} Einträge${plan})`
-    : `Demo aktiv (${entries} Einträge${plan})`;
-}
-
 function updateFortschrittDemoControls() {
   const isAdmin = isAdminDemoBulkEnabled();
   const onAll = isDemoAllUnitsOverviewMode();
@@ -351,43 +636,322 @@ function demoPhase1Breakdown(data) {
   return { portfolio, organisation, skill, total };
 }
 
-function renderDemoLoadStatGrid(stats) {
-  return `<div class="demo-daten-load-status__grid">
-    <div class="demo-daten-load-status__stat"><b>${stats.phase1}</b><span>Phase-1 Einträge</span></div>
-    <div class="demo-daten-load-status__stat"><b>${stats.portfolio}</b><span>Portfolio</span></div>
-    <div class="demo-daten-load-status__stat"><b>${stats.organisation}</b><span>Organisation</span></div>
-    <div class="demo-daten-load-status__stat"><b>${stats.skill}</b><span>Skills</span></div>
-    <div class="demo-daten-load-status__stat"><b>${stats.plans}</b><span>Backcasting-Pläne</span></div>
+function demoPhaseExtras(data) {
+  return {
+    planCount: data.planCount ?? (data.backcastingDemoPlan ? 1 : 0),
+    milestoneCount: data.milestoneCount ?? 0,
+    phase3Year: data.phase3Year ?? 2026,
+    phase3KpiCount: data.phase3KpiCount ?? 0,
+    phase3SkillGapCount: data.phase3SkillGapCount ?? 0,
+    phase3Evaluations: data.phase3Evaluations ?? 0,
+  };
+}
+
+function demoMetaLineParts(data, options = {}) {
+  const breakdown = demoPhase1Breakdown(data);
+  const phase2 = demoPhaseExtras(data);
+  const parts = [`${breakdown.total} Phase-1-Einträge`];
+  if (options.includeBreakdown) {
+    parts.push(`Portfolio ${breakdown.portfolio}`, `Org. ${breakdown.organisation}`, `Skills ${breakdown.skill}`);
+  }
+  parts.push(
+    `${phase2.planCount} Plan${phase2.planCount === 1 ? "" : "e"}`,
+    `${phase2.milestoneCount} Meilensteine`,
+    `${phase2.phase3Evaluations} Phase-3-Auswertungen (${phase2.phase3Year})`
+  );
+  return parts.join(" · ");
+}
+
+function demoLoadStatusLabel(status) {
+  if (status === "loading") return "Lädt…";
+  if (status === "done") return "✓ Geladen";
+  if (status === "error") return "Fehler";
+  return "Wartet";
+}
+
+function demoLoadStatusClass(status) {
+  return `demo-load-status demo-load-status--${status || "pending"}`;
+}
+
+function setDemoLoadProgress(title, units) {
+  demoLoadPanelState = { phase: "loading", title, units: units.map((row) => ({ ...row })) };
+  paintDemoLoadPanelUI();
+}
+
+function finalizeDemoLoadPanel(title, units) {
+  demoLoadPanelState = { phase: "done", title, units: units.map((row) => ({ ...row })) };
+  paintDemoLoadPanelUI();
+}
+
+function applyDemoLoadResultToRow(row, result) {
+  Object.assign(row, result, {
+    status: "done",
+    loadStatus: "done",
+    entryCount: result.phase1DemoEntries ?? result.entryCount ?? 0,
+    phase1DemoEntries: result.phase1DemoEntries ?? result.entryCount ?? 0,
+  });
+}
+
+function normalizeDemoLoadRow(row, status = {}) {
+  const merged = { ...row, ...status, unit: row.unit || status.unit };
+  const breakdown = demoPhase1Breakdown(merged);
+  const phase2 = demoPhaseExtras(merged);
+  return {
+    ...merged,
+    ...breakdown,
+    phase1DemoEntries: merged.phase1DemoEntries ?? merged.entryCount ?? breakdown.total,
+    portfolioEntries: merged.portfolioEntries ?? breakdown.portfolio,
+    organisationEntries: merged.organisationEntries ?? breakdown.organisation,
+    skillEntries: merged.skillEntries ?? breakdown.skill,
+    planCount: phase2.planCount,
+    milestoneCount: phase2.milestoneCount,
+    phase3Year: phase2.phase3Year,
+    phase3KpiCount: phase2.phase3KpiCount,
+    phase3SkillGapCount: phase2.phase3SkillGapCount,
+    phase3Evaluations: phase2.phase3Evaluations,
+    status: merged.status || "done",
+    loadStatus: merged.loadStatus || merged.status || "done",
+  };
+}
+
+async function refreshDemoLoadRowFromStatus(row) {
+  if (row.status !== "done" || !row.unit) return row;
+  try {
+    const data = await api(`/api/demo/status?unit=${encodeURIComponent(row.unit)}`);
+    if (!data || data.error) return row;
+    return normalizeDemoLoadRow(row, data);
+  } catch (_e) {
+    return row;
+  }
+}
+
+async function syncDemoLoadPanelFromStatus() {
+  if (!demoLoadPanelState?.units?.length) return;
+  const rows = demoLoadPanelState.units;
+  if (rows.length > 1 && isAdminDemoBulkEnabled()) {
+    try {
+      const data = await api("/api/demo/status?all=true");
+      if (data?.all === true && Array.isArray(data.units)) {
+        demoLoadPanelState.units = rows.map((row) => {
+          if (row.status !== "done") return row;
+          const status = data.units.find((item) => item.unit === row.unit);
+          return status ? normalizeDemoLoadRow(row, status) : row;
+        });
+        return;
+      }
+    } catch (_e) {
+      /* Einzelabruf unten */
+    }
+  }
+  demoLoadPanelState.units = await Promise.all(rows.map((row) => refreshDemoLoadRowFromStatus(row)));
+}
+
+async function finalizeDemoLoadPanelFromStatus(title, units) {
+  demoLoadPanelState = { phase: "done", title, units: units.map((row) => ({ ...row })) };
+  await syncDemoLoadPanelFromStatus();
+  paintDemoLoadPanelUI();
+}
+
+function clearDemoLoadPanel() {
+  demoLoadPanelState = null;
+  const root = document.getElementById("demoDatenLoadStatus");
+  if (!root) return;
+  root.className = "demo-daten-load-status demo-daten-load-status--empty";
+  root.innerHTML = `<div class="demo-daten-load-status__inner">
+    <p class="demo-daten-load-status__title">Keine Demo-Daten geladen</p>
+    <p class="demo-daten-load-status__meta">Demo-Daten wurden entfernt.</p>
   </div>`;
 }
 
-function renderDemoUnitsBreakdownTable(units) {
+function buildDemoLoadProgressHtml(progress) {
+  const rows = (progress.units || []).map((row) => normalizeDemoLoadRow(row));
+  const doneCount = (progress.units || []).filter((row) => row.status === "done").length;
+  const total = progress.units?.length || 0;
+  const meta =
+    total > 0
+      ? `${doneCount}/${total} Units abgeschlossen · Phase 1 + Phase 2 je Unit`
+      : "";
+  const doneHint =
+    progress.phase === "done"
+      ? `<p class="demo-daten-load-status__meta">Register <strong>Detailfortschritt</strong> zeigt den IST/SOLL-Vergleich aus Phase 1 (Erfassung) und Phase 2 (Backcasting-Plan).</p>`
+      : "";
+  return `<div class="demo-daten-load-status__inner">
+    <p class="demo-daten-load-status__title">${esc(progress.title || "Demo-Daten werden geladen…")}</p>
+    ${meta ? `<p class="demo-daten-load-status__meta">${esc(meta)}</p>` : ""}
+    ${doneHint}
+    ${renderDemoUnitsBreakdownTable(rows, { showLoadStatus: true })}
+  </div>`;
+}
+
+function paintDemoLoadPanelUI() {
+  if (!demoLoadPanelState) return;
+  const isDone = demoLoadPanelState.phase === "done";
+  const innerHtml = buildDemoLoadProgressHtml(demoLoadPanelState);
+  const statusClass = isDone ? "demo-daten-load-status--active" : "demo-daten-load-status--loading";
+
+  const root = document.getElementById("demoDatenLoadStatus");
+  if (root) {
+    root.className = `demo-daten-load-status ${statusClass}`;
+    root.innerHTML = innerHtml;
+  }
+}
+
+function buildDemoStatusInnerHtml(data, options = {}) {
+  const { mode, unit } = options;
+
+  if (mode === "all" && data) {
+    const { activeCount, totalUnits, units } = demoAllUnitsStatusSummary(data);
+    const totals = data.totals || {};
+    const phase1 =
+      totals.phase1DemoEntries ?? units.reduce((sum, row) => sum + (row.phase1DemoEntries || 0), 0);
+    const phase2 = {
+      plans: totals.planCount ?? units.reduce((sum, row) => sum + (row.planCount || 0), 0),
+      milestones: totals.milestoneCount ?? units.reduce((sum, row) => sum + (row.milestoneCount || 0), 0),
+      phase3: totals.phase3Evaluations ?? units.reduce((sum, row) => sum + (row.phase3Evaluations || 0), 0),
+      phase3Kpis: totals.phase3KpiCount ?? units.reduce((sum, row) => sum + (row.phase3KpiCount || 0), 0),
+      phase3SkillGaps:
+        totals.phase3SkillGapCount ?? units.reduce((sum, row) => sum + (row.phase3SkillGapCount || 0), 0),
+      phase3Year: units.find((row) => row.phase3Year)?.phase3Year ?? 2026,
+    };
+
+    if (!data.active) {
+      return {
+        className: "demo-daten-load-status demo-daten-load-status--empty",
+        html: `<div class="demo-daten-load-status__inner">
+          <p class="demo-daten-load-status__title">Keine Demo-Daten geladen</p>
+          <p class="demo-daten-load-status__meta">0/${totalUnits || units.length || 0} Standard-Units · 0 Einträge · 0 Meilensteine · 0 Phase-3-Auswertungen</p>
+          ${renderDemoUnitsBreakdownTable(units)}
+        </div>`,
+      };
+    }
+
+    return {
+      className: "demo-daten-load-status demo-daten-load-status--active",
+      html: `<div class="demo-daten-load-status__inner">
+        <p class="demo-daten-load-status__title">Demo-Daten geladen · Alle Units</p>
+        <p class="demo-daten-load-status__meta">${activeCount}/${totalUnits} Standard-Units · ${phase1} Phase-1-Einträge · ${phase2.milestones} Meilensteine · ${phase2.phase3} Phase-3-Auswertungen (${phase2.phase3Year})</p>
+        ${renderDemoLoadStatGrid({
+          phase1,
+          portfolio: totals.portfolioEntries ?? 0,
+          organisation: totals.organisationEntries ?? 0,
+          skill: totals.skillEntries ?? 0,
+          plans: phase2.plans,
+          milestones: phase2.milestones,
+          phase3Evaluations: phase2.phase3,
+          phase3Kpis: phase2.phase3Kpis,
+          phase3SkillGaps: phase2.phase3SkillGaps,
+          phase3Year: phase2.phase3Year,
+        })}
+        ${renderDemoUnitsBreakdownTable(units)}
+      </div>`,
+    };
+  }
+
+  if (mode === "none" || !unit) {
+    return {
+      className: "demo-daten-load-status demo-daten-load-status--empty",
+      html: `<div class="demo-daten-load-status__inner">
+        <p class="demo-daten-load-status__title">Keine Unit gewählt</p>
+        <p class="demo-daten-load-status__meta">Bitte im Filter oben eine Unit auswählen, um den Demo-Stand zu sehen.</p>
+      </div>`,
+    };
+  }
+
+  const breakdown = demoPhase1Breakdown(data);
+  const phase2 = demoPhaseExtras(data);
+
+  if (!data?.active) {
+    return {
+      className: "demo-daten-load-status demo-daten-load-status--empty",
+      html: `<div class="demo-daten-load-status__inner">
+        <p class="demo-daten-load-status__title">Keine Demo-Daten für „${esc(unit)}“</p>
+        <p class="demo-daten-load-status__meta">0 Phase-1-Einträge · 0 Meilensteine · 0 Phase-3-Auswertungen</p>
+      </div>`,
+    };
+  }
+
+  return {
+    className: "demo-daten-load-status demo-daten-load-status--active",
+    html: `<div class="demo-daten-load-status__inner">
+      <p class="demo-daten-load-status__title">Demo-Daten geladen · ${esc(unit)}</p>
+      <p class="demo-daten-load-status__meta">${demoMetaLineParts(data)}</p>
+      ${renderDemoLoadStatGrid({
+        phase1: breakdown.total,
+        portfolio: breakdown.portfolio,
+        organisation: breakdown.organisation,
+        skill: breakdown.skill,
+        plans: phase2.planCount,
+        milestones: phase2.milestoneCount,
+        phase3Evaluations: phase2.phase3Evaluations,
+        phase3Kpis: phase2.phase3KpiCount,
+        phase3SkillGaps: phase2.phase3SkillGapCount,
+        phase3Year: phase2.phase3Year,
+      })}
+      ${renderDemoUnitsBreakdownTable([{ unit, ...data }])}
+    </div>`,
+  };
+}
+
+function renderDemoLoadStatGrid(stats) {
+  const year = stats.phase3Year ?? 2026;
+  return `<div class="demo-daten-load-status__grid">
+    <div class="demo-daten-load-status__stat"><b>${stats.phase1}</b><span>Phase 1 · Einträge gesamt</span></div>
+    <div class="demo-daten-load-status__stat"><b>${stats.portfolio}</b><span>Phase 1 · Portfolio</span></div>
+    <div class="demo-daten-load-status__stat"><b>${stats.organisation}</b><span>Phase 1 · Organisation</span></div>
+    <div class="demo-daten-load-status__stat"><b>${stats.skill}</b><span>Phase 1 · Skills</span></div>
+    <div class="demo-daten-load-status__stat"><b>${stats.plans}</b><span>Phase 2 · Pläne</span></div>
+    <div class="demo-daten-load-status__stat"><b>${stats.milestones}</b><span>Phase 2 · Meilensteine</span></div>
+    <div class="demo-daten-load-status__stat"><b>${stats.phase3Evaluations}</b><span>Phase 3 · Auswertungen (${year})</span></div>
+    <div class="demo-daten-load-status__stat"><b>${stats.phase3Kpis}</b><span>Phase 3 · KPI-Vergleiche</span></div>
+    <div class="demo-daten-load-status__stat"><b>${stats.phase3SkillGaps}</b><span>Phase 3 · Skill-Gaps</span></div>
+  </div>`;
+}
+
+function renderDemoUnitsBreakdownTable(units, options = {}) {
+  const showLoadStatus = Boolean(options.showLoadStatus);
   const rows = units
     .map((row) => {
-      const breakdown = demoPhase1Breakdown(row);
-      const plans = row.planCount ?? (row.backcastingDemoPlan ? 1 : 0);
+      const normalized = normalizeDemoLoadRow(row);
+      const phase2 = demoPhaseExtras(normalized);
+      const progressCell = showLoadStatus
+        ? `<td class="${demoLoadStatusClass(row.loadStatus)}" title="${esc(row.loadError || "")}">${esc(demoLoadStatusLabel(row.loadStatus))}${row.loadError ? ` · ${esc(row.loadError)}` : ""}</td>`
+        : `<td>${row.active ? "✓" : "–"}</td>`;
       return `<tr>
         <td>${esc(row.unit)}</td>
-        <td>${row.active ? "✓" : "–"}</td>
-        <td>${breakdown.total}</td>
-        <td>${breakdown.portfolio}</td>
-        <td>${breakdown.organisation}</td>
-        <td>${breakdown.skill}</td>
-        <td>${plans}</td>
+        ${progressCell}
+        <td>${row.phase1DemoEntries ?? row.total ?? 0}</td>
+        <td>${row.portfolioEntries ?? row.portfolio ?? 0}</td>
+        <td>${row.organisationEntries ?? row.organisation ?? 0}</td>
+        <td>${row.skillEntries ?? row.skill ?? 0}</td>
+        <td>${phase2.planCount}</td>
+        <td>${phase2.milestoneCount}</td>
+        <td>${phase2.phase3Evaluations}</td>
+        <td>${phase2.phase3KpiCount}</td>
+        <td>${phase2.phase3SkillGapCount}</td>
       </tr>`;
     })
     .join("");
+  const progressHead = showLoadStatus ? '<th rowspan="2">Fortschritt</th>' : '<th rowspan="2">Aktiv</th>';
   return `<div class="demo-daten-load-status__table-wrap">
     <table class="demo-daten-table">
       <thead>
         <tr>
-          <th>Unit</th>
-          <th>Aktiv</th>
-          <th>Phase 1</th>
+          <th rowspan="2">Unit</th>
+          ${progressHead}
+          <th colspan="4">Phase 1</th>
+          <th colspan="2">Phase 2</th>
+          <th colspan="3">Phase 3</th>
+        </tr>
+        <tr>
+          <th>Ges.</th>
           <th>Portfolio</th>
           <th>Org.</th>
           <th>Skills</th>
           <th>Pläne</th>
+          <th>Meilensteine</th>
+          <th>Auswert.</th>
+          <th>KPIs</th>
+          <th>Skill-Gaps</th>
         </tr>
       </thead>
       <tbody>${rows}</tbody>
@@ -398,55 +962,19 @@ function renderDemoUnitsBreakdownTable(units) {
 async function renderDemoDatenLoadStatus() {
   const root = document.getElementById("demoDatenLoadStatus");
   if (!root) return;
+  if (demoLoadPanelState) {
+    if (demoLoadPanelState.phase === "done") {
+      await syncDemoLoadPanelFromStatus();
+    }
+    paintDemoLoadPanelUI();
+    return;
+  }
 
   try {
     const { mode, unit, data } = await fetchDemoStatusForCurrentView();
-
-    if (mode === "all" && data) {
-      const { activeCount, totalUnits, units } = demoAllUnitsStatusSummary(data);
-      const totals = data.totals || {};
-      const phase1 =
-        totals.phase1DemoEntries ?? units.reduce((sum, row) => sum + (row.phase1DemoEntries || 0), 0);
-      const plans = totals.planCount ?? units.reduce((sum, row) => sum + (row.planCount || 0), 0);
-
-      root.className = `demo-daten-load-status${data.active ? " demo-daten-load-status--active" : " demo-daten-load-status--empty"}`;
-
-      if (!data.active) {
-        root.innerHTML = `<div class="demo-daten-load-status__inner">
-          <p class="demo-daten-load-status__title">Keine Demo-Daten geladen</p>
-          <p class="demo-daten-load-status__meta">0/${totalUnits || units.length || 0} Standard-Units · 0 Einträge · 0 Pläne</p>
-        </div>`;
-        return;
-      }
-
-      root.innerHTML = `<div class="demo-daten-load-status__inner">
-        <p class="demo-daten-load-status__title">Demo-Daten geladen · Alle Units</p>
-        <p class="demo-daten-load-status__meta">${activeCount}/${totalUnits} Standard-Units · ${phase1} Phase-1-Einträge · ${plans} Backcasting-Plan${plans === 1 ? "" : "e"}</p>
-        ${renderDemoLoadStatGrid({
-          phase1,
-          portfolio: totals.portfolioEntries ?? 0,
-          organisation: totals.organisationEntries ?? 0,
-          skill: totals.skillEntries ?? 0,
-          plans,
-        })}
-        ${renderDemoUnitsBreakdownTable(units)}
-      </div>`;
-      return;
-    }
-
-    if (mode === "none" || !unit) {
-      root.className = "demo-daten-load-status demo-daten-load-status--empty";
-      root.innerHTML = `<div class="demo-daten-load-status__inner">
-        <p class="demo-daten-load-status__title">Keine Unit gewählt</p>
-        <p class="demo-daten-load-status__meta">Bitte im Filter oben eine Unit auswählen, um den Demo-Stand zu sehen.</p>
-      </div>`;
-      return;
-    }
-
-    const breakdown = demoPhase1Breakdown(data);
-    const plans = data.planCount ?? (data.backcastingDemoPlan ? 1 : 0);
     let allUnitsNote = "";
-    if (isAdminDemoBulkEnabled()) {
+
+    if (mode === "unit" && unit && isAdminDemoBulkEnabled()) {
       try {
         const allData = await api("/api/demo/status?all=true");
         if (allData?.all === true && allData.active) {
@@ -460,110 +988,127 @@ async function renderDemoDatenLoadStatus() {
       }
     }
 
-    root.className = `demo-daten-load-status${data?.active ? " demo-daten-load-status--active" : " demo-daten-load-status--empty"}`;
-
-    if (!data?.active) {
-      root.innerHTML = `<div class="demo-daten-load-status__inner">
-        <p class="demo-daten-load-status__title">Keine Demo-Daten für „${esc(unit)}“</p>
-        <p class="demo-daten-load-status__meta">0 Phase-1-Einträge · 0 Backcasting-Pläne</p>
-        ${allUnitsNote}
-      </div>`;
-      return;
-    }
-
-    root.innerHTML = `<div class="demo-daten-load-status__inner">
-      <p class="demo-daten-load-status__title">Demo-Daten geladen · ${esc(unit)}</p>
-      <p class="demo-daten-load-status__meta">${breakdown.total} Phase-1-Einträge · ${plans} Backcasting-Plan${plans === 1 ? "" : "e"}</p>
-      ${allUnitsNote}
-      ${renderDemoLoadStatGrid({
-        phase1: breakdown.total,
-        portfolio: breakdown.portfolio,
-        organisation: breakdown.organisation,
-        skill: breakdown.skill,
-        plans,
-      })}
-    </div>`;
-  } catch (_e) {
-    root.className = "demo-daten-load-status";
+    const panel = buildDemoStatusInnerHtml(data, { mode, unit });
+    root.className = panel.className;
     root.innerHTML =
-      '<div class="demo-daten-load-status__inner">Demo-Status konnte nicht geladen werden.</div>';
-  }
-}
-
-async function refreshFortschrittDemoInfoStatus() {
-  const box = document.getElementById("fortschrittDemoInfoStatus");
-  if (!box) return;
-
-  try {
-    const { mode, unit, data } = await fetchDemoStatusForCurrentView();
-    if (mode === "all" && data) {
-      if (!data.active) {
-        box.className = "fortschritt-demo-info__status";
-        box.innerHTML = "<strong>Aktueller Status:</strong> Keine Demo-Daten in den Standard-Units.";
-        return;
-      }
-      const { activeCount, totalUnits, units } = demoAllUnitsStatusSummary(data);
-      const rows = units
-        .map(
-          (row) =>
-            `<li><b>${esc(row.unit)}</b>: ${row.active ? `${row.phase1DemoEntries} Phase-1-Einträge${row.backcastingDemoPlan ? ", Backcasting-Plan" : ""}` : "keine Demo-Daten"}</li>`
-        )
-        .join("");
-      box.className = "fortschritt-demo-info__status fortschritt-demo-info__status--active";
-      box.innerHTML = `<strong>Aktueller Status:</strong> Demo aktiv in ${activeCount}/${totalUnits} Standard-Units.<ul>${rows}</ul>`;
-      return;
-    }
-
-    if (mode === "none" || !unit) {
-      box.className = "fortschritt-demo-info__status";
-      box.innerHTML =
-        "<strong>Aktueller Status:</strong> Keine Unit gewählt – bitte im Filter oben eine Unit auswählen.";
-      return;
-    }
-
-    if (!data?.active) {
-      box.className = "fortschritt-demo-info__status";
-      box.innerHTML = `<strong>Aktueller Status für „${esc(unit)}“:</strong> Keine Demo-Daten.`;
-      return;
-    }
-    box.className = "fortschritt-demo-info__status fortschritt-demo-info__status--active";
-    box.innerHTML = `<strong>Aktueller Status für „${esc(unit)}“:</strong> Demo aktiv – ${data.phase1DemoEntries} Phase-1-Einträge${data.backcastingDemoPlan ? ", Backcasting-Plan vorhanden" : ""}.`;
+      mode === "unit" && unit && data?.active
+        ? panel.html.replace("</div>", `${allUnitsNote}</div>`)
+        : mode === "unit" && unit && !data?.active
+          ? panel.html.replace("</div>", `${allUnitsNote}</div>`)
+          : panel.html;
   } catch (_e) {
-    box.className = "fortschritt-demo-info__status";
-    box.textContent = "Status konnte nicht geladen werden.";
+    /* Panel unverändert lassen */
   }
 }
 
 async function refreshFortschrittDemoStatus() {
-  const badge = document.getElementById("fortschrittDemoBadge");
   updateFortschrittDemoControls();
-
-  if (badge) {
-    try {
-      const { mode, unit, data } = await fetchDemoStatusForCurrentView();
-      if (mode === "all" && data) {
-        badge.textContent = formatDemoAllUnitsBadge(data);
-        badge.classList.toggle("fortschritt-demo-active", Boolean(data.active));
-      } else if (mode === "unit" && data) {
-        badge.textContent = formatDemoUnitBadge(data, unit);
-        badge.classList.toggle("fortschritt-demo-active", Boolean(data.active));
-      } else {
-        badge.textContent = "Keine Unit gewählt";
-        badge.classList.remove("fortschritt-demo-active");
-      }
-    } catch (_e) {
-      badge.textContent = "Demo-Status unbekannt";
-      badge.classList.remove("fortschritt-demo-active");
-    }
-  }
 
   if (document.getElementById("demoDatenLoadStatus")) {
     await renderDemoDatenLoadStatus();
   }
+}
 
-  const infoPanel = document.getElementById("page-demo-daten");
-  if (infoPanel?.classList.contains("active")) {
-    await refreshFortschrittDemoInfoStatus();
+async function loadDemoUnitsSequential(demoUnits) {
+  const progress = demoUnits.map((unit) => ({ unit, status: "pending" }));
+  setDemoLoadProgress("Demo-Daten werden vorbereitet…", progress);
+
+  const results = [];
+  for (const unit of demoUnits) {
+    const row = progress.find((item) => item.unit === unit);
+    if (!row) continue;
+    row.status = "loading";
+    setDemoLoadProgress(`Lade Demo-Daten für „${unit}"…`, progress);
+    try {
+      const result = await api("/api/demo/load", {
+        method: "POST",
+        body: JSON.stringify({ unit }),
+      });
+      applyDemoLoadResultToRow(row, result);
+      Object.assign(row, await refreshDemoLoadRowFromStatus(row));
+      results.push(result);
+    } catch (error) {
+      row.status = "error";
+      row.error = error.message || "Fehler";
+    }
+    setDemoLoadProgress(`Demo-Daten für „${unit}" ${row.status === "done" ? "geladen" : "fehlgeschlagen"}…`, progress);
+  }
+
+  return { results, progress };
+}
+
+function renderFortschrittSnapshotDetails(data, unit) {
+  const p1 = data.phase1 || {};
+  const plan = data.plan || {};
+  const stichtag = p1.stichtag ? `Stichtag: ${p1.stichtag}` : "Kein Stichtag";
+  const planTitle = data.planMeta?.bereich ? data.planMeta.bereich : "Kein Plan";
+  const demoTag = data.demo?.active
+    ? ' · <span style="color:#b7791f;font-weight:600">Demo-Daten aktiv</span>'
+    : "";
+
+  return `
+    <div class="fortschritt-meta card">
+      ${fortschrittSectionHeader("Kontext & Datenstand", "Kontext – Klicken für Erklärung", FORTSCHRITT_TIPS.kontext)}
+      <div><strong>Unit:</strong> ${esc(unit)} · <strong>Jahr:</strong> ${fortschrittYear}</div>
+      <div class="fortschritt-meta-sub">${esc(stichtag)} · Plan: ${esc(planTitle)} · ${plan.milestoneCount || 0} Meilensteine${demoTag}</div>
+    </div>
+
+    <div class="card">
+      ${fortschrittSectionHeader("IST vs. SOLL – Kennzahlen", "Kennzahlen – Klicken für Erklärung", FORTSCHRITT_TIPS.kennzahlen)}
+      ${renderFortschrittKpiCards(data.comparison)}
+    </div>
+
+    <div class="fortschritt-two-col">
+      <div class="card">
+        ${fortschrittSectionHeader("Portfolio-Umsatzmix (IST)", "Portfolio-Umsatzmix – Klicken für Erklärung", FORTSCHRITT_TIPS.portfolio)}
+        <p class="fortschritt-hint">Gesamt: ${formatUmsatzTeur(p1.portfolio?.totalTeur || 0)} · ${p1.portfolio?.count || 0} Positionen</p>
+        ${renderFortschrittPortfolioBars(p1.portfolio?.mix, p1.portfolio?.totalTeur)}
+      </div>
+      <div class="card">
+        ${fortschrittSectionHeader("Organisation & Skills (IST)", "Organisation & Skills – Klicken für Erklärung", FORTSCHRITT_TIPS.orgSkills)}
+        <ul class="fortschritt-facts">
+          <li>Headcount: <b>${p1.organisation?.headcount ?? "–"}</b>${plan.zielHeadcount != null ? ` (Ziel ${plan.zielHeadcount})` : ""}</li>
+          <li>Mitarbeiter Skill-Matrix: <b>${p1.skills?.employeeCount ?? 0}</b></li>
+          <li>Zertifizierungsquote: <b>${p1.skills?.zertifiziertQuote != null ? p1.skills.zertifiziertQuote + "%" : "–"}</b></li>
+        </ul>
+      </div>
+    </div>
+
+    <div class="card">
+      ${fortschrittSectionHeader("Skill-Lücken (IST vs. Plan)", "Skill-Lücken – Klicken für Erklärung", FORTSCHRITT_TIPS.skillGaps)}
+      ${renderFortschrittSkillGaps(data.comparison?.skillGaps)}
+    </div>
+
+    <div class="card">
+      ${fortschrittSectionHeader(`Plan-Meilensteine ${fortschrittYear}`, "Plan-Meilensteine – Klicken für Erklärung", FORTSCHRITT_TIPS.meilensteine)}
+      ${renderFortschrittMilestones(plan.milestones)}
+    </div>`;
+}
+
+async function loadGesamtfortschrittDashboard() {
+  const unit = fortschrittUnit();
+  const allUnits = isFortschrittAllUnitsMode();
+  const root = document.getElementById("gesamtfortschrittContent");
+  if (!root) return;
+
+  const emptyMsg =
+    '<div class="card"><p class="fortschritt-empty">Bitte im <strong>Filter</strong> oben eine Unit wählen oder „Alle Units“ (Admin), um den Zeitstrahl anzuzeigen.</p></div>';
+
+  if (!unit && !allUnits) {
+    root.innerHTML = emptyMsg;
+    initFortschrittTipPopovers();
+    return;
+  }
+
+  root.innerHTML = '<div class="card"><p class="fortschritt-empty">Lade Zeitstrahl…</p></div>';
+
+  try {
+    const timelineData = await loadFortschrittTimeline();
+    root.innerHTML = timelineData ? renderFortschrittTimeline(timelineData, allUnits) : emptyMsg;
+    initFortschrittTipPopovers();
+  } catch (error) {
+    root.innerHTML = `<div class="card"><p class="fortschritt-empty" style="color:var(--rc-red)">${esc(error.message || "Zeitstrahl laden fehlgeschlagen")}</p></div>`;
+    initFortschrittTipPopovers();
   }
 }
 
@@ -575,9 +1120,11 @@ async function loadFortschrittDashboard() {
   const root = document.getElementById("fortschrittContent");
   if (!root) return;
 
+  const emptyDetailsMsg =
+    '<div class="card"><p class="fortschritt-empty">Bitte im <strong>Filter</strong> oben eine konkrete Unit wählen (nicht „Alle Units“), um IST/SOLL-Details zu vergleichen.<br><span style="font-size:.78rem;color:var(--rc-muted)">Den Zeitstrahl 2026–2029 finden Sie im Register <strong>Gesamtfortschritt</strong>. Demo-Daten pflegen Sie über den Button <strong>Demo-Daten</strong> bei den Phasen.</span></p></div>';
+
   if (!unit) {
-    root.innerHTML =
-      '<div class="card"><p class="fortschritt-empty">Bitte im <strong>Filter</strong> oben eine konkrete Unit wählen (nicht „Alle Units“), um IST/SOLL zu vergleichen.<br><span style="font-size:.78rem;color:var(--rc-muted)">Demo-Daten werden nicht gelöscht – sie bleiben im Register <strong>Demo-Daten</strong> erhalten.</span></p></div>';
+    root.innerHTML = emptyDetailsMsg;
     initFortschrittTipPopovers();
     return;
   }
@@ -589,53 +1136,7 @@ async function loadFortschrittDashboard() {
       `/api/dashboard/snapshot?unit=${encodeURIComponent(unit)}&year=${fortschrittYear}`
     );
     fortschrittSnapshot = data;
-
-    const p1 = data.phase1 || {};
-    const plan = data.plan || {};
-    const stichtag = p1.stichtag ? `Stichtag: ${p1.stichtag}` : "Kein Stichtag";
-    const planTitle = data.planMeta?.bereich ? data.planMeta.bereich : "Kein Plan";
-
-    const demoTag = data.demo?.active
-      ? ' · <span style="color:#b7791f;font-weight:600">Demo-Daten aktiv</span>'
-      : "";
-
-    root.innerHTML = `
-      <div class="fortschritt-meta card">
-        ${fortschrittSectionHeader("Kontext & Datenstand", "Kontext – Klicken für Erklärung", FORTSCHRITT_TIPS.kontext)}
-        <div><strong>Unit:</strong> ${esc(unit)} · <strong>Jahr:</strong> ${fortschrittYear}</div>
-        <div class="fortschritt-meta-sub">${esc(stichtag)} · Plan: ${esc(planTitle)} · ${plan.milestoneCount || 0} Meilensteine${demoTag}</div>
-      </div>
-
-      <div class="card">
-        ${fortschrittSectionHeader("IST vs. SOLL – Kennzahlen", "Kennzahlen – Klicken für Erklärung", FORTSCHRITT_TIPS.kennzahlen)}
-        ${renderFortschrittKpiCards(data.comparison)}
-      </div>
-
-      <div class="fortschritt-two-col">
-        <div class="card">
-          ${fortschrittSectionHeader("Portfolio-Umsatzmix (IST)", "Portfolio-Umsatzmix – Klicken für Erklärung", FORTSCHRITT_TIPS.portfolio)}
-          <p class="fortschritt-hint">Gesamt: ${formatUmsatzTeur(p1.portfolio?.totalTeur || 0)} · ${p1.portfolio?.count || 0} Positionen</p>
-          ${renderFortschrittPortfolioBars(p1.portfolio?.mix, p1.portfolio?.totalTeur)}
-        </div>
-        <div class="card">
-          ${fortschrittSectionHeader("Organisation & Skills (IST)", "Organisation & Skills – Klicken für Erklärung", FORTSCHRITT_TIPS.orgSkills)}
-          <ul class="fortschritt-facts">
-            <li>Headcount: <b>${p1.organisation?.headcount ?? "–"}</b>${plan.zielHeadcount != null ? ` (Ziel ${plan.zielHeadcount})` : ""}</li>
-            <li>Mitarbeiter Skill-Matrix: <b>${p1.skills?.employeeCount ?? 0}</b></li>
-            <li>Zertifizierungsquote: <b>${p1.skills?.zertifiziertQuote != null ? p1.skills.zertifiziertQuote + "%" : "–"}</b></li>
-          </ul>
-        </div>
-      </div>
-
-      <div class="card">
-        ${fortschrittSectionHeader("Skill-Lücken (IST vs. Plan)", "Skill-Lücken – Klicken für Erklärung", FORTSCHRITT_TIPS.skillGaps)}
-        ${renderFortschrittSkillGaps(data.comparison?.skillGaps)}
-      </div>
-
-      <div class="card">
-        ${fortschrittSectionHeader(`Plan-Meilensteine ${fortschrittYear}`, "Plan-Meilensteine – Klicken für Erklärung", FORTSCHRITT_TIPS.meilensteine)}
-        ${renderFortschrittMilestones(plan.milestones)}
-      </div>`;
+    root.innerHTML = renderFortschrittSnapshotDetails(data, unit);
     initFortschrittTipPopovers();
   } catch (error) {
     root.innerHTML = `<div class="card"><p class="fortschritt-empty" style="color:var(--rc-red)">${esc(error.message || "Laden fehlgeschlagen")}</p></div>`;
@@ -658,18 +1159,21 @@ async function loadFortschrittDemoDataAll() {
     return;
   }
   try {
-    const result = await api("/api/demo/load", {
-      method: "POST",
-      body: JSON.stringify({ allUnits: true }),
-    });
-    await afterDemoDataChanged({ filterMode: "all" });
-    toast(
-      (result.message || "Demo-Daten für alle Units geladen.") +
-        " · Filter: Alle Units",
-      "#27ae60",
-      4500
+    const demoUnits = await fetchDemoUnitNames();
+    const { progress } = await loadDemoUnitsSequential(demoUnits);
+    const failed = progress.some((row) => row.status === "error");
+    await finalizeDemoLoadPanelFromStatus(
+      failed ? "Demo-Daten teilweise geladen" : "Demo-Daten geladen · Phase 1 + Phase 2 · Alle Units",
+      progress
     );
+    await afterDemoDataChanged({ filterMode: "all" });
+    if (failed) {
+      toast("Einige Demo-Daten konnten nicht geladen werden.", "#e74c3c", 5000);
+    }
   } catch (error) {
+    if (demoLoadPanelState?.units?.length) {
+      await finalizeDemoLoadPanelFromStatus("Demo-Laden fehlgeschlagen", demoLoadPanelState.units);
+    }
     toast(error.message || "Demo laden fehlgeschlagen.", "#e74c3c", 4000);
   }
 }
@@ -684,16 +1188,15 @@ async function removeFortschrittDemoDataAll() {
     return;
   }
   try {
-    const result = await api("/api/demo/remove", {
+    await api("/api/demo/remove", {
       method: "DELETE",
       body: JSON.stringify({ allUnits: true }),
     });
-    await afterDemoDataChanged();
-    toast(
-      `Demo entfernt (${result.removedEntries || 0} Einträge, ${result.removedPlans || 0} Pläne).`,
-      "#27ae60",
-      4500
-    );
+    clearDemoLoadPanel();
+    await afterDemoDataChanged({
+      filterMode: "all",
+      showFortschritt: false,
+    });
   } catch (error) {
     toast(error.message || "Demo entfernen fehlgeschlagen.", "#e74c3c", 4000);
   }
@@ -714,14 +1217,26 @@ async function loadFortschrittDemoData() {
     return;
   }
   if (!confirm(`Demo-Daten für „${unit}“ laden? Bestehende Demo-Einträge dieser Unit werden ersetzt.`)) return;
+  setDemoLoadProgress(`Lade Demo-Daten für „${unit}"…`, [{ unit, status: "loading" }]);
   try {
     const result = await api("/api/demo/load", {
       method: "POST",
       body: JSON.stringify({ unit }),
     });
+    await finalizeDemoLoadPanelFromStatus(`Demo-Daten geladen · Phase 1 + Phase 2 · ${unit}`, [
+      {
+        unit,
+        status: "done",
+        ...result,
+        entryCount: result.phase1DemoEntries ?? result.entryCount ?? 0,
+        phase1DemoEntries: result.phase1DemoEntries ?? result.entryCount ?? 0,
+      },
+    ]);
     await afterDemoDataChanged({ filterMode: "unit", unit });
-    toast((result.message || "Demo-Daten geladen.") + ` · Filter: ${unit}`, "#27ae60", 3500);
   } catch (error) {
+    await finalizeDemoLoadPanelFromStatus(`Demo-Laden fehlgeschlagen · ${unit}`, [
+      { unit, status: "error", error: error.message || "Fehler" },
+    ]);
     toast(error.message || "Demo laden fehlgeschlagen.", "#e74c3c", 4000);
   }
 }
@@ -734,16 +1249,16 @@ async function removeFortschrittDemoData() {
   }
   if (!confirm(`Alle Demo-Daten für „${unit}“ entfernen? Echte Erfassungen bleiben erhalten.`)) return;
   try {
-    const result = await api("/api/demo/remove", {
+    await api("/api/demo/remove", {
       method: "DELETE",
       body: JSON.stringify({ unit }),
     });
-    await afterDemoDataChanged();
-    toast(
-      `Demo entfernt (${result.removedEntries || 0} Einträge, ${result.removedPlans || 0} Pläne).`,
-      "#27ae60",
-      3500
-    );
+    clearDemoLoadPanel();
+    await afterDemoDataChanged({
+      filterMode: "unit",
+      unit,
+      showFortschritt: false,
+    });
   } catch (error) {
     toast(error.message || "Demo entfernen fehlgeschlagen.", "#e74c3c", 4000);
   }
@@ -763,6 +1278,20 @@ function initDemoDatenPage() {
 
 function renderDemoDatenPage() {
   initDemoDatenPage();
+}
+
+async function prepareGesamtfortschrittView() {
+  if (!gesamtfortschrittInitDone) {
+    gesamtfortschrittInitDone = true;
+    document.getElementById("btnGesamtfortschrittReload")?.addEventListener("click", () => void prepareGesamtfortschrittView());
+  }
+  initFortschrittTipPopovers();
+  await refreshEntries();
+  await loadGesamtfortschrittDashboard();
+}
+
+function renderGesamtfortschrittDashboard() {
+  void prepareGesamtfortschrittView();
 }
 
 async function prepareFortschrittView() {

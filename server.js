@@ -9,9 +9,11 @@ require("dotenv").config();
 const {
   DEMO_UNIT,
   DEMO_UNITS,
+  DEMO_REFERENCE_YEAR,
   buildDemoDataForUnit,
+  buildDemoStatusSummary,
 } = require("./server/demo-data");
-const { buildDashboardSnapshot } = require("./server/dashboard-service");
+const { buildDashboardSnapshot, buildDashboardTimeline, DEFAULT_TIMELINE_YEARS } = require("./server/dashboard-service");
 
 const app = express();
 const PORT = process.env.PORT || 3000;
@@ -2903,6 +2905,128 @@ app.get("/api/dashboard/snapshot", auth, async (req, res) => {
   });
 });
 
+app.get("/api/dashboard/timeline", auth, async (req, res) => {
+  if (!canAccessFortschritt(req.user)) {
+    return res.status(403).json({ error: "Kein Zugriff auf Phase 3 · Fortschritt." });
+  }
+
+  const years = DEFAULT_TIMELINE_YEARS;
+
+  if (req.query.all === "true") {
+    if (!isAdminRole(req.user)) {
+      return res.status(403).json({ error: "Zeitstrahl für alle Units nur für Admins." });
+    }
+    const units = [];
+    for (const demoUnit of DEMO_UNITS) {
+      if (!(await canAccessUnit(req, demoUnit))) continue;
+      const entries = await fetchEntriesForUnit(demoUnit);
+      const planRow = await fetchBackcastingPlanForUnit(demoUnit);
+      const timeline = buildDashboardTimeline(entries, planRow || { measures: {}, meta: {} }, years);
+      units.push({ unit: demoUnit, ...timeline });
+    }
+    return res.json({
+      all: true,
+      years,
+      units,
+      totalUnits: DEMO_UNITS.length,
+    });
+  }
+
+  const resolved = resolveDashboardUnit(req, req.query.unit);
+  if (resolved.error) return res.status(403).json({ error: resolved.error });
+  const unit = resolved.unit;
+  if (!unit) return res.status(400).json({ error: "Unit fehlt oder all=true verwenden." });
+  if (!(await canAccessUnit(req, unit))) {
+    return res.status(403).json({ error: "Kein Zugriff auf diese Unit." });
+  }
+  const entries = await fetchEntriesForUnit(unit);
+  const planRow = await fetchBackcastingPlanForUnit(unit);
+  const timeline = buildDashboardTimeline(entries, planRow || { measures: {}, meta: {} }, years);
+  return res.json({
+    unit,
+    ...timeline,
+  });
+});
+
+async function fetchDemoEntriesForUnit(unit) {
+  const result = await pool.query(
+    `SELECT id, type, unit, payload, is_demo
+     FROM entries
+     WHERE unit = $1 AND is_demo = true`,
+    [unit]
+  );
+  return result.rows.map((row) => ({
+    ...(row.payload || {}),
+    id: row.id,
+    type: row.type,
+    unit: row.unit,
+    is_demo: row.is_demo,
+  }));
+}
+
+async function fetchDemoPlanPayloadForUnit(unit) {
+  const result = await pool.query(
+    `SELECT payload
+     FROM backcasting_plans
+     WHERE unit = $1 AND is_demo = true
+     ORDER BY updated_at DESC
+     LIMIT 1`,
+    [unit]
+  );
+  return result.rows[0]?.payload || null;
+}
+
+function emptyDemoPhaseExtras() {
+  return {
+    milestoneCount: 0,
+    milestoneYears: [],
+    phase3Year: DEMO_REFERENCE_YEAR,
+    phase3KpiCount: 0,
+    phase3SkillGapCount: 0,
+    phase3MilestoneCount: 0,
+    phase3Evaluations: 0,
+  };
+}
+
+async function enrichDemoStatusWithPhaseSummary(status) {
+  if (!status.active) {
+    return { ...status, ...emptyDemoPhaseExtras() };
+  }
+  const planPayload = await fetchDemoPlanPayloadForUnit(status.unit);
+  const storedSummary = planPayload?.meta?.demoSummary;
+  if (storedSummary && typeof storedSummary === "object") {
+    return {
+      ...status,
+      ...storedSummary,
+      unit: status.unit,
+      active: status.active,
+      backcastingDemoPlan: storedSummary.backcastingDemoPlan ?? status.backcastingDemoPlan,
+      planCount: storedSummary.planCount ?? status.planCount,
+    };
+  }
+  const entries = await fetchDemoEntriesForUnit(status.unit);
+  if (!entries.length && !planPayload) {
+    return { ...status, ...emptyDemoPhaseExtras() };
+  }
+  const summary = buildDemoStatusSummary(entries, planPayload || { measures: {}, meta: {} });
+  return {
+    ...status,
+    phase1DemoEntries: summary.phase1DemoEntries,
+    portfolioEntries: summary.portfolioEntries,
+    organisationEntries: summary.organisationEntries,
+    skillEntries: summary.skillEntries,
+    planCount: summary.planCount,
+    backcastingDemoPlan: summary.backcastingDemoPlan,
+    milestoneCount: summary.milestoneCount,
+    milestoneYears: summary.milestoneYears,
+    phase3Year: summary.phase3Year,
+    phase3KpiCount: summary.phase3KpiCount,
+    phase3SkillGapCount: summary.phase3SkillGapCount,
+    phase3MilestoneCount: summary.phase3MilestoneCount,
+    phase3Evaluations: summary.phase3Evaluations,
+  };
+}
+
 async function fetchDemoStatusForUnit(unit) {
   const typeCounts = await pool.query(
     `SELECT type, COUNT(*)::int AS count
@@ -2921,7 +3045,7 @@ async function fetchDemoStatusForUnit(unit) {
   );
   const planCount = planResult.rows[0]?.count || 0;
   const phase1DemoEntries = counts.portfolio + counts.organisation + counts.skill;
-  return {
+  const base = {
     unit,
     phase1DemoEntries,
     portfolioEntries: counts.portfolio,
@@ -2931,6 +3055,7 @@ async function fetchDemoStatusForUnit(unit) {
     planCount,
     active: phase1DemoEntries > 0 || planCount > 0,
   };
+  return enrichDemoStatusWithPhaseSummary(base);
 }
 
 app.get("/api/demo/status", auth, async (req, res) => {
@@ -2953,6 +3078,10 @@ app.get("/api/demo/status", auth, async (req, res) => {
       organisationEntries: units.reduce((sum, row) => sum + row.organisationEntries, 0),
       skillEntries: units.reduce((sum, row) => sum + row.skillEntries, 0),
       planCount: units.reduce((sum, row) => sum + row.planCount, 0),
+      milestoneCount: units.reduce((sum, row) => sum + (row.milestoneCount || 0), 0),
+      phase3Evaluations: units.reduce((sum, row) => sum + (row.phase3Evaluations || 0), 0),
+      phase3KpiCount: units.reduce((sum, row) => sum + (row.phase3KpiCount || 0), 0),
+      phase3SkillGapCount: units.reduce((sum, row) => sum + (row.phase3SkillGapCount || 0), 0),
     };
     return res.json({
       all: true,
@@ -2984,10 +3113,19 @@ app.get("/api/demo/status", auth, async (req, res) => {
 
 async function loadDemoDataForUnit(unit, email) {
   await removeDemoDataForUnit(unit);
-  const { entries, plan } = buildDemoDataForUnit(unit);
+  const { entries, plan, summary } = buildDemoDataForUnit(unit);
   await insertDemoEntries(entries, email);
-  await upsertBackcastingPlan(unit, { meta: plan.meta, measures: plan.measures }, email, true);
-  return { unit, entryCount: entries.length };
+  await upsertBackcastingPlan(
+    unit,
+    { meta: { ...plan.meta, demoSummary: summary }, measures: plan.measures },
+    email,
+    true
+  );
+  return {
+    unit,
+    entryCount: summary.phase1DemoEntries,
+    ...summary,
+  };
 }
 
 app.get("/api/demo/units", auth, async (req, res) => {
@@ -3018,11 +3156,13 @@ app.post("/api/demo/load", auth, async (req, res) => {
     for (const unit of DEMO_UNITS) {
       loaded.push(await loadDemoDataForUnit(unit, req.user.email));
     }
-    const totalEntries = loaded.reduce((sum, row) => sum + row.entryCount, 0);
+    const totalEntries = loaded.reduce((sum, row) => sum + (row.phase1DemoEntries || 0), 0);
+    const totalMilestones = loaded.reduce((sum, row) => sum + (row.milestoneCount || 0), 0);
+    const totalPhase3 = loaded.reduce((sum, row) => sum + (row.phase3Evaluations || 0), 0);
     return res.json({
       ok: true,
       units: loaded,
-      message: `Demo-Daten für ${loaded.length} Units geladen (${totalEntries} Phase-1-Einträge + ${loaded.length} Backcasting-Pläne).`,
+      message: `Demo-Daten für ${loaded.length} Units geladen (${totalEntries} Phase-1-Einträge, ${totalMilestones} Meilensteine, ${totalPhase3} Phase-3-Auswertungen).`,
     });
   }
 
@@ -3038,9 +3178,20 @@ app.post("/api/demo/load", auth, async (req, res) => {
   return res.json({
     ok: true,
     unit: result.unit,
-    phase1DemoEntries: result.entryCount,
-    backcastingDemoPlan: true,
-    message: `Demo-Daten für ${unit} geladen (${result.entryCount} Phase-1-Einträge + Backcasting-Plan).`,
+    phase1DemoEntries: result.phase1DemoEntries,
+    portfolioEntries: result.portfolioEntries,
+    organisationEntries: result.organisationEntries,
+    skillEntries: result.skillEntries,
+    backcastingDemoPlan: result.backcastingDemoPlan,
+    planCount: result.planCount,
+    milestoneCount: result.milestoneCount,
+    milestoneYears: result.milestoneYears,
+    phase3Year: result.phase3Year,
+    phase3KpiCount: result.phase3KpiCount,
+    phase3SkillGapCount: result.phase3SkillGapCount,
+    phase3MilestoneCount: result.phase3MilestoneCount,
+    phase3Evaluations: result.phase3Evaluations,
+    message: `Demo-Daten für ${unit} geladen (Phase 1: ${result.phase1DemoEntries} Einträge, Phase 2: ${result.milestoneCount} Meilensteine, Phase 3: ${result.phase3Evaluations} Auswertungen).`,
   });
 });
 

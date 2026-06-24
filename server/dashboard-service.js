@@ -250,8 +250,123 @@ function buildDashboardSnapshot(entries, planPayload, year) {
   };
 }
 
+const DEFAULT_TIMELINE_YEARS = [2026, 2027, 2028, 2029];
+
+function buildLinearIstSeries(years, istStart, sollEnd) {
+  if (istStart == null || sollEnd == null || !years.length) {
+    return years.map(() => null);
+  }
+  const y0 = years[0];
+  const yEnd = years[years.length - 1];
+  const span = yEnd - y0 || 1;
+  return years.map((y) => {
+    const t = (y - y0) / span;
+    const value = istStart + (sollEnd - istStart) * t;
+    return Math.round(value * 10) / 10;
+  });
+}
+
+function buildKpiTimelineSeries(years, phase1, planByYear, kpiDef) {
+  const soll = years.map((y) => {
+    const planYear = planByYear[y];
+    const value = planYear ? planYear[kpiDef.planKey] : null;
+    return value != null ? value : null;
+  });
+  const istStart = kpiDef.getIst(phase1);
+  const sollEnd = soll[soll.length - 1];
+  const hasSoll = soll.some((v) => v != null);
+  if (!hasSoll || istStart == null) {
+    return {
+      key: kpiDef.key,
+      label: kpiDef.label,
+      unit: kpiDef.unit,
+      soll,
+      ist: years.map(() => null),
+      hasData: false,
+    };
+  }
+  const ist = buildLinearIstSeries(years, istStart, sollEnd);
+  return {
+    key: kpiDef.key,
+    label: kpiDef.label,
+    unit: kpiDef.unit,
+    soll,
+    ist,
+    hasData: true,
+  };
+}
+
+function buildDashboardTimeline(entries, planPayload, years = DEFAULT_TIMELINE_YEARS) {
+  const phase1 = aggregatePhase1Entries(entries);
+  const planByYear = {};
+  years.forEach((y) => {
+    planByYear[y] = aggregatePlanForYear(planPayload, y);
+  });
+
+  const kpiDefs = [
+    {
+      key: "umsatz",
+      label: "Umsatz (TEUR)",
+      unit: "TEUR",
+      planKey: "zielUmsatzTeur",
+      getIst: (p1) => p1.portfolio.totalTeur,
+    },
+    {
+      key: "headcount",
+      label: "Headcount",
+      unit: "MA",
+      planKey: "zielHeadcount",
+      getIst: (p1) => p1.organisation.headcount,
+    },
+    {
+      key: "zertifizierung",
+      label: "Zertifizierungsquote (%)",
+      unit: "%",
+      planKey: "zielZertifizierungProzent",
+      getIst: (p1) => p1.skills.zertifiziertQuote,
+    },
+  ];
+
+  const kpis = kpiDefs.map((def) => buildKpiTimelineSeries(years, phase1, planByYear, def));
+  return {
+    years: [...years],
+    kpis,
+    hasData: kpis.some((k) => k.hasData),
+  };
+}
+
+function countAllPlanMilestones(planPayload) {
+  const measures = planPayload?.measures || {};
+  let count = 0;
+  Object.values(measures).forEach((list) => {
+    (list || []).forEach((m) => {
+      if (m && m.kind === "wsYear") count += 1;
+    });
+  });
+  return count;
+}
+
+function buildDemoEvaluationSummary(entries, planPayload, year = new Date().getFullYear()) {
+  const snapshot = buildDashboardSnapshot(entries, planPayload, year);
+  const kpiCount = snapshot.comparison?.kpis?.length || 0;
+  const skillGapCount = snapshot.comparison?.skillGaps?.length || 0;
+  const milestoneCountYear = snapshot.plan?.milestoneCount || 0;
+  return {
+    year: Number(year),
+    kpiCount,
+    skillGapCount,
+    milestoneCountYear,
+    phase3Evaluations: kpiCount + skillGapCount,
+    milestoneCountTotal: countAllPlanMilestones(planPayload),
+  };
+}
+
 module.exports = {
   buildDashboardSnapshot,
+  buildDashboardTimeline,
   aggregatePhase1Entries,
   aggregatePlanForYear,
+  countAllPlanMilestones,
+  buildDemoEvaluationSummary,
+  DEFAULT_TIMELINE_YEARS,
 };

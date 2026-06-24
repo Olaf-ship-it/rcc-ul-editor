@@ -957,12 +957,25 @@ async function api(url, opts = {}) {
     headers: { "Content-Type": "application/json", ...(opts.headers || {}) },
     ...opts,
   });
+  const contentType = res.headers.get("content-type") || "";
+  const isJson = contentType.includes("application/json");
   if (!res.ok) {
     let msg = "Anfrage fehlgeschlagen.";
-    try { msg = (await res.json()).error || msg; } catch (_e) {}
+    if (isJson) {
+      try {
+        msg = (await res.json()).error || msg;
+      } catch (_e) {}
+    } else if (res.status === 401 || res.status === 403) {
+      msg = "Session abgelaufen – bitte neu anmelden.";
+    } else {
+      msg = `Serverfehler (${res.status}). Bitte Seite neu laden.`;
+    }
     throw new Error(msg);
   }
   if (res.status === 204) return null;
+  if (!isJson) {
+    throw new Error("Unerwartete Server-Antwort. Bitte Seite neu laden oder Server neu starten.");
+  }
   return res.json();
 }
 
@@ -984,6 +997,15 @@ function initHeaderViewUnit() {
   } else {
     superAdminViewUnit = currentUnit || "";
   }
+}
+
+function resetAppViewToDefaults() {
+  if (isMitarbeiter) return;
+  if (isSuperAdmin || isAdmin) {
+    superAdminViewUnit = "all";
+  }
+  switchTab("portfolio");
+  updateAppModuleNavActive("portfolio");
 }
 
 function load(type) {
@@ -1430,6 +1452,9 @@ function refreshSuperAdminViews() {
   renderOverview();
   renderExportStats();
   if (isAdmin) renderAdminUsers();
+  if (document.getElementById("page-gesamtfortschritt")?.classList.contains("active")) {
+    renderGesamtfortschrittDashboard();
+  }
   if (document.getElementById("page-fortschritt")?.classList.contains("active")) {
     renderFortschrittDashboard();
   }
@@ -1451,6 +1476,9 @@ function setSuperAdminViewUnit(unit) {
   renderOverview();
   renderExportStats();
   if (isAdmin) renderAdminUsers();
+  if (document.getElementById("page-gesamtfortschritt")?.classList.contains("active")) {
+    renderGesamtfortschrittDashboard();
+  }
   if (document.getElementById("page-fortschritt")?.classList.contains("active")) {
     renderFortschrittDashboard();
   }
@@ -1574,10 +1602,19 @@ function getActiveAppPage() {
 }
 
 const PHASE1_TAB_PAGES = ["portfolio", "organisation", "skills", "overview", "export"];
-const PHASE3_TAB_PAGES = ["fortschritt", "demo-daten"];
+const PHASE3_TAB_PAGES = ["gesamtfortschritt", "fortschritt"];
+const DEMO_DATEN_PAGE = "demo-daten";
 
 function isPhase3AppPage(page) {
   return PHASE3_TAB_PAGES.includes(page);
+}
+
+function isDemoDatenPage(page) {
+  return page === DEMO_DATEN_PAGE;
+}
+
+function canAccessPhase3Area() {
+  return Boolean(userModules?.fortschritt) || isAdmin;
 }
 
 function isPhase3PageActive() {
@@ -2601,6 +2638,7 @@ function setSessionBootState(state) {
 
 function showLoginScreen() {
   setSessionBootState("unauthenticated");
+  setLoginPasswordVisible(false);
   const login = document.getElementById("loginOverlay");
   if (login) login.style.display = "flex";
   const header = document.getElementById("appHeader");
@@ -2611,12 +2649,33 @@ function showLoginScreen() {
   if (main) main.style.display = "none";
 }
 
+function setLoginPasswordVisible(visible) {
+  const input = document.getElementById("loginPassword");
+  const btn = document.getElementById("loginPasswordToggle");
+  if (!input || !btn) return;
+  input.type = visible ? "text" : "password";
+  const label = visible ? "Passwort verbergen" : "Passwort anzeigen";
+  btn.setAttribute("aria-label", label);
+  btn.setAttribute("aria-pressed", visible ? "true" : "false");
+  btn.title = label;
+  btn.querySelector(".login-form__eye--show")?.toggleAttribute("hidden", visible);
+  btn.querySelector(".login-form__eye--hide")?.toggleAttribute("hidden", !visible);
+}
+
+function initLoginPasswordToggle() {
+  document.getElementById("loginPasswordToggle")?.addEventListener("click", () => {
+    const input = document.getElementById("loginPassword");
+    if (!input) return;
+    setLoginPasswordVisible(input.type === "password");
+  });
+}
+
 async function doLogin(){
   const email=document.getElementById('loginEmail').value.trim().toLowerCase();
   const password=document.getElementById('loginPassword').value;
   const errEl=document.getElementById('loginError');
-  errEl.style.display='none';
-  if(!email||!password){errEl.textContent='Bitte E-Mail und Passwort ausfuellen.';errEl.style.display='block';return}
+  errEl.textContent='';
+  if(!email||!password){errEl.textContent='Bitte E-Mail und Passwort ausfuellen.';return}
   try {
     const session = await api("/api/auth/login", { method: "POST", body: JSON.stringify({ email, password }) });
     currentUnit = session.unit;
@@ -2630,22 +2689,27 @@ async function doLogin(){
     userUnits = normalizeUserUnits(session.units);
     userModules = session.modules || { backcasting: false, fortschritt: false };
     if (await maybeRedirectToReturnUrl(userModules)) return;
-    await showApp();
+    await showApp({ fromLogin: true });
   } catch (error) {
     errEl.textContent = error.message;
-    errEl.style.display = "block";
   }
 }
 
 async function doLogout(){
+  const wasMitarbeiter = document.body.classList.contains("mitarbeiter-mode");
   try { await api("/api/auth/logout", { method: "POST" }); } catch (_e) {}
   currentUnit='';currentName='';currentEmail='';isAdmin=false;isSuperAdmin=false;isMitarbeiter=false;userModules={ backcasting: false, fortschritt: false };currentSkillEntryId=null;currentPersonalnummer='';superAdminViewUnit='all';userUnits=[];
   document.body.classList.remove("mitarbeiter-mode");
   entryStore = { portfolio: [], organisation: [], skill: [] };
+  if (!wasMitarbeiter) {
+    switchTab("portfolio");
+    updateAppModuleNavActive("portfolio");
+  }
   showLoginScreen();
 }
 
-async function showApp(){
+async function showApp(options = {}){
+  const fromLogin = Boolean(options.fromLogin);
   setSessionBootState("authenticated");
   await loadSkillCategoriesFromApi();
   await loadAppRolePositionCatalogFromApi();
@@ -2659,6 +2723,10 @@ async function showApp(){
   applyMitarbeiterLayout();
   initHeaderUnitSwitcher();
   await renderHeaderUnitSwitcher();
+  if (fromLogin) {
+    resetAppViewToDefaults();
+    await renderHeaderUnitSwitcher();
+  }
   updateHeaderUnitDisplay();
   updateSuperAdminFormMode();
   checkAdmin();
@@ -2676,10 +2744,10 @@ async function showApp(){
   if (isAdmin) await initAdminPage();
   if (!isMitarbeiter) await refreshUnitContextPanels();
   collapseAllCollapsibleSections(document.getElementById("appMain"));
-  applyPageFromQuery();
+  applyPageFromQuery({ skipFortschritt: fromLogin });
 }
 
-function applyPageFromQuery() {
+function applyPageFromQuery(options = {}) {
   if (isMitarbeiter) return;
   const page = new URLSearchParams(window.location.search).get("page");
   if (page === "admin" && isAdmin) {
@@ -2690,10 +2758,23 @@ function applyPageFromQuery() {
     }
     return;
   }
-  if (page === "fortschritt") {
-    if (!userModules?.fortschritt && !isAdmin) return;
-    switchTab("fortschritt");
-    renderFortschrittDashboard();
+  if (options.skipFortschritt) {
+    if (window.history && window.history.replaceState) {
+      const params = new URLSearchParams(window.location.search);
+      if (params.has("page")) {
+        params.delete("page");
+        const qs = params.toString();
+        window.history.replaceState({}, "", qs ? `/?${qs}` : "/");
+      }
+    }
+    return;
+  }
+  if (page === "gesamtfortschritt" || page === "fortschritt" || page === "demo-daten") {
+    if (!canAccessPhase3Area()) return;
+    switchTab(page);
+    if (page === "gesamtfortschritt") renderGesamtfortschrittDashboard();
+    else if (page === "fortschritt") renderFortschrittDashboard();
+    else renderDemoDatenPage();
     if (window.history && window.history.replaceState) {
       window.history.replaceState({}, "", "/");
     }
@@ -2721,17 +2802,6 @@ async function bootSession() {
   }
 }
 
-function applyLoginModuleContext() {
-  const params = new URLSearchParams(window.location.search);
-  if (params.get("module") !== "backcasting") return;
-  const title = document.getElementById("loginTitle");
-  const subtitle = document.getElementById("loginSubtitle");
-  if (title) title.textContent = "Phase 2 · Backcasting-Planung";
-  if (subtitle) {
-    subtitle.innerHTML = "Phase 2 · Strategische Maßnahmenplanung 2026–2029<br>Anmeldung mit Ihrem realcore-Konto";
-  }
-}
-
 function getPostLoginRedirectUrl() {
   const params = new URLSearchParams(window.location.search);
   const ret = params.get("return");
@@ -2751,13 +2821,18 @@ function updateAppModuleLauncher(modules) {
   const phasesBar = document.getElementById("headerPhasesBar");
   const link = document.getElementById("launcherBackcasting");
   const fsLink = document.getElementById("launcherFortschritt");
+  const demoLink = document.getElementById("launcherDemoDaten");
+  const phasesSep = document.getElementById("headerPhasesSep");
   if (!phasesBar) return;
   const showBackcasting = Boolean(modules?.backcasting) || isAdmin;
   const showFortschritt = (Boolean(modules?.fortschritt) || isAdmin) && !isMitarbeiter;
+  const showDemoDaten = showFortschritt;
   const showNav = showBackcasting || showFortschritt || !isMitarbeiter;
   phasesBar.style.display = showNav ? "" : "none";
   if (link) link.style.display = showBackcasting ? "" : "none";
   if (fsLink) fsLink.style.display = showFortschritt ? "" : "none";
+  if (demoLink) demoLink.style.display = showDemoDaten ? "" : "none";
+  if (phasesSep) phasesSep.style.display = showFortschritt && showDemoDaten ? "" : "none";
 }
 
 function bindAppModuleNavClicks() {
@@ -2770,16 +2845,25 @@ function bindAppModuleNavClicks() {
   document.getElementById("launcherFortschritt")?.addEventListener("click", (e) => {
     const appMain = document.getElementById("appMain");
     if (!appMain || appMain.style.display === "none") return;
-    if (isMitarbeiter || (!userModules?.fortschritt && !isAdmin)) return;
+    if (isMitarbeiter || !canAccessPhase3Area()) return;
     e.preventDefault();
-    switchTab("fortschritt");
-    renderFortschrittDashboard();
+    switchTab("gesamtfortschritt");
+    renderGesamtfortschrittDashboard();
+  });
+  document.getElementById("launcherDemoDaten")?.addEventListener("click", (e) => {
+    const appMain = document.getElementById("appMain");
+    if (!appMain || appMain.style.display === "none") return;
+    if (isMitarbeiter || !canAccessPhase3Area()) return;
+    e.preventDefault();
+    switchTab("demo-daten");
+    renderDemoDatenPage();
   });
   document.getElementById("launcherPhase1")?.addEventListener("click", (e) => {
     const appMain = document.getElementById("appMain");
     if (!appMain || appMain.style.display === "none") return;
     if (isMitarbeiter) return;
-    if (!isPhase3PageActive()) return;
+    const active = getActiveAppPage();
+    if (!isPhase3AppPage(active) && !isDemoDatenPage(active)) return;
     e.preventDefault();
     switchTab("portfolio");
     renderPortfolio();
@@ -2796,6 +2880,7 @@ document.querySelectorAll("#tabs .tab").forEach((t) => {
   if (p === "overview") renderOverview();
   if (p === "export") renderExportStats();
   if (p === "admin") initAdminPage();
+  if (p === "gesamtfortschritt") renderGesamtfortschrittDashboard();
   if (p === "fortschritt") renderFortschrittDashboard();
   if (p === "demo-daten") renderDemoDatenPage();
   if (p === "portfolio") {
@@ -2819,23 +2904,28 @@ function updateAppModuleNavActive(page) {
   const phase1 = document.getElementById("launcherPhase1");
   const bcLink = document.getElementById("launcherBackcasting");
   const fsLink = document.getElementById("launcherFortschritt");
+  const demoLink = document.getElementById("launcherDemoDaten");
   const adminLink = document.getElementById("launcherAdmin");
   const onPhase3 = isPhase3AppPage(page);
+  const onDemoDaten = isDemoDatenPage(page);
   if (phase1) {
-    phase1.classList.toggle("is-active", !onPhase3);
-    if (onPhase3) phase1.removeAttribute("aria-current");
+    phase1.classList.toggle("is-active", !onPhase3 && !onDemoDaten);
+    if (onPhase3 || onDemoDaten) phase1.removeAttribute("aria-current");
     else phase1.setAttribute("aria-current", "page");
   }
   if (bcLink) bcLink.classList.remove("is-active");
   if (fsLink) fsLink.classList.toggle("is-active", onPhase3);
+  if (demoLink) demoLink.classList.toggle("is-active", onDemoDaten);
   if (adminLink) adminLink.classList.toggle("is-active", page === "admin");
   const subtitleEl = document.getElementById("appHeaderSubtitle");
   if (subtitleEl && !isMitarbeiter) {
-    if (onPhase3) {
+    if (onDemoDaten) {
+      subtitleEl.textContent = "Demo-Datensätze für IST/SOLL-Tests je Unit";
+    } else if (onPhase3) {
       subtitleEl.textContent =
-        page === "demo-daten"
-          ? "Demo-Datensätze für IST/SOLL-Tests je Unit"
-          : "IST vs. SOLL · Portfolio, Organisation & Skills gegen Backcasting-Plan";
+        page === "gesamtfortschritt"
+          ? "Zeitstrahl 2026–2029 · Umsatz, Headcount & Zertifizierung"
+          : "Detailfortschritt · IST vs. SOLL je Unit und Jahr";
     } else if (page === "admin") {
       subtitleEl.textContent = "Benutzer, Kataloge, Leitplanken und Organigramm";
     } else {
@@ -2847,7 +2937,7 @@ function updateAppModuleNavActive(page) {
 
 function switchTab(p){
   if (isMitarbeiter && p !== "skills") return;
-  if (isPhase3AppPage(p) && !userModules?.fortschritt && !isAdmin) return;
+  if ((isPhase3AppPage(p) || isDemoDatenPage(p)) && !canAccessPhase3Area()) return;
   document.querySelectorAll("#tabs .tab").forEach((t) => t.classList.toggle("active", t.dataset.page === p));
   document.querySelectorAll("#appMain .page").forEach((pg) => pg.classList.toggle("active", pg.id === "page-" + p));
   updateMainTabsBar(p);
@@ -4573,6 +4663,9 @@ function switchSuperAdminViewForEntry(entry) {
   renderOverview();
   renderExportStats();
   if (isAdmin) renderAdminUsers();
+  if (document.getElementById("page-gesamtfortschritt")?.classList.contains("active")) {
+    renderGesamtfortschrittDashboard();
+  }
   if (document.getElementById("page-fortschritt")?.classList.contains("active")) {
     renderFortschrittDashboard();
   }
@@ -7018,7 +7111,7 @@ document.getElementById("org_rollen_rows")?.addEventListener("change", (e) => {
 
 // Init
 updateAdminUnitsFieldVisibility();
-applyLoginModuleContext();
+initLoginPasswordToggle();
 bindAppModuleNavClicks();
 bootSession();
 
