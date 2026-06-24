@@ -70,6 +70,9 @@ body{font-family:'Inter','Segoe UI',system-ui,sans-serif;background:var(--rc-bg)
 .admin-collapsible__chevron{display:inline-flex;align-items:center;justify-content:center;width:1.1rem;font-size:1.1rem;line-height:1;color:var(--rc-accent2);transition:transform .2s ease;flex-shrink:0}
 .admin-collapsible[open] .admin-collapsible__chevron{transform:rotate(90deg)}
 .admin-collapsible__body{padding-top:.15rem}
+.adm-unit-error{color:#c0392b;font-size:.8rem;font-weight:600;margin-bottom:.5rem;padding:.65rem .75rem;border-radius:8px;background:#fdecea;border:1px solid #f5c6cb}
+.adm-unit-blocker-list{margin:.35rem 0 0;padding-left:1.2rem;font-weight:500}
+.adm-unit-blocker-list li{margin:.15rem 0}
 .admin-collapsible--accent > summary,.admin-collapsible--accent .admin-collapsible__chevron{color:var(--rc-accent)}
 .admin-collapsible--accent2 > summary,.admin-collapsible--accent2 .admin-collapsible__chevron{color:var(--rc-accent2)}
 .admin-collapsible--orange > summary,.admin-collapsible--orange .admin-collapsible__chevron{color:var(--rc-orange)}

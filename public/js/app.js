@@ -963,7 +963,11 @@ async function api(url, opts = {}) {
     let msg = "Anfrage fehlgeschlagen.";
     if (isJson) {
       try {
-        msg = (await res.json()).error || msg;
+        const payload = await res.json();
+        msg = payload.error || msg;
+        if (Array.isArray(payload.blockers) && payload.blockers.length && !String(msg).includes("Noch vorhanden:")) {
+          msg += `\n\nNoch vorhanden:\n${payload.blockers.map((item) => `• ${item}`).join("\n")}`;
+        }
       } catch (_e) {}
     } else if (res.status === 401 || res.status === 403) {
       msg = "Session abgelaufen – bitte neu anmelden.";
@@ -5162,7 +5166,7 @@ async function renderSuperAdminUnits() {
 async function adminAddMasterUnit() {
   const name = document.getElementById("adm_unit_name").value.trim();
   const errEl = document.getElementById("admUnitError");
-  errEl.style.display = "none";
+  clearAdminUnitError();
   if (!name) {
     errEl.textContent = "Bitte Unit-Namen eingeben.";
     errEl.style.display = "block";
@@ -5181,12 +5185,84 @@ async function adminAddMasterUnit() {
   }
 }
 
+function parseBlockersFromErrorText(errorText) {
+  const match = String(errorText || "").match(/Noch vorhanden:\s*\n([\s\S]+)/);
+  if (!match) return [];
+  return match[1]
+    .split("\n")
+    .map((line) => line.replace(/^[•\-]\s*/, "").trim())
+    .filter(Boolean);
+}
+
+async function loadUnitDeletionBlockers(unitId) {
+  try {
+    const res = await fetch(`/api/admin/units/${encodeURIComponent(unitId)}/deletion-blockers`, {
+      credentials: "include",
+    });
+    if (!res.ok) return [];
+    const data = await res.json();
+    return Array.isArray(data.blockers) ? data.blockers : [];
+  } catch (_e) {
+    return [];
+  }
+}
+
+function showAdminUnitDeleteBlockers(unitName, data = {}) {
+  const errEl = document.getElementById("admUnitError");
+  if (!errEl) return;
+  let blockers = Array.isArray(data.blockers) ? data.blockers : [];
+  if (!blockers.length) blockers = parseBlockersFromErrorText(data.error);
+  const oldGeneric = /Unit hat noch Eintraege/i.test(String(data.error || ""));
+  const headline = oldGeneric || !data.error
+    ? `Unit „${unitName}“ kann nicht gelöscht werden, solange noch verknüpfte Daten vorhanden sind.`
+    : String(data.error).split("\n\n")[0];
+  if (!blockers.length) {
+    errEl.textContent = headline;
+  } else {
+    errEl.innerHTML =
+      `${esc(headline)}` +
+      `<ul class="adm-unit-blocker-list">${blockers.map((item) => `<li>${esc(item)}</li>`).join("")}</ul>`;
+  }
+  errEl.style.display = "block";
+  errEl.closest("details")?.setAttribute("open", "");
+  errEl.scrollIntoView({ behavior: "smooth", block: "nearest" });
+}
+
+function clearAdminUnitError() {
+  const errEl = document.getElementById("admUnitError");
+  if (!errEl) return;
+  errEl.textContent = "";
+  errEl.innerHTML = "";
+  errEl.style.display = "none";
+}
+
 async function adminDeleteMasterUnit(id) {
   const unit = masterUnitsCache.find((u) => String(u.id) === String(id));
   if (!unit) return;
   if (!confirm(`Unit „${unit.name}“ wirklich entfernen?`)) return;
+  clearAdminUnitError();
   try {
-    await api(`/api/admin/units/${id}`, { method: "DELETE" });
+    const res = await fetch(`/api/admin/units/${encodeURIComponent(id)}`, {
+      method: "DELETE",
+      credentials: "include",
+      headers: { "Content-Type": "application/json" },
+    });
+    let data = {};
+    const contentType = res.headers.get("content-type") || "";
+    if (contentType.includes("application/json")) {
+      try {
+        data = await res.json();
+      } catch (_e) {
+        data = {};
+      }
+    }
+    if (!res.ok) {
+      if (!data.blockers?.length) {
+        data.blockers = await loadUnitDeletionBlockers(id);
+      }
+      showAdminUnitDeleteBlockers(unit.name, data);
+      return;
+    }
     if (superAdminViewUnit === unit.name) superAdminViewUnit = "all";
     await loadMasterUnitsCache();
     await renderSuperAdminUnits();
@@ -5194,7 +5270,7 @@ async function adminDeleteMasterUnit(id) {
     refreshSuperAdminViews();
     toast("Unit entfernt.", "#e74c3c");
   } catch (error) {
-    toast(error.message, "#e74c3c");
+    showAdminUnitDeleteBlockers(unit.name, { error: error.message });
   }
 }
 

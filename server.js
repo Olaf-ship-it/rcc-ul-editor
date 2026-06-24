@@ -1090,6 +1090,52 @@ async function removeDemoDataForUnit(unit) {
   await pool.query("DELETE FROM backcasting_plans WHERE unit = $1 AND is_demo = true", [unit]);
 }
 
+const ENTRY_TYPE_LABELS = {
+  skill: "Skill-Mitarbeiter",
+  portfolio: "Portfolio-Einträge",
+  organisation: "Organisations-Einträge",
+};
+
+async function getUnitDeletionBlockers(unitName) {
+  const unit = String(unitName || "").trim();
+  if (!unit) return [];
+  const blockers = [];
+
+  const entryStats = await pool.query(
+    `SELECT type, is_demo, COUNT(*)::int AS count
+     FROM entries WHERE unit = $1
+     GROUP BY type, is_demo
+     ORDER BY type, is_demo`,
+    [unit]
+  );
+  for (const row of entryStats.rows) {
+    const kind = ENTRY_TYPE_LABELS[row.type] || `Einträge (${row.type})`;
+    const suffix = row.is_demo ? " (Demo)" : "";
+    blockers.push(`${row.count}× ${kind}${suffix}`);
+  }
+
+  const planStats = await pool.query(
+    `SELECT is_demo, COUNT(*)::int AS count
+     FROM backcasting_plans WHERE unit = $1
+     GROUP BY is_demo`,
+    [unit]
+  );
+  for (const row of planStats.rows) {
+    const suffix = row.is_demo ? " (Demo)" : "";
+    blockers.push(`${row.count}× Backcasting-Plan${suffix}`);
+  }
+
+  const userCount = await pool.query(
+    "SELECT COUNT(*)::int AS count FROM users WHERE $1 = ANY(units)",
+    [unit]
+  );
+  if (userCount.rows[0].count > 0) {
+    blockers.push(`${userCount.rows[0].count}× Benutzer mit Unit-Zuordnung`);
+  }
+
+  return blockers;
+}
+
 async function insertDemoEntries(entries, email) {
   const now = new Date().toISOString();
   for (const entry of entries) {
@@ -3507,15 +3553,30 @@ app.put("/api/admin/units/:id", auth, requireSuperAdmin, async (req, res) => {
   }
 });
 
+app.get("/api/admin/units/:id/deletion-blockers", auth, requireSuperAdmin, async (req, res) => {
+  const { id } = req.params;
+  const unitResult = await pool.query("SELECT id, name FROM units WHERE id = $1", [id]);
+  const unit = unitResult.rows[0];
+  if (!unit) return res.status(404).json({ error: "Unit nicht gefunden." });
+  const blockers = await getUnitDeletionBlockers(unit.name);
+  return res.json({ unit: unit.name, blockers, deletable: blockers.length === 0 });
+});
+
 app.delete("/api/admin/units/:id", auth, requireSuperAdmin, async (req, res) => {
   const { id } = req.params;
   const unitResult = await pool.query("SELECT id, name FROM units WHERE id = $1", [id]);
   const unit = unitResult.rows[0];
   if (!unit) return res.status(404).json({ error: "Unit nicht gefunden." });
 
-  const entryCount = await pool.query("SELECT COUNT(*)::int AS count FROM entries WHERE unit = $1", [unit.name]);
-  if (entryCount.rows[0].count > 0) {
-    return res.status(400).json({ error: "Unit hat noch Eintraege und kann nicht geloescht werden." });
+  const blockers = await getUnitDeletionBlockers(unit.name);
+  if (blockers.length > 0) {
+    const blockerLines = blockers.map((item) => `• ${item}`).join("\n");
+    return res.status(400).json({
+      error:
+        "Unit kann nicht gelöscht werden, solange noch verknüpfte Daten vorhanden sind.\n\n" +
+        `Noch vorhanden:\n${blockerLines}`,
+      blockers,
+    });
   }
 
   await pool.query(
