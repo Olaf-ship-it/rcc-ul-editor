@@ -61,7 +61,7 @@ body{font-family:'Inter','Segoe UI',system-ui,sans-serif;background:var(--rc-bg)
 .tab{padding:.6rem 1rem;color:#ccc;cursor:pointer;font-size:.8rem;font-weight:500;border-bottom:3px solid transparent;transition:all .2s;white-space:nowrap}
 .tab:hover{color:#fff;background:rgba(255,255,255,.05)}
 .tab.active{color:#fff;border-bottom-color:var(--rc-accent);background:rgba(255,255,255,.1)}
-.main{max-width:1400px;margin:0 auto;padding:1.2rem}
+.main{width:100%;max-width:none;margin:0;padding:1.2rem clamp(1rem,2vw,2rem);box-sizing:border-box}
 .page{display:none}.page.active{display:block}
 .card{background:var(--rc-card);border-radius:10px;padding:1.3rem;margin-bottom:1rem;box-shadow:0 1px 4px rgba(0,0,0,.06);border-left:4px solid var(--rc-accent2)}
 .card h3{font-size:.95rem;margin-bottom:.6rem;color:var(--rc-accent2)}

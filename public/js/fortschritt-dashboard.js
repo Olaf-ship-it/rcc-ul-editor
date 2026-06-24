@@ -275,8 +275,8 @@ function renderFortschrittTimelineSvg(kpi, years, seriesList) {
     return '<p class="fortschritt-empty">Keine Plan-Daten für diese Kennzahl.</p>';
   }
 
-  const W = 720;
-  const H = 240;
+  const W = 960;
+  const H = 260;
   const pad = { l: 44, r: 10, t: 14, b: 30 };
   const allValues = [];
   seriesList.forEach((series) => {
