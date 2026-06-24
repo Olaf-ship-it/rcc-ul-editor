@@ -1617,6 +1617,10 @@ function canAccessPhase3Area() {
   return Boolean(userModules?.fortschritt) || isAdmin;
 }
 
+function canAccessDemoDaten() {
+  return !isMitarbeiter;
+}
+
 function isPhase3PageActive() {
   return isPhase3AppPage(getActiveAppPage());
 }
@@ -2708,13 +2712,25 @@ async function doLogout(){
   showLoginScreen();
 }
 
+function getDirectNavPageFromQuery() {
+  if (isMitarbeiter) return "";
+  const page = new URLSearchParams(window.location.search).get("page");
+  if (page === "admin" && isAdmin) return page;
+  if (page === "demo-daten" && canAccessDemoDaten()) return page;
+  if ((page === "gesamtfortschritt" || page === "fortschritt") && canAccessPhase3Area()) return page;
+  return "";
+}
+
 async function showApp(options = {}){
   const fromLogin = Boolean(options.fromLogin);
-  setSessionBootState("authenticated");
-  await loadSkillCategoriesFromApi();
-  await loadAppRolePositionCatalogFromApi();
-  await refreshEntries();
-  if (!isMitarbeiter) await loadSkillPersonalnummerLookup();
+  const directPage = fromLogin ? "" : getDirectNavPageFromQuery();
+  const lightBoot = Boolean(directPage);
+  if (!lightBoot) {
+    await loadSkillCategoriesFromApi();
+    await loadAppRolePositionCatalogFromApi();
+    await refreshEntries();
+    if (!isMitarbeiter) await loadSkillPersonalnummerLookup();
+  }
   document.getElementById('loginOverlay').style.display='none';
   document.getElementById('appHeader').style.display='flex';
   document.getElementById('appMain').style.display='block';
@@ -2733,7 +2749,7 @@ async function showApp(options = {}){
   updateAppModuleLauncher(userModules);
   if (isMitarbeiter) {
     await initMitarbeiterSkillView();
-  } else {
+  } else if (!lightBoot) {
     renderPortfolio();
     renderOrganisation();
     initAllSaveButtonTrackers();
@@ -2741,10 +2757,11 @@ async function showApp(options = {}){
     updateSkillDeleteButton();
     renderOverview();
   }
-  if (isAdmin) await initAdminPage();
-  if (!isMitarbeiter) await refreshUnitContextPanels();
+  if (isAdmin && !lightBoot) await initAdminPage();
+  if (!isMitarbeiter && !lightBoot) await refreshUnitContextPanels();
   collapseAllCollapsibleSections(document.getElementById("appMain"));
   applyPageFromQuery({ skipFortschritt: fromLogin });
+  setSessionBootState("authenticated");
 }
 
 function applyPageFromQuery(options = {}) {
@@ -2769,12 +2786,20 @@ function applyPageFromQuery(options = {}) {
     }
     return;
   }
-  if (page === "gesamtfortschritt" || page === "fortschritt" || page === "demo-daten") {
+  if (page === "demo-daten") {
+    if (!canAccessDemoDaten()) return;
+    switchTab("demo-daten");
+    renderDemoDatenPage();
+    if (window.history && window.history.replaceState) {
+      window.history.replaceState({}, "", "/");
+    }
+    return;
+  }
+  if (page === "gesamtfortschritt" || page === "fortschritt") {
     if (!canAccessPhase3Area()) return;
     switchTab(page);
     if (page === "gesamtfortschritt") renderGesamtfortschrittDashboard();
-    else if (page === "fortschritt") renderFortschrittDashboard();
-    else renderDemoDatenPage();
+    else renderFortschrittDashboard();
     if (window.history && window.history.replaceState) {
       window.history.replaceState({}, "", "/");
     }
@@ -2826,13 +2851,13 @@ function updateAppModuleLauncher(modules) {
   if (!phasesBar) return;
   const showBackcasting = Boolean(modules?.backcasting) || isAdmin;
   const showFortschritt = (Boolean(modules?.fortschritt) || isAdmin) && !isMitarbeiter;
-  const showDemoDaten = showFortschritt;
-  const showNav = showBackcasting || showFortschritt || !isMitarbeiter;
+  const showDemoDaten = !isMitarbeiter;
+  const showNav = showBackcasting || showFortschritt || showDemoDaten;
   phasesBar.style.display = showNav ? "" : "none";
   if (link) link.style.display = showBackcasting ? "" : "none";
   if (fsLink) fsLink.style.display = showFortschritt ? "" : "none";
   if (demoLink) demoLink.style.display = showDemoDaten ? "" : "none";
-  if (phasesSep) phasesSep.style.display = showFortschritt && showDemoDaten ? "" : "none";
+  if (phasesSep) phasesSep.style.display = showDemoDaten ? "" : "none";
 }
 
 function bindAppModuleNavClicks() {
@@ -2853,7 +2878,7 @@ function bindAppModuleNavClicks() {
   document.getElementById("launcherDemoDaten")?.addEventListener("click", (e) => {
     const appMain = document.getElementById("appMain");
     if (!appMain || appMain.style.display === "none") return;
-    if (isMitarbeiter || !canAccessPhase3Area()) return;
+    if (!canAccessDemoDaten()) return;
     e.preventDefault();
     switchTab("demo-daten");
     renderDemoDatenPage();
@@ -2862,12 +2887,20 @@ function bindAppModuleNavClicks() {
     const appMain = document.getElementById("appMain");
     if (!appMain || appMain.style.display === "none") return;
     if (isMitarbeiter) return;
-    const active = getActiveAppPage();
-    if (!isPhase3AppPage(active) && !isDemoDatenPage(active)) return;
     e.preventDefault();
+    const active = getActiveAppPage();
+    if (active === "portfolio") return;
     switchTab("portfolio");
     renderPortfolio();
-    refreshUnitContextPanels();
+    void refreshUnitContextPanels();
+  });
+  document.getElementById("launcherAdmin")?.addEventListener("click", (e) => {
+    const appMain = document.getElementById("appMain");
+    if (!appMain || appMain.style.display === "none") return;
+    if (!isAdmin) return;
+    e.preventDefault();
+    switchTab("admin");
+    void initAdminPage();
   });
 }
 
@@ -2937,7 +2970,8 @@ function updateAppModuleNavActive(page) {
 
 function switchTab(p){
   if (isMitarbeiter && p !== "skills") return;
-  if ((isPhase3AppPage(p) || isDemoDatenPage(p)) && !canAccessPhase3Area()) return;
+  if (isPhase3AppPage(p) && !canAccessPhase3Area()) return;
+  if (isDemoDatenPage(p) && !canAccessDemoDaten()) return;
   document.querySelectorAll("#tabs .tab").forEach((t) => t.classList.toggle("active", t.dataset.page === p));
   document.querySelectorAll("#appMain .page").forEach((pg) => pg.classList.toggle("active", pg.id === "page-" + p));
   updateMainTabsBar(p);

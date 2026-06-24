@@ -18,7 +18,7 @@
     <div class="header-account">
       <span class="header-account-name" id="bcShellUser"></span>
       <div class="header-actions">
-        <a class="btn-header-icon btn-header-admin" href="/?page=admin" id="launcherAdmin" style="display:none" aria-label="Administration" title="Administration">
+        <a class="btn-header-icon btn-header-admin" href="#" id="launcherAdmin" style="display:none" aria-label="Administration" title="Administration">
           <svg viewBox="0 0 24 24" width="18" height="18" aria-hidden="true" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 15a3 3 0 1 0 0-6 3 3 0 0 0 0 6Z"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 1 1-4 0v-.09a1.65 1.65 0 0 0-1-1.51 1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06A1.65 1.65 0 0 0 5 15.4a1.65 1.65 0 0 0-1.51-1H3a2 2 0 1 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06A1.65 1.65 0 0 0 9 5.6a1.65 1.65 0 0 0 1-1.51V3a2 2 0 1 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06A1.65 1.65 0 0 0 19.4 9c.36.48.58 1.07.6 1.68V12a2 2 0 1 1-4 0v-.09a1.65 1.65 0 0 0-1-1.51Z"/></svg>
         </a>
         <button type="button" class="btn-header-icon btn-logout" id="bcLogoutBtn" aria-label="Abmelden" title="Abmelden">
@@ -40,8 +40,10 @@
           <nav class="app-module-nav" id="appModuleNav" aria-label="Phasen">
             <a class="app-module-link" href="/">Phase 1 · Status Aufnahme</a>
             <a class="app-module-link is-active" href="/backcasting/" aria-current="page">Phase 2 · Backcasting-Planung</a>
-            <a class="app-module-link" href="/?page=fortschritt" id="bcLauncherFortschritt" style="display:none">Phase 3 · Fortschritt</a>
+            <a class="app-module-link" href="#" id="bcLauncherFortschritt" style="display:none">Phase 3 · Fortschritt</a>
           </nav>
+          <span class="header-phases-sep" id="bcHeaderPhasesSep" aria-hidden="true"></span>
+          <button type="button" class="app-module-link app-module-link--demo" id="bcLauncherDemoDaten">🧪 Demo-Daten</button>
         </div>
         <div class="subtitle">Strategische Maßnahmenplanung der Bereichsleiter entlang der GF-Leitplanken</div>
       </div>
@@ -66,16 +68,6 @@
   <div class="unit-save-notice" id="bcUnitSaveNotice" style="display:none" role="status">
     <strong>Speichern nicht möglich:</strong> Oben ist <em>Alle Units</em> aktiv.
     Bitte im <strong>Filter</strong> eine konkrete Unit wählen, dann planen und speichern.
-  </div>
-  <div class="card" style="margin-bottom:.75rem">
-    <h3 style="margin:0 0 .5rem;font-size:.95rem">Demo-Daten</h3>
-    <p class="bc-muted" style="margin-bottom:.65rem">Lädt Beispiel-Plan und Phase-1-Daten für die gewählte Unit (ersetzt nur Demo-Einträge).</p>
-    <div class="btn-group" style="margin-top:0">
-      <button type="button" class="btn btn-outline btn-sm" id="btnBcDemoLoad" onclick="seedDemoData()">Demo-Daten laden</button>
-      <button type="button" class="btn btn-outline btn-sm" id="btnBcDemoLoadAll" style="display:none" onclick="loadDemoAllUnitsFromApi()">Demo alle Units laden</button>
-      <button type="button" class="btn btn-danger btn-outline btn-sm" id="btnBcDemoRemove" onclick="removeDemoData()">Demo entfernen</button>
-      <button type="button" class="btn btn-danger btn-outline btn-sm" id="btnBcDemoRemoveAll" style="display:none" onclick="removeDemoAllUnitsFromApi()">Demo alle Units entfernen</button>
-    </div>
   </div>
   <div class="card" style="margin-bottom:.75rem">
     <div class="filter-row" style="margin-bottom:0">

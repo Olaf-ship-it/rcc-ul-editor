@@ -90,7 +90,6 @@ function updateBcEditMode(){
   const viewAll = isBcViewAll();
   if(notice) notice.style.display = viewAll ? '' : 'none';
   if(hint) hint.style.display = viewAll ? '' : 'none';
-  updateBcDemoControls();
 }
 
 function initBcUnitSwitcher(){
@@ -661,121 +660,6 @@ function drill(ws,yr){
 
 const REVIEW_YEARS = [2026, 2027, 2028, 2029];
 let reviewSelected = {ws:'', year:2026};
-
-function updateBcDemoControls(){
-  const showAll = isBcViewAll() && bcIsAdmin;
-  const loadBtn = document.getElementById('btnBcDemoLoad');
-  const loadAllBtn = document.getElementById('btnBcDemoLoadAll');
-  const removeBtn = document.getElementById('btnBcDemoRemove');
-  const removeAllBtn = document.getElementById('btnBcDemoRemoveAll');
-  if(loadBtn) loadBtn.style.display = showAll ? 'none' : '';
-  if(loadAllBtn) loadAllBtn.style.display = showAll ? '' : 'none';
-  if(removeBtn) removeBtn.style.display = showAll ? 'none' : '';
-  if(removeAllBtn) removeAllBtn.style.display = showAll ? '' : 'none';
-}
-
-function seedDemoData(){
-  loadDemoFromApi();
-}
-async function loadDemoAllUnitsFromApi(){
-  if(!bcIsAdmin || !isBcViewAll()) return;
-  if(!confirm('Demo-Daten für alle Standard-Units laden?\n\nSAP Infrastructure, SAP Engineers, SAP Integration, SAP Architecture')) return;
-  try {
-    const res = await fetch('/api/demo/load', {
-      method: 'POST',
-      credentials: 'same-origin',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ allUnits: true }),
-    });
-    const data = await res.json();
-    if(!res.ok) throw new Error(data.error || 'Demo laden fehlgeschlagen');
-    await setBcViewUnit('all');
-    toast((data.message || 'Demo-Daten für alle Units geladen') + ' · Filter: Alle Units');
-  } catch (err) {
-    toast(err.message || 'Demo laden fehlgeschlagen');
-  }
-}
-async function removeDemoAllUnitsFromApi(){
-  if(!bcIsAdmin || !isBcViewAll()) return;
-  if(!confirm('Alle Demo-Daten für die Standard-Units entfernen?')) return;
-  try {
-    const res = await fetch('/api/demo/remove', {
-      method: 'DELETE',
-      credentials: 'same-origin',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ allUnits: true }),
-    });
-    const data = await res.json();
-    if(!res.ok) throw new Error(data.error || 'Entfernen fehlgeschlagen');
-    if(Boolean(plan.meta?.is_demo)){
-      plan = { meta: {}, measures: {} };
-      updateMeta();
-      initSelectors();
-    }
-    toast(`Demo entfernt (${data.removedEntries || 0} Einträge, ${data.removedPlans || 0} Pläne)`);
-  } catch (err) {
-    toast(err.message || 'Entfernen fehlgeschlagen');
-  }
-}
-async function loadDemoFromApi(){
-  const unit = getBcSaveUnit();
-  if(!unit){
-    toast('Bitte oben eine konkrete Unit wählen (nicht „Alle Units“), um Demo-Daten zu laden.');
-    document.getElementById('bcHeaderUnitSwitcher')?.scrollIntoView?.({ behavior:'smooth', block:'nearest' });
-    return;
-  }
-  if(!confirm('Demo-Daten für „'+unit+'“ laden? Bestehende Demo-Einträge dieser Unit werden ersetzt.')) return;
-  try {
-    const res = await fetch('/api/demo/load', {
-      method: 'POST',
-      credentials: 'same-origin',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ unit }),
-    });
-    const data = await res.json();
-    if(!res.ok) throw new Error(data.error || 'Demo laden fehlgeschlagen');
-    await setBcViewUnit(unit);
-    await loadPlanFromApi();
-    await syncPlanMetaFromContext();
-    initSelectors();
-    updateMeta();
-    reviewSelected = { ws: workstreams()[0] || '', year: 2026 };
-    toast((data.message || 'Demo-Daten geladen') + ` · Filter: ${unit}`);
-  } catch (err) {
-    toast(err.message || 'Demo laden fehlgeschlagen');
-  }
-}
-async function removeDemoData(){
-  const unit = getBcSaveUnit() || bcUserUnit;
-  if(!unit){ toast('Keine Unit gewählt.'); return; }
-  if(!confirm('Alle Demo-Daten für „'+unit+'“ entfernen? Echte Planungen bleiben erhalten.')) return;
-  try {
-    const res = await fetch('/api/demo/remove', {
-      method: 'DELETE',
-      credentials: 'same-origin',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ unit }),
-    });
-    const data = await res.json();
-    if(!res.ok) throw new Error(data.error || 'Entfernen fehlgeschlagen');
-    const hadDemo = Boolean(plan.meta?.is_demo);
-    if(hadDemo){
-      plan = { meta: {}, measures: {} };
-      await syncPlanMetaFromContext();
-      savePlanLocal();
-      initSelectors();
-      updateMeta();
-    } else {
-      await loadPlanFromApi();
-      await syncPlanMetaFromContext();
-      initSelectors();
-      updateMeta();
-    }
-    toast('Demo entfernt ('+(data.removedEntries||0)+' Einträge, '+(data.removedPlans||0)+' Pläne)');
-  } catch (err) {
-    toast(err.message || 'Demo entfernen fehlgeschlagen');
-  }
-}
 
 function reviewAllEntries(){
   return Object.values(plan.measures||{}).flat().filter(m=>m && m.kind==='wsYear');
