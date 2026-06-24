@@ -2976,12 +2976,13 @@ function switchTab(p){
   if (isMitarbeiter && p !== "skills") return;
   if (isPhase3AppPage(p) && !canAccessPhase3Area()) return;
   if (isDemoDatenPage(p) && !canAccessDemoDaten()) return;
+  const prevPage = getActiveAppPage();
   document.querySelectorAll("#tabs .tab").forEach((t) => t.classList.toggle("active", t.dataset.page === p));
   document.querySelectorAll("#appMain .page").forEach((pg) => pg.classList.toggle("active", pg.id === "page-" + p));
   updateMainTabsBar(p);
   updateAppModuleNavActive(p);
   const page = document.getElementById("page-" + p);
-  if (page) collapseAllCollapsibleSections(page);
+  if (page && prevPage !== p) collapseAllCollapsibleSections(page);
 }
 
 // ===== PORTFOLIO =====
@@ -3175,6 +3176,8 @@ function loadPortfolioEntry(entry) {
   const cancel = document.getElementById(dom.cancelBtn);
   if (cancel) cancel.style.display = "";
   resetFormSaveButtonTracker(document.getElementById(dom.formId));
+  openPortfolioSection(category);
+  document.getElementById(dom.formId)?.scrollIntoView({ behavior: "smooth", block: "nearest" });
 }
 
 function cancelPortfolioEdit(category) {
@@ -3838,6 +3841,16 @@ let currentSkillKind = "tech";
 function collapseAllCollapsibleSections(root) {
   const scope = root || document;
   scope.querySelectorAll("details[open]").forEach((el) => el.removeAttribute("open"));
+}
+
+function openCollapsibleSectionForElement(el) {
+  const details = el?.closest?.("details");
+  if (details) details.setAttribute("open", "");
+}
+
+function openPortfolioSection(category) {
+  const dom = portfolioDomForCategory(category);
+  openCollapsibleSectionForElement(document.getElementById(dom.formId));
 }
 
 function collapseSkillDetailsSections() {

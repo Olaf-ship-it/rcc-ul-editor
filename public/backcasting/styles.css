@@ -257,6 +257,97 @@
   background: #fff;
 }
 
+.rc-app-backcasting .measure-head {
+  margin-bottom: .5rem;
+}
+
+.rc-app-backcasting .ms-title {
+  flex: 1;
+  min-width: 0;
+  margin-right: .5rem;
+  line-height: 1.35;
+  word-break: break-word;
+}
+
+.rc-app-backcasting .ms-title--empty {
+  color: var(--rc-muted);
+  font-style: italic;
+  font-weight: 600;
+}
+
+.rc-app-backcasting .bc-required {
+  color: #c0392b;
+  font-weight: 800;
+}
+
+.rc-app-backcasting .bc-ms-required.bc-input-invalid,
+.rc-app-backcasting textarea.bc-input-invalid,
+.rc-app-backcasting input.bc-input-invalid {
+  border-color: #c0392b;
+  box-shadow: 0 0 0 2px rgba(192, 57, 43, .12);
+}
+
+.rc-app-backcasting .ms-actions {
+  display: inline-flex;
+  align-items: center;
+  gap: .35rem;
+  flex-shrink: 0;
+}
+
+.rc-app-backcasting .bc-ms-icon-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 2rem;
+  height: 2rem;
+  padding: 0;
+  border-radius: 6px;
+  border: 1px solid var(--rc-border);
+  background: #fff;
+  color: var(--rc-muted);
+  cursor: pointer;
+  font-family: inherit;
+  transition: background .15s, color .15s, border-color .15s;
+}
+
+.rc-app-backcasting .bc-ms-icon-btn:hover {
+  background: #f4f6f9;
+  color: var(--rc-text);
+  border-color: #c5cad3;
+}
+
+.rc-app-backcasting .bc-ms-icon-btn--save {
+  color: var(--rc-accent2);
+  border-color: rgba(15, 52, 96, .22);
+}
+
+.rc-app-backcasting .bc-ms-icon-btn--save:hover {
+  background: rgba(15, 52, 96, .08);
+  color: var(--rc-accent2);
+}
+
+.rc-app-backcasting .bc-ms-icon-btn--delete {
+  color: #c0392b;
+  border-color: rgba(192, 57, 43, .28);
+}
+
+.rc-app-backcasting .bc-ms-icon-btn--delete:hover {
+  background: #fdecea;
+  color: #922b21;
+}
+
+.rc-app-backcasting .bc-ms-icon-btn--toggle svg {
+  transition: transform .2s ease;
+}
+
+.rc-app-backcasting .bc-ms-icon-btn--toggle.is-expanded svg {
+  transform: rotate(0deg);
+}
+
+.rc-app-backcasting .bc-ms-icon-btn--toggle:not(.is-expanded) svg {
+  transform: rotate(180deg);
+}
+
 .rc-app-backcasting .measure .mrow {
   display: grid;
   grid-template-columns: 1fr 1fr;

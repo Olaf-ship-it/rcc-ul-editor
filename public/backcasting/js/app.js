@@ -1,6 +1,6 @@
 console.log("APP_BOOT", new Date().toISOString());
 window.__APP_BOOTED__ = true;
-const YEARS=[2029,2028,2027,2026];
+const YEARS=[2026,2027,2028,2029];
 const TYPES=["Produkt","Service","Lösung","Organisation","Skill","Sales","Partner","Tech"];
 const STATUSES=["Geplant","In Arbeit","Abgeschlossen","Blockiert"];
 const LS_PLAN="rc_bc_plan";
@@ -18,6 +18,21 @@ let bcMasterUnitsCache = [];
 let bcUnitSwitcherBound = false;
 
 function escAttr(s){return (s==null?'':String(s)).replace(/&/g,'&amp;').replace(/"/g,'&quot;').replace(/</g,'&lt;');}
+
+const BC_SVG_SAVE =
+  '<svg viewBox="0 0 24 24" width="16" height="16" aria-hidden="true" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M19 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11l5 5v11a2 2 0 0 1-2 2z"/><polyline points="17 21 17 13 7 13 7 21"/><polyline points="7 3 7 8 15 8"/></svg>';
+const BC_SVG_TRASH =
+  '<svg viewBox="0 0 24 24" width="16" height="16" aria-hidden="true" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="3 6 5 6 21 6"/><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/><line x1="10" y1="11" x2="10" y2="17"/><line x1="14" y1="11" x2="14" y2="17"/></svg>';
+const BC_SVG_CHEVRON =
+  '<svg viewBox="0 0 24 24" width="16" height="16" aria-hidden="true" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="18 15 12 9 6 15"/></svg>';
+
+function bcMsIconBtn(className, title, onclick, svg, id) {
+  const idAttr = id ? ` id="${id}"` : "";
+  return (
+    `<button type="button" class="bc-ms-icon-btn ${className} no-print"${idAttr}` +
+    ` title="${escAttr(title)}" aria-label="${escAttr(title)}" onclick="${onclick}">${svg}</button>`
+  );
+}
 
 function initBcSessionFromDetail(me){
   if(!me){
@@ -202,13 +217,19 @@ function savePlanLocal(){
   }
   updateMeta();
 }
-async function savePlan(){
-  if(isBcViewAll()) return;
-  if(!requireBcSaveUnit()) return;
+async function savePlan(options = {}){
+  const allowIncomplete = Boolean(options.allowIncomplete);
+  const silent = Boolean(options.silent);
+  if(isBcViewAll()) return false;
+  if(!requireBcSaveUnit()) return false;
   await syncPlanMetaFromContext();
   savePlanLocal();
+  if(!allowIncomplete && findMilestonesMissingErgebnis().length){
+    if(!silent) toast('Bitte bei allen Meilensteinen „Ergebnis / Artefakt“ ausfüllen.', '#e74c3c');
+    return false;
+  }
   const unit = getBcSaveUnit();
-  if(!unit) return;
+  if(!unit) return false;
   try {
     await fetch('/api/backcasting/plan', {
       method: 'PUT',
@@ -221,7 +242,29 @@ async function savePlan(){
         is_demo: Boolean(plan.meta?.is_demo),
       }),
     });
+    return true;
   } catch (_e) { /* lokaler Cache bleibt */ }
+  return false;
+}
+
+async function saveMilestone(ws, yr, idx){
+  if(isBcViewAll()) return;
+  if(!requireBcSaveUnit()) return;
+  const entries=getWsEntries(ws, yr);
+  const entry=entries[idx];
+  if(!entry) return;
+  const mid='ms_'+yr+'_'+idx;
+  const field=document.getElementById(mid+'_ergebnis');
+  if(!String(entry.ergebnis||'').trim()){
+    toast('„Ergebnis / Artefakt“ ist ein Pflichtfeld.', '#e74c3c');
+    document.getElementById(mid)?.classList.remove('closed');
+    field?.classList.add('bc-input-invalid');
+    field?.focus();
+    return;
+  }
+  field?.classList.remove('bc-input-invalid');
+  const ok = await savePlan();
+  if(ok) toast('Gespeichert');
 }
 
 async function loadPlanFromApi(){
@@ -377,7 +420,7 @@ function renderWsDetail(ws){
 
   let h='<div class="ws-split" id="wsSplit">'+
     '<div class="ws-left ws-plan" id="wsLeft">'+
-      '<h3 style="margin-top:0;color:var(--rc-accent2)">Erfassung / Backcasting je Jahr (2029 → 2026) <span class="bc-tag" id="wsEntryCount">0 Einträge</span></h3>';
+      '<h3 style="margin-top:0;color:var(--rc-accent2)">Erfassung / Backcasting je Jahr (2026 → 2029) <span class="bc-tag" id="wsEntryCount">0 Einträge</span></h3>';
 
 
   YEARS.forEach((yr,idx)=>{
@@ -419,7 +462,7 @@ function setWsEntries(ws, yr, arr){
   if(!requireBcSaveUnit()) return;
   const key = wsId(ws)+'||'+yr;
   plan.measures[key]=arr;
-  savePlan();
+  savePlanLocal();
 }
 
 function initSplitter(){
@@ -444,7 +487,7 @@ function initSplitter(){
       const pct = (left.getBoundingClientRect().width / total) * 100;
       plan.meta = plan.meta || {};
       plan.meta.splitRatio = pct;
-      savePlan();
+      savePlan({ allowIncomplete: true });
     }
   };
   const onMove=(e)=>{
@@ -470,8 +513,13 @@ function toggleMs(id){
   const el=document.getElementById(id);
   if(!el) return;
   el.classList.toggle('closed');
-  const lbl=document.getElementById(id+'_lbl');
-  if(lbl) lbl.textContent = el.classList.contains('closed') ? 'Aufklappen' : 'Zuklappen';
+  const btn=document.getElementById(id+'_toggle');
+  if(!btn) return;
+  const collapsed=el.classList.contains('closed');
+  btn.classList.toggle('is-expanded', !collapsed);
+  const label=collapsed ? 'Aufklappen' : 'Zuklappen';
+  btn.title=label;
+  btn.setAttribute('aria-label', label);
 }
 
 function wsYearForm(ws, yr){
@@ -487,21 +535,23 @@ function wsYearForm(ws, yr){
   }
 
   entries.forEach((e, idx)=>{
-    const oc=(field)=>`onchange=\"updWs(\\'${esc(ws)}\\',${yr},${idx},\\'${field}\\',this.value)\"`;
+    const wsJs=esc(ws).replace(/'/g,"\\'");
+    const oc=(field)=>`onchange="updWs('${wsJs}',${yr},${idx},'${field}',this.value)"`;
     const mid = 'ms_'+yr+'_'+idx;
+    const title=milestoneTitle(e);
+    const titleClass=(e.ergebnis||'').trim()?'ms-title':'ms-title ms-title--empty';
     h += '<div class="measure">'+
-      '<div class="bc-flex-between" style="cursor:pointer" onclick="toggleMs(\''+mid+'\')">'+
-        '<b>Meilenstein '+(idx+1)+'</b>'+
-        '<div class="row" style="gap:8px;justify-content:flex-end;margin:0" onclick="event.stopPropagation()">'+
-          '<button class="btn btn-sm btn-outline no-print" onclick="savePlan();toast(\'Gespeichert\')">Speichern</button>'+
-          '<button class="btn btn-sm btn-danger btn-outline no-print" onclick="delWsEntry(\''+esc(ws).replace(/'/g,'')+'\','+yr+','+idx+')">Löschen</button>'+
-          '<button class="btn btn-sm btn-outline no-print" onclick="toggleMs(\''+mid+'\')">'+
-            '<span id="'+mid+'_lbl">Zuklappen</span></button>'+
+      '<div class="bc-flex-between measure-head" style="cursor:pointer" onclick="toggleMs(\''+mid+'\')">'+
+        '<b class="'+titleClass+'" id="'+mid+'_title">'+esc(title)+'</b>'+
+        '<div class="ms-actions" onclick="event.stopPropagation()">'+
+          bcMsIconBtn('bc-ms-icon-btn--save', 'Speichern', "saveMilestone('"+esc(ws).replace(/'/g,"\\'")+"',"+yr+","+idx+")", BC_SVG_SAVE)+
+          bcMsIconBtn('bc-ms-icon-btn--delete', 'Löschen', "delWsEntry('"+esc(ws).replace(/'/g,'')+"',"+yr+","+idx+")", BC_SVG_TRASH)+
+          bcMsIconBtn('bc-ms-icon-btn--toggle is-expanded', 'Zuklappen', "toggleMs('"+mid+"')", BC_SVG_CHEVRON, mid+'_toggle')+
         '</div>'+
       '</div>'+
       '<div id="'+mid+'" class="ms-body">'+
-        '<div class="field">'+tip('1. Ergebnis / Artefakt (Was muss existieren?)','Beschreibe konkrete deliverables, die bis Jahresende existieren müssen (z. B. Offering, Playbook, Governance, Pilot, Asset, Board-Entscheidung).')+
-          '<textarea '+oc('ergebnis')+'>'+esc(e.ergebnis||'')+'</textarea></div>'+
+        '<div class="field">'+tipRequired('1. Ergebnis / Artefakt (Was muss existieren?)','Beschreibe konkrete deliverables, die bis Jahresende existieren müssen (z. B. Offering, Playbook, Governance, Pilot, Asset, Board-Entscheidung). Name erscheint als Meilenstein-Titel.')+
+          '<textarea id="'+mid+'_ergebnis" class="bc-ms-required" required oninput="updWs(\''+wsJs+'\','+yr+','+idx+',\'ergebnis\',this.value)" '+oc('ergebnis')+'>'+esc(e.ergebnis||'')+'</textarea></div>'+
         '<div class="field">'+tip('2. Messbare KPIs (Woran messen wir Erfolg?)','Nenne messbare Kennzahlen für dieses Jahr (z. B. #Piloten, %Reuse, Recurring-Anteil, #Zertifizierungen, Marge).')+
           '<textarea '+oc('kpis')+'>'+esc(e.kpis||'')+'</textarea></div>'+
         '<div class="field">'+tip('3. Voraussetzungen (Was muss vorher passieren?)','Liste Voraussetzungen, die vorher erfüllt sein müssen (Budgetfreigabe, Rollenbesetzung, Trainings, Tooling, Entscheidungsgremien).')+
@@ -522,7 +572,7 @@ function wsYearForm(ws, yr){
 
 function addWsEntry(ws, yr){
   const entries=getWsEntries(ws, yr);
-  entries.push({id: uid(), kind:'wsYear', workstream: ws, jahr: yr,
+  entries.unshift({id: uid(), kind:'wsYear', workstream: ws, jahr: yr,
     ergebnis:'', kpis:'', voraussetzungen:'', abhaengigkeiten:'', risiken:'', verantwortlich:'',
     ziel_umsatz_teur: null, ziel_headcount: null, ziel_quartal: '', ziel_skill_kategorie: '',
     ziel_skill_level_min: null, ziel_anteil_prozent: null
@@ -530,6 +580,7 @@ function addWsEntry(ws, yr){
   setWsEntries(ws, yr, entries);
   renderWsDetail(ws);
   renderCatList();
+  setTimeout(() => document.getElementById('ms_'+yr+'_0_ergebnis')?.focus(), 0);
 }
 
 function delWsEntry(ws, yr, idx){
@@ -548,7 +599,16 @@ function updWs(ws, yr, idx, field, val){
   e[field]=val;
   e.updatedAt=new Date().toISOString();
   setWsEntries(ws, yr, entries);
-  // update left counts
+  if(field==='ergebnis'){
+    const mid='ms_'+yr+'_'+idx;
+    const titleEl=document.getElementById(mid+'_title');
+    const fieldEl=document.getElementById(mid+'_ergebnis');
+    if(titleEl){
+      titleEl.textContent=milestoneTitle(e);
+      titleEl.classList.toggle('ms-title--empty', !String(val||'').trim());
+    }
+    if(fieldEl && String(val||'').trim()) fieldEl.classList.remove('bc-input-invalid');
+  }
   renderCatList();
 }
 
@@ -584,6 +644,28 @@ function renderStructuredTargets(ws, yr, idx, e){
     '</div></details>';
 }
 function tip(label,text){return '<label>'+esc(label)+' <span class="help" tabindex="0" data-tip="'+esc(text)+'">i</span></label>'}
+function tipRequired(label,text){return '<label>'+esc(label)+' <span class="bc-required" aria-hidden="true">*</span> <span class="help" tabindex="0" data-tip="'+esc(text)+'">i</span></label>'}
+
+function milestoneTitle(entry) {
+  const text = String(entry?.ergebnis || "").trim();
+  if (!text) return "Neuer Meilenstein";
+  const firstLine = text.split("\n")[0].trim();
+  if (firstLine.length <= 96) return firstLine;
+  return firstLine.slice(0, 93) + "…";
+}
+
+function findMilestonesMissingErgebnis() {
+  const missing = [];
+  Object.values(plan?.measures || {}).forEach((val) => {
+    const arr = Array.isArray(val) ? val : val ? [val] : [];
+    arr.forEach((entry, idx) => {
+      if (entry?.kind === "wsYear" && !String(entry.ergebnis || "").trim()) {
+        missing.push({ entry, idx });
+      }
+    });
+  });
+  return missing;
+}
 
 
 /* legacy measureCard block removed */
@@ -621,10 +703,10 @@ function ampelFor(ws,yr){
 }
 function renderReview(){
   const wss=workstreams();
-  let h='<thead><tr><th>Workstream</th>'+YEARS.slice().reverse().map(y=>'<th style="text-align:center">'+y+'</th>').join('')+'</tr></thead><tbody>';
+  let h='<thead><tr><th>Workstream</th>'+YEARS.map(y=>'<th style="text-align:center">'+y+'</th>').join('')+'</tr></thead><tbody>';
   wss.forEach(ws=>{
     h+='<tr><td><b>'+esc(ws)+'</b></td>';
-    YEARS.slice().reverse().forEach(y=>{const a=ampelFor(ws,y);
+    YEARS.forEach(y=>{const a=ampelFor(ws,y);
       h+='<td class="cell" onclick="drill(\''+esc(ws).replace(/'/g,"")+'\','+y+')"><span class="dot '+a.c+'"></span><div class="bc-muted">'+a.n+'</div></td>';});
     h+='</tr>';
   });
@@ -640,8 +722,8 @@ function drill(ws,yr){
   if(!entries.length){
     h+='<p class="bc-muted">Keine Einträge.</p>';
   } else {
-    entries.forEach((e, idx)=>{
-      h+='<div class="measure" style="margin-top:10px"><b>Meilenstein '+(idx+1)+'</b></div>';
+    entries.forEach((e)=>{
+      h+='<div class="measure" style="margin-top:10px"><b>'+esc(milestoneTitle(e))+'</b></div>';
       const items=[
         ['Ergebnis / Artefakt', e.ergebnis],
         ['Messbare KPIs', e.kpis],
@@ -658,7 +740,7 @@ function drill(ws,yr){
   const d=document.getElementById('reviewDrill');d.innerHTML=h;d.style.display='block';d.scrollIntoView({behavior:'smooth'})
 }
 
-const REVIEW_YEARS = [2026, 2027, 2028, 2029];
+const REVIEW_YEARS = YEARS;
 let reviewSelected = {ws:'', year:2026};
 
 function reviewAllEntries(){
@@ -742,7 +824,7 @@ function renderReviewDrill(){
     const score = reviewExtendedCount(m);
     const cls = !reviewCoreFilled(m) ? 'red' : (String(m.risiken||'').trim() ? 'amber' : 'green');
     const label = !reviewCoreFilled(m) ? 'kritisch' : (String(m.risiken||'').trim() ? 'mit Risiko' : 'stabil');
-    return '<div class="review-mile"><div class="review-mile-head"><div><div class="review-mile-title">'+esc(m.ergebnis)+'</div><div class="bc-muted" style="margin-top:4px">Meilenstein '+(i+1)+' · Vollständigkeit '+score+'/6</div></div><span class="review-pill '+cls+'">'+label+'</span></div>'+
+    return '<div class="review-mile"><div class="review-mile-head"><div><div class="review-mile-title">'+esc(milestoneTitle(m))+'</div><div class="bc-muted" style="margin-top:4px">Vollständigkeit '+score+'/6</div></div><span class="review-pill '+cls+'">'+label+'</span></div>'+
       '<div class="review-mini-grid">'+
       '<div class="review-field"><div class="k">Messbare KPIs</div><div class="v">'+esc(m.kpis)+'</div></div>'+
       '<div class="review-field"><div class="k">Verantwortlich</div><div class="v">'+esc(m.verantwortlich)+'</div></div>'+
