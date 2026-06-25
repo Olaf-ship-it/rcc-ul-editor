@@ -10,7 +10,7 @@
 <body class="session-booting">
 
 <div class="session-boot-splash" id="sessionBootSplash" aria-live="polite">
-  <div class="session-boot-splash__box">RCC Strategische Planung wird geladen…</div>
+  <div class="session-boot-splash__box">Session wird geprüft…</div>
 </div>
 
 <!-- LOGIN -->
@@ -52,39 +52,31 @@
 <!-- HEADER -->
 <div class="header" id="appHeader" style="display:none">
   <div class="header-top">
+    <div class="header-top-title">
+      <span class="header-unit-bar-label" id="appHeaderSubtitle">Portfolio, Organisation &amp; Skill-Matrix · Transformation 2026–2029</span>
+    </div>
     <div class="header-account">
       <span class="header-account-name" id="headerName"></span>
-      <div class="header-actions">
-        <a class="btn-header-icon btn-header-admin" href="#" id="launcherAdmin" style="display:none" aria-label="Administration" title="Administration">
-          <svg viewBox="0 0 24 24" width="18" height="18" aria-hidden="true" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 15a3 3 0 1 0 0-6 3 3 0 0 0 0 6Z"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 1 1-4 0v-.09a1.65 1.65 0 0 0-1-1.51 1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06A1.65 1.65 0 0 0 5 15.4a1.65 1.65 0 0 0-1.51-1H3a2 2 0 1 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06A1.65 1.65 0 0 0 9 5.6a1.65 1.65 0 0 0 1-1.51V3a2 2 0 1 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06A1.65 1.65 0 0 0 19.4 9c.36.48.58 1.07.6 1.68V12a2 2 0 1 1-4 0v-.09a1.65 1.65 0 0 0-1-1.51Z"/></svg>
-        </a>
-        <button type="button" class="btn-header-icon btn-logout" onclick="doLogout()" aria-label="Abmelden" title="Abmelden">
-          <svg viewBox="0 0 24 24" width="18" height="18" aria-hidden="true" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"/><polyline points="16 17 21 12 16 7"/><line x1="21" y1="12" x2="9" y2="12"/></svg>
-        </button>
-      </div>
+      <a class="btn-header-icon btn-header-admin" href="#" id="launcherAdmin" style="display:none" aria-label="Administration" title="Administration">
+        <svg viewBox="0 0 24 24" width="18" height="18" aria-hidden="true" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 15a3 3 0 1 0 0-6 3 3 0 0 0 0 6Z"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 1 1-4 0v-.09a1.65 1.65 0 0 0-1-1.51 1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06A1.65 1.65 0 0 0 5 15.4a1.65 1.65 0 0 0-1.51-1H3a2 2 0 1 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06A1.65 1.65 0 0 0 9 5.6a1.65 1.65 0 0 0 1-1.51V3a2 2 0 1 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06A1.65 1.65 0 0 0 19.4 9c.36.48.58 1.07.6 1.68V12a2 2 0 1 1-4 0v-.09a1.65 1.65 0 0 0-1-1.51Z"/></svg>
+      </a>
+      <button type="button" class="btn-header-icon btn-logout" onclick="doLogout()" aria-label="Abmelden" title="Abmelden">
+        <svg viewBox="0 0 24 24" width="18" height="18" aria-hidden="true" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"/><polyline points="16 17 21 12 16 7"/><line x1="21" y1="12" x2="9" y2="12"/></svg>
+      </button>
     </div>
+  </div>
+  <div class="header-phases-bar" id="headerPhasesBar" style="display:none">
+    <span class="header-unit-bar-label">Phasen</span>
+    <nav class="app-module-nav" id="appModuleNav" aria-label="Phasen">
+      <a class="app-module-link is-active" href="/" id="launcherPhase1" aria-current="page">Phase 1 · Status Aufnahme</a>
+      <a class="app-module-link" href="/backcasting/" id="launcherBackcasting" style="display:none">Phase 2 · Backcasting-Planung</a>
+      <a class="app-module-link" href="#" id="launcherFortschritt" style="display:none">Phase 3 · Fortschritt</a>
+    </nav>
   </div>
   <div class="header-unit-bar" id="headerUnitSwitcher" style="display:none">
     <span class="header-unit-bar-label">Filter</span>
     <div class="header-unit-tabs" id="headerUnitTabs" role="tablist" aria-label="Filtern"></div>
     <span class="header-unit-hint" id="superAdminViewHint" style="display:none">Nur Ansicht – zum Erfassen eine Unit wählen</span>
-  </div>
-  <div class="header-main">
-    <div class="header-brand-block">
-      <div class="header-brand-row">
-        <div class="header-phases-bar" id="headerPhasesBar" style="display:none">
-          <span class="header-unit-bar-label">Phasen</span>
-          <nav class="app-module-nav" id="appModuleNav" aria-label="Phasen">
-            <a class="app-module-link is-active" href="/" id="launcherPhase1" aria-current="page">Phase 1 · Status Aufnahme</a>
-            <a class="app-module-link" href="/backcasting/" id="launcherBackcasting" style="display:none">Phase 2 · Backcasting-Planung</a>
-            <a class="app-module-link" href="#" id="launcherFortschritt" style="display:none">Phase 3 · Fortschritt</a>
-          </nav>
-          <span class="header-phases-sep" id="headerPhasesSep" style="display:none" aria-hidden="true"></span>
-          <button type="button" class="app-module-link app-module-link--demo" id="launcherDemoDaten" style="display:none">🧪 Demo-Daten</button>
-        </div>
-        <div class="subtitle" id="appHeaderSubtitle">Portfolio, Organisation &amp; Skill-Matrix · Transformation 2026–2029</div>
-      </div>
-    </div>
   </div>
 </div>
 
@@ -601,7 +593,7 @@
         <strong>Detailfortschritt · IST vs. SOLL</strong>
         <p>Diese Ansicht vergleicht den <b>Ist-Stand</b> aus Phase&nbsp;1 (Status Aufnahme) mit den <b>Soll-Vorgaben</b> aus der Backcasting-Planung (Phase&nbsp;2) für die gewählte Unit.</p>
         <p><b>IST</b> = aktuelle Erfassung (Portfolio, Organisation, Skills). <b>SOLL</b> = aggregierte Zielwerte aus Plan-Meilensteinen des gewählten Jahres.</p>
-        <p>Den Zeitstrahl 2026–2029 finden Sie im Register <em>Gesamtfortschritt</em>. Das Jahr steuert hier die Detail-Ansicht (KPI-Karten, Meilensteine). Demo-Datensätze pflegen Sie über den Button <em>Demo-Daten</em> bei den Phasen.</p>
+        <p>Den Zeitstrahl 2026–2029 finden Sie im Register <em>Gesamtfortschritt</em>. Das Jahr steuert hier die Detail-Ansicht (KPI-Karten, Meilensteine). Demo-Datensätze pflegen Sie im Admin-Bereich unter dem Register <em>Demo-Daten</em>.</p>
       </div>
     </div>
     <p style="color:var(--rc-muted);font-size:.8rem;margin-bottom:.75rem">
@@ -623,80 +615,6 @@
     </div>
   </div>
   <div id="fortschrittContent"></div>
-</div>
-
-<!-- ===== DEMO-DATEN (Phase 3) ===== -->
-<div class="page" id="page-demo-daten">
-  <div class="card demo-daten-card" style="border-left-color:var(--rc-orange);margin-bottom:1rem">
-    <h3 style="margin:0 0 .35rem">Demo-Daten</h3>
-    <p class="demo-daten-lead">
-      Lädt je Unit vollständige <strong>Phase&nbsp;1</strong>-Daten (Portfolio, Organisation, Skills) und einen
-      <strong>Phase&nbsp;2</strong>-Backcasting-Plan (Meilensteine 2026–2029).
-      Den IST/SOLL-Vergleich finden Sie im Register <strong>Detailfortschritt</strong>, den Zeitstrahl im Register <strong>Gesamtfortschritt</strong>.
-      Demo-Einträge sind markiert und überschreiben keine echten Daten.
-    </p>
-    <div class="demo-daten-actions">
-      <button type="button" class="btn btn-outline btn-sm" id="btnFortschrittDemoLoad">Demo-Daten laden</button>
-      <button type="button" class="btn btn-outline btn-sm" id="btnFortschrittDemoLoadAll" style="display:none">Demo alle Units laden</button>
-      <button type="button" class="btn btn-danger btn-sm btn-outline" id="btnFortschrittDemoRemove">Demo entfernen</button>
-      <button type="button" class="btn btn-danger btn-sm btn-outline" id="btnFortschrittDemoRemoveAll" style="display:none">Demo alle Units entfernen</button>
-    </div>
-    <div class="demo-daten-load-status" id="demoDatenLoadStatus" aria-live="polite">
-      <div class="demo-daten-load-status__inner">Lade Demo-Status…</div>
-    </div>
-    <div class="fortschritt-demo-info__body demo-daten-info">
-      <h4 class="fortschritt-demo-info__h">Inhalt je Unit</h4>
-      <ul class="fortschritt-demo-info__list">
-        <li><b>Phase 1</b> – Portfolio-Positionen, Organisation (Gliederungen, Rollen) und Skill-Matrix mit Mitarbeitenden</li>
-        <li><b>Phase 2</b> – Backcasting-Plan mit Meilensteinen für 2026–2029 (Umsatz, Headcount, Zertifizierung, Skill-Ziele)</li>
-        <li><b>Phase 3</b> – daraus abgeleitete Auswertungen: Zeitstrahl im Register <em>Gesamtfortschritt</em>, IST/SOLL-Details im Register <em>Detailfortschritt</em></li>
-      </ul>
-      <h4 class="fortschritt-demo-info__h">Standard-Units &amp; Profile</h4>
-      <div class="tbl-wrap">
-        <table class="entries fortschritt-demo-info__table">
-          <thead>
-            <tr>
-              <th>Unit</th>
-              <th>Schwerpunkt</th>
-              <th>Demo-Profil (IST vs. SOLL)</th>
-            </tr>
-          </thead>
-          <tbody>
-            <tr>
-              <td>SAP Infrastructure</td>
-              <td>Basis- &amp; Cloud-Operations</td>
-              <td>Hoher Umsatz, niedrigere Zertifizierungsquote</td>
-            </tr>
-            <tr>
-              <td>SAP Engineers</td>
-              <td>Development &amp; DevOps</td>
-              <td>Starke Skills, Umsatz leicht unter Plan</td>
-            </tr>
-            <tr>
-              <td>SAP Integration</td>
-              <td>Integration &amp; APIs</td>
-              <td>Ausgewogenes Referenzprofil</td>
-            </tr>
-            <tr>
-              <td>SAP Architecture</td>
-              <td>Enterprise &amp; Solution Architecture</td>
-              <td>Kleines Team, hoher Umsatz pro Kopf</td>
-            </tr>
-          </tbody>
-        </table>
-      </div>
-      <h4 class="fortschritt-demo-info__h">Laden &amp; Entfernen</h4>
-      <ul class="fortschritt-demo-info__list">
-        <li><b>Demo-Daten laden</b> – ersetzt nur Demo-Einträge der im <em>Filter</em> gewählten Unit</li>
-        <li><b>Demo alle Units laden</b> – (Admins, Filter „Alle Units“) lädt Demo-Daten für alle vier Standard-Units auf einmal</li>
-        <li><b>Demo entfernen</b> – löscht ausschließlich Demo-Einträge und Demo-Pläne; echte Daten bleiben erhalten</li>
-      </ul>
-      <p class="fortschritt-demo-info__hint">
-        Der Zeitstrahl (2026–2029) ist im Register <em>Gesamtfortschritt</em> einsehbar.
-        IST/SOLL-Details je Unit im Register <em>Detailfortschritt</em> (konkrete Unit im Filter wählen).
-      </p>
-    </div>
-  </div>
 </div>
 
 <!-- ===== EXPORT ===== -->
@@ -724,6 +642,7 @@
     <button type="button" class="status-subtab-btn" id="btnAdminSubtabLeitplanken" data-mode="leitplanken">📐 Leitplanken pflegen</button>
     <button type="button" class="status-subtab-btn" id="btnAdminSubtabPermissions" data-mode="permissions">🔐 Rollen &amp; Berechtigungen</button>
     <button type="button" class="status-subtab-btn" id="btnAdminSubtabOrg" data-mode="org">🏛️ Organigramm</button>
+    <button type="button" class="status-subtab-btn" id="btnAdminSubtabDemo" data-mode="demo">🧪 Demo-Daten</button>
   </div>
 
   <div id="adminPanelUsers">
@@ -1086,6 +1005,114 @@
       <p id="adminOrgEmpty" style="text-align:center;color:var(--rc-muted);padding:2rem;display:none">Keine Organisationsdaten vorhanden.</p>
     </div>
   </div>
+
+  <div id="adminPanelDemo" style="display:none">
+    <div class="card demo-daten-card" style="border-left-color:var(--rc-orange);margin-bottom:1rem">
+      <h3 style="margin:0 0 .35rem">Demo-Daten</h3>
+      <p class="demo-daten-lead">
+        Lädt je Unit vollständige <strong>Phase&nbsp;1</strong>-Daten (Portfolio, Organisation, Skills) und einen
+        <strong>Phase&nbsp;2</strong>-Backcasting-Plan (Meilensteine 2026–2029).
+        Den IST/SOLL-Vergleich finden Sie im Register <strong>Detailfortschritt</strong>, den Zeitstrahl im Register <strong>Gesamtfortschritt</strong>.
+        Demo-Einträge sind markiert und überschreiben keine echten Daten.
+      </p>
+      <div class="demo-daten-actions">
+        <button type="button" class="btn btn-outline btn-sm" id="btnFortschrittDemoLoad">Demo-Daten laden</button>
+        <button type="button" class="btn btn-outline btn-sm" id="btnFortschrittDemoLoadAll" style="display:none">Demo alle Units laden</button>
+        <button type="button" class="btn btn-danger btn-sm btn-outline" id="btnFortschrittDemoRemove">Demo entfernen</button>
+        <button type="button" class="btn btn-danger btn-sm btn-outline" id="btnFortschrittDemoRemoveAll" style="display:none">Demo alle Units entfernen</button>
+      </div>
+      <div class="demo-daten-load-status" id="demoDatenLoadStatus" aria-live="polite">
+        <div class="demo-daten-load-status__inner">Lade Demo-Status…</div>
+      </div>
+      <div class="fortschritt-demo-info__body demo-daten-info">
+        <h4 class="fortschritt-demo-info__h">Inhalt je Unit</h4>
+        <ul class="fortschritt-demo-info__list">
+          <li><b>Phase 1</b> – Portfolio-Positionen, Organisation (Gliederungen, Rollen) und Skill-Matrix mit Mitarbeitenden</li>
+          <li><b>Phase 2</b> – Backcasting-Plan mit Meilensteinen für 2026–2029 (Umsatz, Headcount, Zertifizierung, Skill-Ziele)</li>
+          <li><b>Phase 3</b> – daraus abgeleitete Auswertungen: Zeitstrahl im Register <em>Gesamtfortschritt</em>, IST/SOLL-Details im Register <em>Detailfortschritt</em></li>
+        </ul>
+        <h4 class="fortschritt-demo-info__h">Standard-Units &amp; Profile</h4>
+        <div class="tbl-wrap">
+          <table class="entries fortschritt-demo-info__table">
+            <thead>
+              <tr>
+                <th>Unit</th>
+                <th>Schwerpunkt</th>
+                <th>Demo-Profil (IST vs. SOLL)</th>
+              </tr>
+            </thead>
+            <tbody>
+              <tr>
+                <td>SAP Infrastructure</td>
+                <td>Basis- &amp; Cloud-Operations</td>
+                <td>Hoher Umsatz, niedrigere Zertifizierungsquote</td>
+              </tr>
+              <tr>
+                <td>SAP Engineers</td>
+                <td>Development &amp; DevOps</td>
+                <td>Starke Skills, Umsatz leicht unter Plan</td>
+              </tr>
+              <tr>
+                <td>SAP Integration</td>
+                <td>Integration &amp; APIs</td>
+                <td>Ausgewogenes Referenzprofil</td>
+              </tr>
+              <tr>
+                <td>SAP Architecture</td>
+                <td>Enterprise &amp; Solution Architecture</td>
+                <td>Kleines Team, hoher Umsatz pro Kopf</td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
+        <h4 class="fortschritt-demo-info__h">Laden &amp; Entfernen</h4>
+        <ul class="fortschritt-demo-info__list">
+          <li><b>Demo-Daten laden</b> – ersetzt nur Demo-Einträge der im <em>Filter</em> gewählten Unit</li>
+          <li><b>Demo alle Units laden</b> – (Admins, Filter „Alle Units“) lädt Demo-Daten für alle vier Standard-Units auf einmal</li>
+          <li><b>Demo entfernen</b> – löscht ausschließlich Demo-Einträge und Demo-Pläne; echte Daten bleiben erhalten</li>
+        </ul>
+        <p class="fortschritt-demo-info__hint">
+          Der Zeitstrahl (2026–2029) ist im Register <em>Gesamtfortschritt</em> einsehbar.
+          IST/SOLL-Details je Unit im Register <em>Detailfortschritt</em> (konkrete Unit im Filter wählen).
+        </p>
+      </div>
+    </div>
+  </div>
+</div>
+
+<div id="portfolioEditModal" class="app-modal-overlay" style="display:none" role="dialog" aria-modal="true" aria-labelledby="portfolioEditTitle">
+  <div class="app-modal-box login-box">
+    <div class="app-modal-head">
+      <h3 id="portfolioEditTitle" style="margin:0">Portfolio bearbeiten</h3>
+      <button type="button" class="btn btn-sm btn-outline" id="portfolioEditClose" aria-label="Schließen" title="Schließen">✕</button>
+    </div>
+    <form id="portfolioEditForm" autocomplete="off">
+      <input type="hidden" id="portfolioEdit_editId" value="">
+      <input type="hidden" id="portfolioEdit_category" value="">
+      <label>Bezeichnung *</label>
+      <input type="text" id="portfolioEdit_bezeichnung" required placeholder="z.B. AMS Copilot">
+      <label>Beschreibung / Erlaeuterung *</label>
+      <textarea id="portfolioEdit_beschreibung" required placeholder="Kurzbeschreibung, Nutzen, Status..." style="min-height:70px"></textarea>
+      <label>Hinweis</label>
+      <textarea id="portfolioEdit_hinweis" placeholder="Ergaenzende Hinweise, offene Punkte..." style="min-height:45px"></textarea>
+      <label>Jaehrlicher Umsatz (TEUR)</label>
+      <input type="number" id="portfolioEdit_jahresumsatz_teur" min="0" step="1" placeholder="z.B. 1200">
+      <label class="field-optional">Umsatz-Hinweis (optional)</label>
+      <input type="text" id="portfolioEdit_jahresumsatz" placeholder="z.B. Erlaeuterung oder Legacy-Angabe">
+      <label>Ampel *</label>
+      <select id="portfolioEdit_ampel" required>
+        <option value="">– waehlen –</option>
+        <option value="green">🟩 Etabliert / funktioniert</option>
+        <option value="orange">🟧 Begonnen / teilweise</option>
+        <option value="blue">🟦 In Planung</option>
+        <option value="red">🟥 Fehlt / kritisch</option>
+      </select>
+      <div class="btn-group app-modal-actions">
+        <button type="button" class="btn btn-outline" id="portfolioEditCancel">Abbrechen</button>
+        <button type="submit" class="btn btn-primary">💾 Speichern</button>
+      </div>
+    </form>
+  </div>
 </div>
 
 <div id="admUnitPicker" class="login-overlay" style="display:none;align-items:center;justify-content:center">
@@ -1213,7 +1240,7 @@
         <label class="unit-checkbox-item"><input type="checkbox" data-app-module="backcasting"> Phase 2 · Backcasting-Planung</label>
         <label class="unit-checkbox-item"><input type="checkbox" data-app-module="fortschritt"> Phase 3 · Fortschritt</label>
       </div>
-      <p style="color:var(--rc-muted);font-size:.75rem;margin:0">Freischaltung von Phase 2 (<code>/backcasting/</code>) und Phase 3 (Gesamtfortschritt / Detailfortschritt) für <strong>Unit Leiter</strong>, <strong>Stellv. Unit Leiter</strong>, <strong>CC Leiter</strong> und <strong>Regionalleiter</strong>. Bei <strong>Admin</strong> oder <strong>Super Admin</strong> sind beide Phasen automatisch aktiv und nicht änderbar. <strong>Demo-Daten</strong> ist für alle angemeldeten Nutzer (außer Mitarbeiter) über den Button neben den Phasen erreichbar.</p>
+      <p style="color:var(--rc-muted);font-size:.75rem;margin:0">Freischaltung von Phase 2 (<code>/backcasting/</code>) und Phase 3 (Gesamtfortschritt / Detailfortschritt) für <strong>Unit Leiter</strong>, <strong>Stellv. Unit Leiter</strong>, <strong>CC Leiter</strong> und <strong>Regionalleiter</strong>. Bei <strong>Admin</strong> oder <strong>Super Admin</strong> sind beide Phasen automatisch aktiv und nicht änderbar. <strong>Demo-Daten</strong> pflegen Admins im Register <em>Demo-Daten</em> in der Administration.</p>
     </div>
     <div class="admin-user-section" style="margin-bottom:.65rem">
       <h4 style="margin:0 0 .35rem;font-size:.9rem">Rollen (Organisation)</h4>
@@ -1265,6 +1292,7 @@
 <script src="/js/soft-skill-ref-data.js"></script>
 <script src="/js/organisation-ref-data.js"></script>
 <script src="/js/harmonization-data.js"></script>
+<script src="/js/view-unit-persist.js"></script>
 <script src="/js/fortschritt-dashboard.js?v=20260624d"></script>
 <script src="/backcasting/js/embedded-data.js"></script>
 <script src="/backcasting/js/guidelines.js"></script>

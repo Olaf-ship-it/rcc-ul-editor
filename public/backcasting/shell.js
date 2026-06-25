@@ -18,25 +18,26 @@
     if (meta) meta.textContent = message;
   }
 
+  function navUrlWithUnit(path) {
+    const unit = window.rcViewUnitPersist?.readPersistedViewUnit?.() || "";
+    return unit ? window.rcViewUnitPersist.appendViewUnitToUrl(path, unit) : path;
+  }
+
   function bindBcHeaderNav() {
     document.querySelector('#headerPhasesBar a.app-module-link[href="/"]')?.addEventListener("click", (e) => {
       e.preventDefault();
-      window.location.assign("/");
+      window.location.assign(navUrlWithUnit("/"));
     });
     document.querySelector('#headerPhasesBar a.app-module-link[href="/backcasting/"]')?.addEventListener("click", (e) => {
       e.preventDefault();
     });
     document.getElementById("bcLauncherFortschritt")?.addEventListener("click", (e) => {
       e.preventDefault();
-      window.location.assign("/?page=gesamtfortschritt");
-    });
-    document.getElementById("bcLauncherDemoDaten")?.addEventListener("click", (e) => {
-      e.preventDefault();
-      window.location.assign("/?page=demo-daten");
+      window.location.assign(navUrlWithUnit("/?page=gesamtfortschritt"));
     });
     document.getElementById("launcherAdmin")?.addEventListener("click", (e) => {
       e.preventDefault();
-      window.location.assign("/?page=admin");
+      window.location.assign(navUrlWithUnit("/?page=admin"));
     });
   }
 
@@ -88,10 +89,6 @@
       if (adminLink) adminLink.style.display = isAdmin ? "" : "none";
       const fsLink = document.getElementById("bcLauncherFortschritt");
       if (fsLink) fsLink.style.display = me.modules?.fortschritt || isAdmin ? "" : "none";
-      const demoLink = document.getElementById("bcLauncherDemoDaten");
-      const phasesSep = document.getElementById("bcHeaderPhasesSep");
-      if (demoLink) demoLink.style.display = "";
-      if (phasesSep) phasesSep.style.display = "";
       setSessionBootState("authenticated");
       bindBcHeaderNav();
       document.dispatchEvent(

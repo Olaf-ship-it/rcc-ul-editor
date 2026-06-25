@@ -25,6 +25,10 @@ const BC_SVG_TRASH =
   '<svg viewBox="0 0 24 24" width="16" height="16" aria-hidden="true" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="3 6 5 6 21 6"/><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/><line x1="10" y1="11" x2="10" y2="17"/><line x1="14" y1="11" x2="14" y2="17"/></svg>';
 const BC_SVG_CHEVRON =
   '<svg viewBox="0 0 24 24" width="16" height="16" aria-hidden="true" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="18 15 12 9 6 15"/></svg>';
+const BC_SVG_EDIT =
+  '<svg viewBox="0 0 24 24" width="16" height="16" aria-hidden="true" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"/><path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"/></svg>';
+
+let milestoneModalCtx = null;
 
 function bcMsIconBtn(className, title, onclick, svg, id) {
   const idAttr = id ? ` id="${id}"` : "";
@@ -175,6 +179,7 @@ async function syncPlanMetaFromContext(){
 
 async function setBcViewUnit(unit){
   bcViewUnit = unit || 'all';
+  rcViewUnitPersist?.writePersistedViewUnit?.(bcViewUnit);
   updateBcEditMode();
   await renderBcUnitSwitcher();
   if(isBcViewAll()){
@@ -536,38 +541,131 @@ function wsYearForm(ws, yr){
 
   entries.forEach((e, idx)=>{
     const wsJs=esc(ws).replace(/'/g,"\\'");
-    const oc=(field)=>`onchange="updWs('${wsJs}',${yr},${idx},'${field}',this.value)"`;
     const mid = 'ms_'+yr+'_'+idx;
     const title=milestoneTitle(e);
     const titleClass=(e.ergebnis||'').trim()?'ms-title':'ms-title ms-title--empty';
-    h += '<div class="measure">'+
-      '<div class="bc-flex-between measure-head" style="cursor:pointer" onclick="toggleMs(\''+mid+'\')">'+
-        '<b class="'+titleClass+'" id="'+mid+'_title">'+esc(title)+'</b>'+
-        '<div class="ms-actions" onclick="event.stopPropagation()">'+
-          bcMsIconBtn('bc-ms-icon-btn--save', 'Speichern', "saveMilestone('"+esc(ws).replace(/'/g,"\\'")+"',"+yr+","+idx+")", BC_SVG_SAVE)+
-          bcMsIconBtn('bc-ms-icon-btn--delete', 'Löschen', "delWsEntry('"+esc(ws).replace(/'/g,'')+"',"+yr+","+idx+")", BC_SVG_TRASH)+
-          bcMsIconBtn('bc-ms-icon-btn--toggle is-expanded', 'Zuklappen', "toggleMs('"+mid+"')", BC_SVG_CHEVRON, mid+'_toggle')+
+    const isDraft=idx===0 && !(e.ergebnis||'').trim();
+    const wsArg="'"+esc(ws).replace(/'/g,"\\'")+"'";
+
+    if(isDraft){
+      const oc=(field)=>`onchange="updWs('${wsJs}',${yr},${idx},'${field}',this.value)"`;
+      h += '<div class="measure">'+
+        '<div class="bc-flex-between measure-head" style="cursor:pointer" onclick="toggleMs(\''+mid+'\')">'+
+          '<b class="'+titleClass+'" id="'+mid+'_title">'+esc(title)+'</b>'+
+          '<div class="ms-actions" onclick="event.stopPropagation()">'+
+            bcMsIconBtn('bc-ms-icon-btn--save', 'Speichern', "saveMilestone("+wsArg+","+yr+","+idx+")", BC_SVG_SAVE)+
+            bcMsIconBtn('bc-ms-icon-btn--delete', 'Löschen', "delWsEntry('"+esc(ws).replace(/'/g,'')+"',"+yr+","+idx+")", BC_SVG_TRASH)+
+            bcMsIconBtn('bc-ms-icon-btn--toggle is-expanded', 'Zuklappen', "toggleMs('"+mid+"')", BC_SVG_CHEVRON, mid+'_toggle')+
+          '</div>'+
         '</div>'+
-      '</div>'+
-      '<div id="'+mid+'" class="ms-body">'+
-        '<div class="field">'+tipRequired('1. Ergebnis / Artefakt (Was muss existieren?)','Beschreibe konkrete deliverables, die bis Jahresende existieren müssen (z. B. Offering, Playbook, Governance, Pilot, Asset, Board-Entscheidung). Name erscheint als Meilenstein-Titel.')+
-          '<textarea id="'+mid+'_ergebnis" class="bc-ms-required" required oninput="updWs(\''+wsJs+'\','+yr+','+idx+',\'ergebnis\',this.value)" '+oc('ergebnis')+'>'+esc(e.ergebnis||'')+'</textarea></div>'+
-        '<div class="field">'+tip('2. Messbare KPIs (Woran messen wir Erfolg?)','Nenne messbare Kennzahlen für dieses Jahr (z. B. #Piloten, %Reuse, Recurring-Anteil, #Zertifizierungen, Marge).')+
-          '<textarea '+oc('kpis')+'>'+esc(e.kpis||'')+'</textarea></div>'+
-        '<div class="field">'+tip('3. Voraussetzungen (Was muss vorher passieren?)','Liste Voraussetzungen, die vorher erfüllt sein müssen (Budgetfreigabe, Rollenbesetzung, Trainings, Tooling, Entscheidungsgremien).')+
-          '<textarea '+oc('voraussetzungen')+'>'+esc(e.voraussetzungen||'')+'</textarea></div>'+
-        '<div class="field">'+tip('4. Abhängigkeiten (Welche anderen Streams?)','Welche anderen Workstreams/Teams müssen liefern, damit das klappt? (z. B. Partner, Organisation, Skills).')+
-          '<textarea '+oc('abhaengigkeiten')+'>'+esc(e.abhaengigkeiten||'')+'</textarea></div>'+
-        '<div class="field">'+tip('5. Risiken / Blocker (Was könnte scheitern?)','Beschreibe Risiken/Blocker und ggf. Gegenmaßnahmen. Beispiel: fehlende Skills, zu wenig Kapazität, keine Referenzkunden.')+
-          '<textarea '+oc('risiken')+'>'+esc(e.risiken||'')+'</textarea></div>'+
-        '<div class="field">'+tip('6. Verantwortlich (Wer treibt das Thema?)','Wer ist accountable in diesem Jahr? Nenne Rolle/Person und ggf. Mitwirkende.')+
-          '<input '+oc('verantwortlich')+' value="'+esc(e.verantwortlich||'')+'"></div>'+
-        renderStructuredTargets(ws, yr, idx, e)+
+        '<div id="'+mid+'" class="ms-body">'+
+          renderMilestoneFormFields(ws, yr, idx, e, mid, true)+
+        '</div>'+
+      '</div>';
+      return;
+    }
+
+    h += '<div class="measure measure--compact">'+
+      '<div class="bc-flex-between measure-head">'+
+        '<b class="'+titleClass+'">'+esc(title)+'</b>'+
+        '<div class="ms-actions">'+
+          bcMsIconBtn('bc-ms-icon-btn--edit', 'Bearbeiten', "openMilestoneEditModal("+wsArg+","+yr+","+idx+")", BC_SVG_EDIT)+
+          bcMsIconBtn('bc-ms-icon-btn--delete', 'Löschen', "delWsEntry('"+esc(ws).replace(/'/g,'')+"',"+yr+","+idx+")", BC_SVG_TRASH)+
+        '</div>'+
       '</div>'+
     '</div>';
   });
 
   return h;
+}
+
+function renderMilestoneFormFields(ws, yr, idx, e, idPrefix, live){
+  const wsJs=esc(ws).replace(/'/g,"\\'");
+  const oc=(field)=>live?`onchange="updWs('${wsJs}',${yr},${idx},'${field}',this.value)"`:'';
+  const ergebnisLive=live?` oninput="updWs('${wsJs}',${yr},${idx},'ergebnis',this.value)"`:'';
+  const fid=(name)=>idPrefix+'_'+name;
+  return ''+
+    '<div class="field">'+tipRequired('1. Ergebnis / Artefakt (Was muss existieren?)','Beschreibe konkrete deliverables, die bis Jahresende existieren müssen (z. B. Offering, Playbook, Governance, Pilot, Asset, Board-Entscheidung). Name erscheint als Meilenstein-Titel.')+
+      '<textarea id="'+fid('ergebnis')+'" class="bc-ms-required" required'+ergebnisLive+' '+oc('ergebnis')+'>'+esc(e.ergebnis||'')+'</textarea></div>'+
+    '<div class="field">'+tip('2. Messbare KPIs (Woran messen wir Erfolg?)','Nenne messbare Kennzahlen für dieses Jahr (z. B. #Piloten, %Reuse, Recurring-Anteil, #Zertifizierungen, Marge).')+
+      '<textarea id="'+fid('kpis')+'" '+oc('kpis')+'>'+esc(e.kpis||'')+'</textarea></div>'+
+    '<div class="field">'+tip('3. Voraussetzungen (Was muss vorher passieren?)','Liste Voraussetzungen, die vorher erfüllt sein müssen (Budgetfreigabe, Rollenbesetzung, Trainings, Tooling, Entscheidungsgremien).')+
+      '<textarea id="'+fid('voraussetzungen')+'" '+oc('voraussetzungen')+'>'+esc(e.voraussetzungen||'')+'</textarea></div>'+
+    '<div class="field">'+tip('4. Abhängigkeiten (Welche anderen Streams?)','Welche anderen Workstreams/Teams müssen liefern, damit das klappt? (z. B. Partner, Organisation, Skills).')+
+      '<textarea id="'+fid('abhaengigkeiten')+'" '+oc('abhaengigkeiten')+'>'+esc(e.abhaengigkeiten||'')+'</textarea></div>'+
+    '<div class="field">'+tip('5. Risiken / Blocker (Was könnte scheitern?)','Beschreibe Risiken/Blocker und ggf. Gegenmaßnahmen. Beispiel: fehlende Skills, zu wenig Kapazität, keine Referenzkunden.')+
+      '<textarea id="'+fid('risiken')+'" '+oc('risiken')+'>'+esc(e.risiken||'')+'</textarea></div>'+
+    '<div class="field">'+tip('6. Verantwortlich (Wer treibt das Thema?)','Wer ist accountable in diesem Jahr? Nenne Rolle/Person und ggf. Mitwirkende.')+
+      '<input id="'+fid('verantwortlich')+'" '+oc('verantwortlich')+' value="'+esc(e.verantwortlich||'')+'"></div>'+
+    renderStructuredTargets(ws, yr, idx, e, idPrefix, live);
+}
+
+function openMilestoneEditModal(ws, yr, idx){
+  const entries=getWsEntries(ws, yr);
+  const e=entries[idx];
+  if(!e) return;
+  milestoneModalCtx={ ws, yr, idx };
+  const overlay=document.getElementById('bcMilestoneEdit');
+  const body=document.getElementById('bcMilestoneEditBody');
+  const titleEl=document.getElementById('bcMilestoneEditTitle');
+  if(!overlay||!body) return;
+  if(titleEl) titleEl.textContent=milestoneTitle(e)+' · '+yr;
+  body.innerHTML=renderMilestoneFormFields(ws, yr, idx, e, 'bcMilestoneEdit', false);
+  overlay.style.display='flex';
+  document.getElementById('bcMilestoneEdit_ergebnis')?.focus();
+}
+
+function closeMilestoneEditModal(){
+  const overlay=document.getElementById('bcMilestoneEdit');
+  if(overlay) overlay.style.display='none';
+  milestoneModalCtx=null;
+}
+
+function readMilestoneFormValues(idPrefix){
+  const val=(name)=>document.getElementById(idPrefix+'_'+name)?.value ?? '';
+  const num=(name)=>{
+    const raw=val(name).trim();
+    if(!raw) return null;
+    const n=/prozent|level/.test(name)?parseInt(raw,10):parseFloat(raw.replace(',','.'));
+    return Number.isFinite(n)?n:null;
+  };
+  return {
+    ergebnis: val('ergebnis'),
+    kpis: val('kpis'),
+    voraussetzungen: val('voraussetzungen'),
+    abhaengigkeiten: val('abhaengigkeiten'),
+    risiken: val('risiken'),
+    verantwortlich: val('verantwortlich'),
+    ziel_quartal: val('ziel_quartal'),
+    ziel_skill_kategorie: val('ziel_skill_kategorie'),
+    ziel_umsatz_teur: num('ziel_umsatz_teur'),
+    ziel_headcount: num('ziel_headcount'),
+    ziel_skill_level_min: num('ziel_skill_level_min'),
+    ziel_anteil_prozent: num('ziel_anteil_prozent'),
+  };
+}
+
+async function saveMilestoneEditModal(){
+  if(!milestoneModalCtx) return;
+  const { ws, yr, idx }=milestoneModalCtx;
+  const entries=getWsEntries(ws, yr);
+  const e=entries[idx];
+  if(!e) return;
+  const values=readMilestoneFormValues('bcMilestoneEdit');
+  if(!String(values.ergebnis||'').trim()){
+    toast('„Ergebnis / Artefakt“ ist ein Pflichtfeld.', '#e74c3c');
+    document.getElementById('bcMilestoneEdit_ergebnis')?.classList.add('bc-input-invalid');
+    document.getElementById('bcMilestoneEdit_ergebnis')?.focus();
+    return;
+  }
+  Object.assign(e, values, { updatedAt: new Date().toISOString() });
+  setWsEntries(ws, yr, entries);
+  const ok=await savePlan();
+  if(!ok) return;
+  closeMilestoneEditModal();
+  renderWsDetail(ws);
+  renderCatList();
+  toast('Gespeichert');
 }
 
 function addWsEntry(ws, yr){
@@ -626,21 +724,22 @@ function updWsNum(ws, yr, idx, field, val){
   renderCatList();
 }
 
-function renderStructuredTargets(ws, yr, idx, e){
+function renderStructuredTargets(ws, yr, idx, e, idPrefix, live){
   const wsEsc = esc(ws).replace(/'/g, "\\'");
-  const ocNum=(field)=>`onchange="updWsNum('${wsEsc}',${yr},${idx},'${field}',this.value)"`;
-  const oc=(field)=>`onchange="updWs('${wsEsc}',${yr},${idx},'${field}',this.value)"`;
+  const ocNum=live?(field)=>`onchange="updWsNum('${wsEsc}',${yr},${idx},'${field}',this.value)"`:()=>'';
+  const oc=live?(field)=>`onchange="updWs('${wsEsc}',${yr},${idx},'${field}',this.value)"`:()=>'';
+  const fid=(name)=>(idPrefix?idPrefix+'_'+name:name);
   const qOpts=['Q1','Q2','Q3','Q4'].map(q=>'<option value="'+q+'"'+(e.ziel_quartal===q?' selected':'')+'>'+q+'</option>').join('');
   return '<details class="bc-structured-targets" open>'+
     '<summary>Strukturierte Zielwerte (IST/SOLL-Vergleich)</summary>'+
     '<p class="bc-muted" style="margin:.35rem 0 .65rem">Numerische Ziele für den Abgleich mit Phase 1 (Status Aufnahme).</p>'+
     '<div class="review-mini-grid">'+
-      '<div class="field"><label>Ziel-Umsatz (TEUR)</label><input type="number" min="0" step="1" '+ocNum('ziel_umsatz_teur')+' value="'+(e.ziel_umsatz_teur!=null?esc(e.ziel_umsatz_teur):'')+'"></div>'+
-      '<div class="field"><label>Ziel-Headcount</label><input type="number" min="0" step="1" '+ocNum('ziel_headcount')+' value="'+(e.ziel_headcount!=null?esc(e.ziel_headcount):'')+'"></div>'+
-      '<div class="field"><label>Ziel-Quartal</label><select '+oc('ziel_quartal')+'><option value="">–</option>'+qOpts+'</select></div>'+
-      '<div class="field"><label>Skill-Kategorie (Ziel)</label><select '+oc('ziel_skill_kategorie')+'>'+buildHarmSkillCategoryOptions(e.ziel_skill_kategorie||'')+'</select></div>'+
-      '<div class="field"><label>Min. Skill-Level (1–5)</label><input type="number" min="1" max="5" step="1" '+ocNum('ziel_skill_level_min')+' value="'+(e.ziel_skill_level_min!=null?esc(e.ziel_skill_level_min):'')+'"></div>'+
-      '<div class="field"><label>Ziel-Anteil (% der MA)</label><input type="number" min="0" max="100" step="1" '+ocNum('ziel_anteil_prozent')+' value="'+(e.ziel_anteil_prozent!=null?esc(e.ziel_anteil_prozent):'')+'"></div>'+
+      '<div class="field"><label>Ziel-Umsatz (TEUR)</label><input type="number" min="0" step="1" id="'+fid('ziel_umsatz_teur')+'" '+ocNum('ziel_umsatz_teur')+' value="'+(e.ziel_umsatz_teur!=null?esc(e.ziel_umsatz_teur):'')+'"></div>'+
+      '<div class="field"><label>Ziel-Headcount</label><input type="number" min="0" step="1" id="'+fid('ziel_headcount')+'" '+ocNum('ziel_headcount')+' value="'+(e.ziel_headcount!=null?esc(e.ziel_headcount):'')+'"></div>'+
+      '<div class="field"><label>Ziel-Quartal</label><select id="'+fid('ziel_quartal')+'" '+oc('ziel_quartal')+'><option value="">–</option>'+qOpts+'</select></div>'+
+      '<div class="field"><label>Skill-Kategorie (Ziel)</label><select id="'+fid('ziel_skill_kategorie')+'" '+oc('ziel_skill_kategorie')+'>'+buildHarmSkillCategoryOptions(e.ziel_skill_kategorie||'')+'</select></div>'+
+      '<div class="field"><label>Min. Skill-Level (1–5)</label><input type="number" min="1" max="5" step="1" id="'+fid('ziel_skill_level_min')+'" '+ocNum('ziel_skill_level_min')+' value="'+(e.ziel_skill_level_min!=null?esc(e.ziel_skill_level_min):'')+'"></div>'+
+      '<div class="field"><label>Ziel-Anteil (% der MA)</label><input type="number" min="0" max="100" step="1" id="'+fid('ziel_anteil_prozent')+'" '+ocNum('ziel_anteil_prozent')+' value="'+(e.ziel_anteil_prozent!=null?esc(e.ziel_anteil_prozent):'')+'"></div>'+
     '</div></details>';
 }
 function tip(label,text){return '<label>'+esc(label)+' <span class="help" tabindex="0" data-tip="'+esc(text)+'">i</span></label>'}
@@ -949,15 +1048,21 @@ initSelectors();
 async function bootBackcastingPlan(me){
   initBcSessionFromDetail(me);
   initBcUnitSwitcher();
-  if(bcIsSuperAdmin || bcIsAdmin){
-    bcViewUnit = 'all';
-  }else if(bcUserUnits.length === 1){
-    bcViewUnit = bcUserUnits[0];
-  }else if(bcUserUnits.length > 1){
-    bcViewUnit = bcUserUnit || bcUserUnits[0];
-  }else{
-    bcViewUnit = bcUserUnit || '';
-  }
+  const persisted = rcViewUnitPersist?.readPersistedViewUnit?.() || '';
+  bcViewUnit =
+    rcViewUnitPersist?.resolveViewUnitForSession?.(persisted, {
+      isSuperAdmin: bcIsSuperAdmin,
+      isAdmin: bcIsAdmin,
+      userUnits: bcUserUnits,
+      currentUnit: bcUserUnit,
+    }) ??
+    (() => {
+      if (bcIsSuperAdmin || bcIsAdmin) return 'all';
+      if (bcUserUnits.length === 1) return bcUserUnits[0];
+      if (bcUserUnits.length > 1) return bcUserUnit || bcUserUnits[0];
+      return bcUserUnit || '';
+    })();
+  rcViewUnitPersist?.writePersistedViewUnit?.(bcViewUnit);
   await renderBcUnitSwitcher();
   if(!isBcViewAll()){
     await loadPlanFromApi();
@@ -977,6 +1082,12 @@ else {
   const cs = document.getElementById('csvStatus');
   if(cs) cs.textContent = '✓ '+guidelines.length+' Leitplanken aktiv';
 }
+document.getElementById('bcMilestoneEdit')?.addEventListener('click', (e)=>{
+  if(e.target.id==='bcMilestoneEdit') closeMilestoneEditModal();
+});
+document.addEventListener('keydown', (e)=>{
+  if(e.key==='Escape' && milestoneModalCtx) closeMilestoneEditModal();
+});
 window.addEventListener('error', function(e){
   const msg = 'JS-Fehler: ' + (e && e.message ? e.message : 'Unbekannter Fehler');
   const cs=document.getElementById('csvStatus'); if(cs) cs.textContent=msg;

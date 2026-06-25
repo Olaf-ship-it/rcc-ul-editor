@@ -1121,7 +1121,7 @@ async function loadFortschrittDashboard() {
   if (!root) return;
 
   const emptyDetailsMsg =
-    '<div class="card"><p class="fortschritt-empty">Bitte im <strong>Filter</strong> oben eine konkrete Unit wählen (nicht „Alle Units“), um IST/SOLL-Details zu vergleichen.<br><span style="font-size:.78rem;color:var(--rc-muted)">Den Zeitstrahl 2026–2029 finden Sie im Register <strong>Gesamtfortschritt</strong>. Demo-Daten pflegen Sie über den Button <strong>Demo-Daten</strong> bei den Phasen.</span></p></div>';
+    '<div class="card"><p class="fortschritt-empty">Bitte im <strong>Filter</strong> oben eine konkrete Unit wählen (nicht „Alle Units“), um IST/SOLL-Details zu vergleichen.<br><span style="font-size:.78rem;color:var(--rc-muted)">Den Zeitstrahl 2026–2029 finden Sie im Register <strong>Gesamtfortschritt</strong>. Demo-Daten pflegen Admins im Admin-Bereich unter dem Register <strong>Demo-Daten</strong>.</span></p></div>';
 
   if (!unit) {
     root.innerHTML = emptyDetailsMsg;

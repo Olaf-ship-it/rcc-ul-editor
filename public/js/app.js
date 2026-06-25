@@ -992,21 +992,28 @@ function shouldShowHeaderUnitSwitcher() {
 }
 
 function initHeaderViewUnit() {
-  if (isSuperAdmin || isAdmin) {
-    superAdminViewUnit = "all";
-  } else if (userUnits.length === 1) {
-    superAdminViewUnit = userUnits[0];
-  } else if (userUnits.length > 1) {
-    superAdminViewUnit = currentUnit || userUnits[0] || "";
-  } else {
-    superAdminViewUnit = currentUnit || "";
-  }
+  const persisted = rcViewUnitPersist?.readPersistedViewUnit?.() || "";
+  superAdminViewUnit =
+    rcViewUnitPersist?.resolveViewUnitForSession?.(persisted, {
+      isSuperAdmin,
+      isAdmin,
+      userUnits,
+      currentUnit,
+    }) ??
+    (() => {
+      if (isSuperAdmin || isAdmin) return "all";
+      if (userUnits.length === 1) return userUnits[0];
+      if (userUnits.length > 1) return currentUnit || userUnits[0] || "";
+      return currentUnit || "";
+    })();
+  rcViewUnitPersist?.writePersistedViewUnit?.(superAdminViewUnit);
 }
 
 function resetAppViewToDefaults() {
   if (isMitarbeiter) return;
   if (isSuperAdmin || isAdmin) {
     superAdminViewUnit = "all";
+    rcViewUnitPersist?.writePersistedViewUnit?.("all");
   }
   switchTab("portfolio");
   updateAppModuleNavActive("portfolio");
@@ -1462,13 +1469,14 @@ function refreshSuperAdminViews() {
   if (document.getElementById("page-fortschritt")?.classList.contains("active")) {
     renderFortschrittDashboard();
   }
-  if (document.getElementById("page-demo-daten")?.classList.contains("active")) {
+  if (isDemoDatenViewActive()) {
     renderDemoDatenPage();
   }
 }
 
 function setSuperAdminViewUnit(unit) {
   superAdminViewUnit = unit || "all";
+  rcViewUnitPersist?.writePersistedViewUnit?.(superAdminViewUnit);
   updateHeaderUnitDisplay();
   updateSuperAdminFormMode();
   void refreshUnitContextPanels();
@@ -1486,7 +1494,7 @@ function setSuperAdminViewUnit(unit) {
   if (document.getElementById("page-fortschritt")?.classList.contains("active")) {
     renderFortschrittDashboard();
   }
-  if (document.getElementById("page-demo-daten")?.classList.contains("active")) {
+  if (isDemoDatenViewActive()) {
     renderDemoDatenPage();
   } else if (typeof updateFortschrittDemoControls === "function") {
     updateFortschrittDemoControls();
@@ -1607,22 +1615,43 @@ function getActiveAppPage() {
 
 const PHASE1_TAB_PAGES = ["portfolio", "organisation", "skills", "overview", "export"];
 const PHASE3_TAB_PAGES = ["gesamtfortschritt", "fortschritt"];
-const DEMO_DATEN_PAGE = "demo-daten";
+const ADMIN_SUBTAB_MODES = ["users", "skills", "roles", "leitplanken", "permissions", "org", "demo"];
+
+function isDemoDatenViewActive() {
+  return getActiveAppPage() === "admin" && adminSubtab === "demo";
+}
+
+function getAdminTabFromQuery() {
+  const tab = new URLSearchParams(window.location.search).get("adminTab");
+  return ADMIN_SUBTAB_MODES.includes(tab) ? tab : "";
+}
+
+function clearAppPageQueryFromUrl() {
+  if (!window.history?.replaceState) return;
+  const params = new URLSearchParams(window.location.search);
+  params.delete("page");
+  params.delete("adminTab");
+  const qs = params.toString();
+  window.history.replaceState({}, "", qs ? `/?${qs}` : "/");
+}
+
+function openAdminDemoDatenTab() {
+  if (!isAdmin) return;
+  adminSubtab = "demo";
+  switchTab("admin");
+  void initAdminPage();
+}
 
 function isPhase3AppPage(page) {
   return PHASE3_TAB_PAGES.includes(page);
 }
 
-function isDemoDatenPage(page) {
-  return page === DEMO_DATEN_PAGE;
+function canAccessDemoDaten() {
+  return isAdmin;
 }
 
 function canAccessPhase3Area() {
   return Boolean(userModules?.fortschritt) || isAdmin;
-}
-
-function canAccessDemoDaten() {
-  return !isMitarbeiter;
 }
 
 function isPhase3PageActive() {
@@ -2707,6 +2736,7 @@ async function doLogout(){
   const wasMitarbeiter = document.body.classList.contains("mitarbeiter-mode");
   try { await api("/api/auth/logout", { method: "POST" }); } catch (_e) {}
   currentUnit='';currentName='';currentEmail='';isAdmin=false;isSuperAdmin=false;isMitarbeiter=false;userModules={ backcasting: false, fortschritt: false };currentSkillEntryId=null;currentPersonalnummer='';superAdminViewUnit='all';userUnits=[];
+  rcViewUnitPersist?.clearPersistedViewUnit?.();
   document.body.classList.remove("mitarbeiter-mode");
   entryStore = { portfolio: [], organisation: [], skill: [] };
   if (!wasMitarbeiter) {
@@ -2719,38 +2749,53 @@ async function doLogout(){
 function getDirectNavPageFromQuery() {
   if (isMitarbeiter) return "";
   const page = new URLSearchParams(window.location.search).get("page");
-  if (page === "admin" && isAdmin) return page;
-  if (page === "demo-daten" && canAccessDemoDaten()) return page;
+  if ((page === "admin" || page === "demo-daten") && isAdmin) return "admin";
   if ((page === "gesamtfortschritt" || page === "fortschritt") && canAccessPhase3Area()) return page;
   return "";
+}
+
+function revealAuthenticatedAppShell() {
+  const login = document.getElementById("loginOverlay");
+  const header = document.getElementById("appHeader");
+  const main = document.getElementById("appMain");
+  const nameEl = document.getElementById("headerName");
+  if (login) login.style.display = "none";
+  if (header) header.style.display = "flex";
+  if (main) main.style.display = "block";
+  if (nameEl) nameEl.textContent = `${currentName} (${currentEmail})`;
+  setSessionBootState("authenticated");
 }
 
 async function showApp(options = {}){
   const fromLogin = Boolean(options.fromLogin);
   const directPage = fromLogin ? "" : getDirectNavPageFromQuery();
   const lightBoot = Boolean(directPage);
-  if (!lightBoot) {
-    await loadSkillCategoriesFromApi();
-    await loadAppRolePositionCatalogFromApi();
-    await refreshEntries();
-    if (!isMitarbeiter) await loadSkillPersonalnummerLookup();
-  }
-  document.getElementById('loginOverlay').style.display='none';
-  document.getElementById('appHeader').style.display='flex';
-  document.getElementById('appMain').style.display='block';
-  document.getElementById('headerName').textContent=currentName+' ('+currentEmail+')';
+
   initHeaderViewUnit();
+  revealAuthenticatedAppShell();
   applyMitarbeiterLayout();
   initHeaderUnitSwitcher();
-  await renderHeaderUnitSwitcher();
-  if (fromLogin) {
-    resetAppViewToDefaults();
-    await renderHeaderUnitSwitcher();
-  }
   updateHeaderUnitDisplay();
   updateSuperAdminFormMode();
   checkAdmin();
   updateAppModuleLauncher(userModules);
+
+  const bootTasks = [renderHeaderUnitSwitcher()];
+  if (!lightBoot) {
+    bootTasks.push(
+      loadSkillCategoriesFromApi(),
+      loadAppRolePositionCatalogFromApi(),
+      refreshEntries()
+    );
+    if (!isMitarbeiter) bootTasks.push(loadSkillPersonalnummerLookup());
+  }
+  await Promise.all(bootTasks);
+
+  if (fromLogin) {
+    resetAppViewToDefaults();
+    await renderHeaderUnitSwitcher();
+  }
+
   if (isMitarbeiter) {
     await initMitarbeiterSkillView();
   } else if (!lightBoot) {
@@ -2761,22 +2806,25 @@ async function showApp(options = {}){
     updateSkillDeleteButton();
     renderOverview();
   }
-  if (isAdmin && !lightBoot) await initAdminPage();
-  if (!isMitarbeiter && !lightBoot) await refreshUnitContextPanels();
+
   collapseAllCollapsibleSections(document.getElementById("appMain"));
   applyPageFromQuery({ skipFortschritt: fromLogin });
-  setSessionBootState("authenticated");
+
+  if (!lightBoot) {
+    if (isAdmin) void initAdminPage();
+    if (!isMitarbeiter) void refreshUnitContextPanels();
+  }
 }
 
 function applyPageFromQuery(options = {}) {
   if (isMitarbeiter) return;
   const page = new URLSearchParams(window.location.search).get("page");
   if (page === "admin" && isAdmin) {
+    const adminTab = getAdminTabFromQuery();
+    if (adminTab) adminSubtab = adminTab;
     switchTab("admin");
     initAdminPage();
-    if (window.history && window.history.replaceState) {
-      window.history.replaceState({}, "", "/");
-    }
+    clearAppPageQueryFromUrl();
     return;
   }
   if (options.skipFortschritt) {
@@ -2784,6 +2832,7 @@ function applyPageFromQuery(options = {}) {
       const params = new URLSearchParams(window.location.search);
       if (params.has("page")) {
         params.delete("page");
+        params.delete("adminTab");
         const qs = params.toString();
         window.history.replaceState({}, "", qs ? `/?${qs}` : "/");
       }
@@ -2792,11 +2841,10 @@ function applyPageFromQuery(options = {}) {
   }
   if (page === "demo-daten") {
     if (!canAccessDemoDaten()) return;
-    switchTab("demo-daten");
-    renderDemoDatenPage();
-    if (window.history && window.history.replaceState) {
-      window.history.replaceState({}, "", "/");
-    }
+    adminSubtab = "demo";
+    switchTab("admin");
+    initAdminPage();
+    clearAppPageQueryFromUrl();
     return;
   }
   if (page === "gesamtfortschritt" || page === "fortschritt") {
@@ -2804,9 +2852,7 @@ function applyPageFromQuery(options = {}) {
     switchTab(page);
     if (page === "gesamtfortschritt") renderGesamtfortschrittDashboard();
     else renderFortschrittDashboard();
-    if (window.history && window.history.replaceState) {
-      window.history.replaceState({}, "", "/");
-    }
+    clearAppPageQueryFromUrl();
   }
 }
 
@@ -2850,18 +2896,13 @@ function updateAppModuleLauncher(modules) {
   const phasesBar = document.getElementById("headerPhasesBar");
   const link = document.getElementById("launcherBackcasting");
   const fsLink = document.getElementById("launcherFortschritt");
-  const demoLink = document.getElementById("launcherDemoDaten");
-  const phasesSep = document.getElementById("headerPhasesSep");
   if (!phasesBar) return;
   const showBackcasting = Boolean(modules?.backcasting) || isAdmin;
   const showFortschritt = (Boolean(modules?.fortschritt) || isAdmin) && !isMitarbeiter;
-  const showDemoDaten = !isMitarbeiter;
-  const showNav = showBackcasting || showFortschritt || showDemoDaten;
+  const showNav = showBackcasting || showFortschritt;
   phasesBar.style.display = showNav ? "" : "none";
   if (link) link.style.display = showBackcasting ? "" : "none";
   if (fsLink) fsLink.style.display = showFortschritt ? "" : "none";
-  if (demoLink) demoLink.style.display = showDemoDaten ? "" : "none";
-  if (phasesSep) phasesSep.style.display = showDemoDaten ? "" : "none";
 }
 
 function bindAppModuleNavClicks() {
@@ -2869,7 +2910,8 @@ function bindAppModuleNavClicks() {
     const appMain = document.getElementById("appMain");
     if (!appMain || appMain.style.display === "none") return;
     e.preventDefault();
-    window.location.assign("/backcasting/");
+    const target = rcViewUnitPersist?.appendViewUnitToUrl?.("/backcasting/", superAdminViewUnit) || "/backcasting/";
+    window.location.assign(target);
   });
   document.getElementById("launcherFortschritt")?.addEventListener("click", (e) => {
     const appMain = document.getElementById("appMain");
@@ -2878,14 +2920,6 @@ function bindAppModuleNavClicks() {
     e.preventDefault();
     switchTab("gesamtfortschritt");
     renderGesamtfortschrittDashboard();
-  });
-  document.getElementById("launcherDemoDaten")?.addEventListener("click", (e) => {
-    const appMain = document.getElementById("appMain");
-    if (!appMain || appMain.style.display === "none") return;
-    if (!canAccessDemoDaten()) return;
-    e.preventDefault();
-    switchTab("demo-daten");
-    renderDemoDatenPage();
   });
   document.getElementById("launcherPhase1")?.addEventListener("click", (e) => {
     const appMain = document.getElementById("appMain");
@@ -2919,7 +2953,6 @@ document.querySelectorAll("#tabs .tab").forEach((t) => {
   if (p === "admin") initAdminPage();
   if (p === "gesamtfortschritt") renderGesamtfortschrittDashboard();
   if (p === "fortschritt") renderFortschrittDashboard();
-  if (p === "demo-daten") renderDemoDatenPage();
   if (p === "portfolio") {
     renderPortfolio();
     refreshUnitContextPanels();
@@ -2941,22 +2974,19 @@ function updateAppModuleNavActive(page) {
   const phase1 = document.getElementById("launcherPhase1");
   const bcLink = document.getElementById("launcherBackcasting");
   const fsLink = document.getElementById("launcherFortschritt");
-  const demoLink = document.getElementById("launcherDemoDaten");
   const adminLink = document.getElementById("launcherAdmin");
   const onPhase3 = isPhase3AppPage(page);
-  const onDemoDaten = isDemoDatenPage(page);
   if (phase1) {
-    phase1.classList.toggle("is-active", !onPhase3 && !onDemoDaten);
-    if (onPhase3 || onDemoDaten) phase1.removeAttribute("aria-current");
+    phase1.classList.toggle("is-active", !onPhase3 && page !== "admin");
+    if (onPhase3 || page === "admin") phase1.removeAttribute("aria-current");
     else phase1.setAttribute("aria-current", "page");
   }
   if (bcLink) bcLink.classList.remove("is-active");
   if (fsLink) fsLink.classList.toggle("is-active", onPhase3);
-  if (demoLink) demoLink.classList.toggle("is-active", onDemoDaten);
   if (adminLink) adminLink.classList.toggle("is-active", page === "admin");
   const subtitleEl = document.getElementById("appHeaderSubtitle");
   if (subtitleEl && !isMitarbeiter) {
-    if (onDemoDaten) {
+    if (page === "admin" && adminSubtab === "demo") {
       subtitleEl.textContent = "Demo-Datensätze für IST/SOLL-Tests je Unit";
     } else if (onPhase3) {
       subtitleEl.textContent =
@@ -2975,7 +3005,6 @@ function updateAppModuleNavActive(page) {
 function switchTab(p){
   if (isMitarbeiter && p !== "skills") return;
   if (isPhase3AppPage(p) && !canAccessPhase3Area()) return;
-  if (isDemoDatenPage(p) && !canAccessDemoDaten()) return;
   const prevPage = getActiveAppPage();
   document.querySelectorAll("#tabs .tab").forEach((t) => t.classList.toggle("active", t.dataset.page === p));
   document.querySelectorAll("#appMain .page").forEach((pg) => pg.classList.toggle("active", pg.id === "page-" + p));
@@ -3062,24 +3091,46 @@ function portfolioDomForCategory(category) {
   };
 }
 
-function resetPortfolioForm(category) {
-  const dom = portfolioDomForCategory(category);
-  const form = document.getElementById(dom.formId);
-  if (form) form.reset();
-  const idEl = document.getElementById(dom.editId);
-  if (idEl) idEl.value = "";
-  const cancel = document.getElementById(dom.cancelBtn);
-  if (cancel) cancel.style.display = "none";
-  resetFormSaveButtonTracker(form);
+const PORTFOLIO_CATEGORY_LABELS = {
+  produkte: "Produkt",
+  services: "Service",
+  loesungen: "Lösung",
+  partnergeschaeft: "Partnergeschäft",
+  projektgeschaeft: "Projektgeschäft",
+};
+
+function portfolioModalDom() {
+  return {
+    formId: "portfolioEditForm",
+    editId: "portfolioEdit_editId",
+    bezeichnung: "portfolioEdit_bezeichnung",
+    beschreibung: "portfolioEdit_beschreibung",
+    hinweis: "portfolioEdit_hinweis",
+    jahresumsatz_teur: "portfolioEdit_jahresumsatz_teur",
+    jahresumsatz: "portfolioEdit_jahresumsatz",
+    ampel: "portfolioEdit_ampel",
+  };
 }
 
-async function onSubmitPortfolio(category, event) {
-  event?.preventDefault?.();
-  if (!requireSaveUnit()) return;
-  const dom = portfolioDomForCategory(category);
-  const form = document.getElementById(dom.formId);
-  if (!validateFormRequired(form)) return;
+function fillPortfolioForm(dom, entry) {
+  if (!entry || !dom) return;
+  const enriched = enrichPortfolioUmsatz(entry);
+  const set = (id, val) => {
+    const el = document.getElementById(id);
+    if (el) el.value = val ?? "";
+  };
+  set(dom.editId, enriched.id || "");
+  set(dom.bezeichnung, enriched.bezeichnung || "");
+  set(dom.beschreibung, enriched.beschreibung || "");
+  set(dom.hinweis, enriched.hinweis || "");
+  set(dom.jahresumsatz_teur, enriched.jahresumsatz_teur != null ? enriched.jahresumsatz_teur : "");
+  set(dom.jahresumsatz, enriched.jahresumsatz || "");
+  set(dom.ampel, enriched.ampel || "");
+}
 
+async function submitPortfolioForm(dom, category, form, options = {}) {
+  if (!requireSaveUnit()) return false;
+  if (!validateFormRequired(form)) return false;
   const id = document.getElementById(dom.editId)?.value || "";
   const bezeichnung = document.getElementById(dom.bezeichnung)?.value.trim() || "";
   const beschreibung = document.getElementById(dom.beschreibung)?.value.trim() || "";
@@ -3102,11 +3153,72 @@ async function onSubmitPortfolio(category, event) {
     await saveEntry("portfolio", entry);
     await refreshEntries();
     renderPortfolio();
-    resetPortfolioForm(category);
-    notifyFormSaveSuccess(form, "Portfolio gespeichert!");
+    if (options.resetInlineForm) resetPortfolioForm(category);
+    return true;
   } catch (error) {
     toast(error.message || "Speichern fehlgeschlagen.", "#e74c3c", 4000);
+    return false;
   }
+}
+
+function openPortfolioEditModal(entry) {
+  if (!entry) return;
+  const enriched = enrichPortfolioUmsatz(entry);
+  const category = String(enriched.category || "").trim();
+  if (!category) return;
+  const overlay = document.getElementById("portfolioEditModal");
+  const titleEl = document.getElementById("portfolioEditTitle");
+  const categoryEl = document.getElementById("portfolioEdit_category");
+  const form = document.getElementById("portfolioEditForm");
+  if (!overlay || !form) return;
+  if (categoryEl) categoryEl.value = category;
+  if (titleEl) {
+    const label = PORTFOLIO_CATEGORY_LABELS[category] || "Eintrag";
+    titleEl.textContent = `${label} bearbeiten`;
+  }
+  fillPortfolioForm(portfolioModalDom(), enriched);
+  resetFormSaveButtonTracker(form);
+  overlay.style.display = "flex";
+  document.getElementById("portfolioEdit_bezeichnung")?.focus();
+}
+
+function closePortfolioEditModal() {
+  const overlay = document.getElementById("portfolioEditModal");
+  if (overlay) overlay.style.display = "none";
+  document.getElementById("portfolioEditForm")?.reset();
+  const categoryEl = document.getElementById("portfolioEdit_category");
+  if (categoryEl) categoryEl.value = "";
+}
+
+function resetPortfolioForm(category) {
+  const dom = portfolioDomForCategory(category);
+  const form = document.getElementById(dom.formId);
+  if (form) form.reset();
+  const idEl = document.getElementById(dom.editId);
+  if (idEl) idEl.value = "";
+  const cancel = document.getElementById(dom.cancelBtn);
+  if (cancel) cancel.style.display = "none";
+  resetFormSaveButtonTracker(form);
+}
+
+async function onSubmitPortfolio(category, event) {
+  event?.preventDefault?.();
+  const dom = portfolioDomForCategory(category);
+  const form = document.getElementById(dom.formId);
+  const ok = await submitPortfolioForm(dom, category, form, { resetInlineForm: true });
+  if (ok) notifyFormSaveSuccess(form, "Portfolio gespeichert!");
+}
+
+async function onSubmitPortfolioModal(event) {
+  event?.preventDefault?.();
+  const category = document.getElementById("portfolioEdit_category")?.value || "";
+  if (!category) return;
+  const dom = portfolioModalDom();
+  const form = document.getElementById(dom.formId);
+  const ok = await submitPortfolioForm(dom, category, form);
+  if (!ok) return;
+  closePortfolioEditModal();
+  notifyFormSaveSuccess(form, "Portfolio gespeichert!");
 }
 
 function renderPortfolioCategory(category) {
@@ -3161,23 +3273,7 @@ function renderPortfolio() {
 }
 
 function loadPortfolioEntry(entry) {
-  if (!entry) return;
-  const enriched = enrichPortfolioUmsatz(entry);
-  const category = String(enriched.category || "").trim();
-  const dom = portfolioDomForCategory(category);
-  document.getElementById(dom.editId).value = enriched.id || "";
-  document.getElementById(dom.bezeichnung).value = enriched.bezeichnung || "";
-  document.getElementById(dom.beschreibung).value = enriched.beschreibung || "";
-  document.getElementById(dom.hinweis).value = enriched.hinweis || "";
-  const teurEl = document.getElementById(dom.jahresumsatz_teur);
-  if (teurEl) teurEl.value = enriched.jahresumsatz_teur != null ? enriched.jahresumsatz_teur : "";
-  document.getElementById(dom.jahresumsatz).value = enriched.jahresumsatz || "";
-  document.getElementById(dom.ampel).value = enriched.ampel || "";
-  const cancel = document.getElementById(dom.cancelBtn);
-  if (cancel) cancel.style.display = "";
-  resetFormSaveButtonTracker(document.getElementById(dom.formId));
-  openPortfolioSection(category);
-  document.getElementById(dom.formId)?.scrollIntoView({ behavior: "smooth", block: "nearest" });
+  openPortfolioEditModal(entry);
 }
 
 function cancelPortfolioEdit(category) {
@@ -4706,6 +4802,7 @@ document.getElementById('ov_filterSearch').addEventListener('input',renderOvervi
 function switchSuperAdminViewForEntry(entry) {
   if (!isSuperAdmin || !entry?.unit || superAdminViewUnit === entry.unit) return;
   superAdminViewUnit = entry.unit;
+  rcViewUnitPersist?.writePersistedViewUnit?.(superAdminViewUnit);
   renderHeaderUnitSwitcher();
   updateHeaderUnitDisplay();
   updateSuperAdminFormMode();
@@ -4720,7 +4817,7 @@ function switchSuperAdminViewForEntry(entry) {
   if (document.getElementById("page-fortschritt")?.classList.contains("active")) {
     renderFortschrittDashboard();
   }
-  if (document.getElementById("page-demo-daten")?.classList.contains("active")) {
+  if (isDemoDatenViewActive()) {
     renderDemoDatenPage();
   }
 }
@@ -4732,7 +4829,7 @@ function editEntry(type,id){
   switchSuperAdminViewForEntry(e);
   if(type==='portfolio'){
     switchTab('portfolio');
-    loadPortfolioEntry(e);
+    openPortfolioEditModal(e);
   }else if(type==='organisation'){
     switchTab('organisation');
     loadOrganisationEntry(e);
@@ -4905,8 +5002,7 @@ function collapseAdminPanelDetails(panelId) {
 }
 
 function setAdminSubtab(mode) {
-  const valid = ["users", "skills", "roles", "leitplanken", "permissions", "org"];
-  adminSubtab = valid.includes(mode) ? mode : "users";
+  adminSubtab = ADMIN_SUBTAB_MODES.includes(mode) ? mode : "users";
   [
     "adminPanelUsers",
     "adminPanelSkills",
@@ -4914,6 +5010,7 @@ function setAdminSubtab(mode) {
     "adminPanelLeitplanken",
     "adminPanelPermissions",
     "adminPanelOrg",
+    "adminPanelDemo",
   ].forEach(collapseAdminPanelDetails);
   document.getElementById("btnAdminSubtabUsers")?.classList.toggle("active", adminSubtab === "users");
   document.getElementById("btnAdminSubtabSkills")?.classList.toggle("active", adminSubtab === "skills");
@@ -4925,18 +5022,21 @@ function setAdminSubtab(mode) {
     .getElementById("btnAdminSubtabPermissions")
     ?.classList.toggle("active", adminSubtab === "permissions");
   document.getElementById("btnAdminSubtabOrg")?.classList.toggle("active", adminSubtab === "org");
+  document.getElementById("btnAdminSubtabDemo")?.classList.toggle("active", adminSubtab === "demo");
   const usersPanel = document.getElementById("adminPanelUsers");
   const skillsPanel = document.getElementById("adminPanelSkills");
   const rolesPanel = document.getElementById("adminPanelRoles");
   const leitplankenPanel = document.getElementById("adminPanelLeitplanken");
   const permissionsPanel = document.getElementById("adminPanelPermissions");
   const orgPanel = document.getElementById("adminPanelOrg");
+  const demoPanel = document.getElementById("adminPanelDemo");
   if (usersPanel) usersPanel.style.display = adminSubtab === "users" ? "" : "none";
   if (skillsPanel) skillsPanel.style.display = adminSubtab === "skills" ? "" : "none";
   if (rolesPanel) rolesPanel.style.display = adminSubtab === "roles" ? "" : "none";
   if (leitplankenPanel) leitplankenPanel.style.display = adminSubtab === "leitplanken" ? "" : "none";
   if (permissionsPanel) permissionsPanel.style.display = adminSubtab === "permissions" ? "" : "none";
   if (orgPanel) orgPanel.style.display = adminSubtab === "org" ? "" : "none";
+  if (demoPanel) demoPanel.style.display = adminSubtab === "demo" ? "" : "none";
   if (adminSubtab === "skills") renderAdminSkillCategories();
   if (adminSubtab === "roles") renderAdminRolesAndPositions();
   if (adminSubtab === "leitplanken" && typeof initAdminLeitplanken === "function") {
@@ -4946,6 +5046,10 @@ function setAdminSubtab(mode) {
     renderAdminRolesPermissionsDoc();
   }
   if (adminSubtab === "org") renderAdminOrgChart();
+  if (adminSubtab === "demo" && typeof renderDemoDatenPage === "function") {
+    renderDemoDatenPage();
+  }
+  if (getActiveAppPage() === "admin") updateAppModuleNavActive("admin");
 }
 
 async function initAdminPage() {
@@ -7142,6 +7246,7 @@ document
   .getElementById("btnAdminSubtabPermissions")
   ?.addEventListener("click", () => setAdminSubtab("permissions"));
 document.getElementById("btnAdminSubtabOrg")?.addEventListener("click", () => setAdminSubtab("org"));
+document.getElementById("btnAdminSubtabDemo")?.addEventListener("click", () => setAdminSubtab("demo"));
 document.getElementById("btnAdminRoleNew")?.addEventListener("click", () => openAdminRoleEdit(null));
 document.getElementById("btnAdminPositionNew")?.addEventListener("click", () => openAdminPositionEdit(null));
 document.getElementById("admRoleEditCancel")?.addEventListener("click", closeAdminRoleEdit);
@@ -7188,6 +7293,17 @@ document.getElementById("portfolioServicesForm")?.addEventListener("submit", (e)
 document.getElementById("portfolioLoesungenForm")?.addEventListener("submit", (e) => onSubmitPortfolio("loesungen", e));
 document.getElementById("portfolioPartnergeschaeftForm")?.addEventListener("submit", (e) => onSubmitPortfolio("partnergeschaeft", e));
 document.getElementById("portfolioProjektgeschaeftForm")?.addEventListener("submit", (e) => onSubmitPortfolio("projektgeschaeft", e));
+document.getElementById("portfolioEditForm")?.addEventListener("submit", onSubmitPortfolioModal);
+document.getElementById("portfolioEditCancel")?.addEventListener("click", closePortfolioEditModal);
+document.getElementById("portfolioEditClose")?.addEventListener("click", closePortfolioEditModal);
+document.getElementById("portfolioEditModal")?.addEventListener("click", (e) => {
+  if (e.target.id === "portfolioEditModal") closePortfolioEditModal();
+});
+document.addEventListener("keydown", (e) => {
+  if (e.key === "Escape" && document.getElementById("portfolioEditModal")?.style.display === "flex") {
+    closePortfolioEditModal();
+  }
+});
 document.getElementById("btnPfProdCancel")?.addEventListener("click", () => cancelPortfolioEdit("produkte"));
 document.getElementById("btnPfSrvCancel")?.addEventListener("click", () => cancelPortfolioEdit("services"));
 document.getElementById("btnPfSolCancel")?.addEventListener("click", () => cancelPortfolioEdit("loesungen"));

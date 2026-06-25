@@ -1,13 +1,11 @@
 /* Backcasting – Erweiterungen zum gemeinsamen realcore-Design (/styles.css) */
 
-.rc-app-backcasting .header-main .bc-plan-meta {
+.rc-app-backcasting .bc-plan-meta-bar {
+  width: 100%;
+  padding-top: .15rem;
   font-size: .68rem;
-  text-align: right;
   line-height: 1.35;
   color: #aaa;
-  max-width: 280px;
-  flex-shrink: 0;
-  margin-left: auto;
 }
 
 .rc-app-backcasting .bc-muted {
@@ -334,6 +332,59 @@
 .rc-app-backcasting .bc-ms-icon-btn--delete:hover {
   background: #fdecea;
   color: #922b21;
+}
+
+.rc-app-backcasting .bc-ms-icon-btn--edit {
+  color: var(--rc-accent2);
+  border-color: rgba(15, 52, 96, .22);
+}
+
+.rc-app-backcasting .bc-ms-icon-btn--edit:hover {
+  background: rgba(15, 52, 96, .08);
+  color: var(--rc-accent2);
+}
+
+.rc-app-backcasting .measure--compact .measure-head {
+  margin-bottom: 0;
+}
+
+.rc-app-backcasting .bc-modal-overlay {
+  position: fixed;
+  inset: 0;
+  z-index: 300;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 1rem;
+  background: rgba(26, 26, 46, .55);
+}
+
+.rc-app-backcasting .bc-modal-box {
+  width: min(720px, 100%);
+  max-height: min(90vh, 900px);
+  overflow: auto;
+  background: #fff;
+  border-radius: 12px;
+  padding: 1.1rem 1.25rem 1.25rem;
+  box-shadow: 0 12px 40px rgba(0, 0, 0, .22);
+}
+
+.rc-app-backcasting .bc-modal-head {
+  margin-bottom: .75rem;
+  gap: .75rem;
+}
+
+.rc-app-backcasting .bc-modal-body {
+  max-height: calc(90vh - 8rem);
+  overflow: auto;
+  padding-right: .15rem;
+}
+
+.rc-app-backcasting .bc-modal-actions {
+  justify-content: flex-end;
+  margin-top: 1rem;
+  padding-top: .75rem;
+  border-top: 1px solid var(--rc-border);
 }
 
 .rc-app-backcasting .bc-ms-icon-btn--toggle svg {
