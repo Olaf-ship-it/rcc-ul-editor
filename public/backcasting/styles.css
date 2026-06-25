@@ -820,3 +820,41 @@
   .rc-app-backcasting .no-print { display: none !important; }
   .rc-app-backcasting .page { display: block !important; }
 }
+
+/* Eckiges Erfassungs-Design (Phase 2, analog Header) */
+.rc-app-backcasting .card,
+.rc-app-backcasting .unit-save-notice,
+.rc-app-backcasting .bc-detail,
+.rc-app-backcasting .bc-side,
+.rc-app-backcasting .bc-tag,
+.rc-app-backcasting .badge,
+.rc-app-backcasting .cat-item,
+.rc-app-backcasting .ws-resize,
+.rc-app-backcasting .vorgabe,
+.rc-app-backcasting .acc,
+.rc-app-backcasting .measure,
+.rc-app-backcasting .bc-ms-icon-btn,
+.rc-app-backcasting .bc-modal-box,
+.rc-app-backcasting .bc-modal-overlay .bc-modal-box,
+.rc-app-backcasting .review-cellbox,
+.rc-app-backcasting .review-mile,
+.rc-app-backcasting .bc-structured-targets,
+.rc-app-backcasting .review-field,
+.rc-app-backcasting .review-risk-item,
+.rc-app-backcasting .review-bar-track,
+.rc-app-backcasting .review-bar-fill,
+.rc-app-backcasting .review-pill,
+.rc-app-backcasting .bc-stat-tooltip,
+.rc-app-backcasting .bc-stat-tip-close,
+.rc-app-backcasting .bc-tip-title-row.bc-tip-open,
+.rc-app-backcasting .status-pill,
+.rc-app-backcasting .field .help::after { border-radius: var(--rc-radius); }
+
+.rc-app-backcasting .btn,
+.rc-app-backcasting .btn-sm,
+.rc-app-backcasting .field input,
+.rc-app-backcasting .field select,
+.rc-app-backcasting .field textarea,
+.rc-app-backcasting input,
+.rc-app-backcasting select,
+.rc-app-backcasting textarea { border-radius: var(--rc-radius); }
