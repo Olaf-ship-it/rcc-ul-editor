@@ -1,13 +1,5 @@
 /* Backcasting – Erweiterungen zum gemeinsamen realcore-Design (/styles.css) */
 
-.rc-app-backcasting .bc-plan-meta-bar {
-  width: 100%;
-  padding-top: .15rem;
-  font-size: .68rem;
-  line-height: 1.35;
-  color: #aaa;
-}
-
 .rc-app-backcasting .bc-muted {
   font-size: .78rem;
   color: var(--rc-muted);

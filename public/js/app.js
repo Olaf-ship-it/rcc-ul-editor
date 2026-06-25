@@ -1659,17 +1659,20 @@ function isPhase3PageActive() {
 }
 
 function updateMainTabsBar(page) {
+  const tabsBar = document.getElementById("tabsBar");
   const tabs = document.getElementById("tabs");
   const phase1Nav = document.getElementById("tabsNavPhase1");
   const phase3Nav = document.getElementById("tabsNavPhase3");
-  if (!tabs) return;
+  if (!tabs && !tabsBar) return;
   if (isMitarbeiter) {
-    tabs.style.display = "none";
+    if (tabsBar) tabsBar.style.display = "none";
     return;
   }
   const onPhase3 = isPhase3AppPage(page);
   const onPhase1 = PHASE1_TAB_PAGES.includes(page);
-  tabs.style.display = onPhase3 || onPhase1 ? "flex" : "none";
+  const show = onPhase3 || onPhase1;
+  if (tabsBar) tabsBar.style.display = show ? "flex" : "none";
+  if (tabs) tabs.style.display = show ? "flex" : "none";
   if (phase1Nav) phase1Nav.style.display = onPhase1 ? "flex" : "none";
   if (phase3Nav) phase3Nav.style.display = onPhase3 ? "flex" : "none";
 }
@@ -2679,9 +2682,11 @@ function showLoginScreen() {
   const login = document.getElementById("loginOverlay");
   if (login) login.style.display = "flex";
   const header = document.getElementById("appHeader");
+  const tabsBar = document.getElementById("tabsBar");
   const tabs = document.getElementById("tabs");
   const main = document.getElementById("appMain");
   if (header) header.style.display = "none";
+  if (tabsBar) tabsBar.style.display = "none";
   if (tabs) tabs.style.display = "none";
   if (main) main.style.display = "none";
 }

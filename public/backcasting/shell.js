@@ -14,8 +14,10 @@
   }
 
   function showBootError(message) {
-    const meta = document.getElementById("planMeta");
-    if (meta) meta.textContent = message;
+    const splash = document.getElementById("sessionBootSplash");
+    const box = splash?.querySelector(".session-boot-splash__box");
+    if (box) box.textContent = message;
+    else console.error(message);
   }
 
   function navUrlWithUnit(path) {

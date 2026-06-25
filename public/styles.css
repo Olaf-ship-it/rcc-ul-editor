@@ -1,7 +1,8 @@
 :root{--rc-primary:#1a1a2e;--rc-accent:#27ae60;--rc-accent2:#0f3460;--rc-bg:#f4f4f8;--rc-card:#fff;--rc-border:#ddd;--rc-text:#222;--rc-muted:#666;--rc-green:#27ae60;--rc-orange:#f39c12;--rc-red:#1e8449;--rc-blue:#3498db}
 *{box-sizing:border-box;margin:0;padding:0}
 body{font-family:'Inter','Segoe UI',system-ui,sans-serif;background:var(--rc-bg);color:var(--rc-text);line-height:1.5}
-.header{background:var(--rc-primary);color:#fff;padding:.5rem 1.5rem .75rem;display:flex;flex-direction:column;align-items:stretch;gap:.45rem;position:sticky;top:0;z-index:100}
+.app-chrome{position:sticky;top:0;z-index:100}
+.header{background:var(--rc-primary);color:#fff;padding:.5rem 1.5rem .75rem;display:flex;flex-direction:column;align-items:stretch;gap:.45rem}
 .header-top{display:flex;align-items:center;justify-content:space-between;gap:1rem;width:100%;min-height:2rem;padding-bottom:.4rem;border-bottom:1px solid rgba(255,255,255,.1)}
 .header-top-title{flex:1;min-width:0;display:flex;align-items:center;min-height:2rem}
 .header-top-title .header-unit-bar-label{width:auto;margin:0;white-space:normal}
@@ -59,6 +60,9 @@ body{font-family:'Inter','Segoe UI',system-ui,sans-serif;background:var(--rc-bg)
 .header .title{font-size:1.05rem;font-weight:600}
 .header .subtitle{font-size:.72rem;color:#aaa}
 .header .unit-badge{background:var(--rc-accent);padding:.25rem .7rem;border-radius:20px;font-size:.75rem;font-weight:700}
+.tabs-bar{display:flex;flex-direction:column;align-items:flex-start;gap:.3rem;background:var(--rc-primary);padding:.35rem 1.5rem 0;border-bottom:1px solid rgba(255,255,255,.1)}
+.tabs-bar-label{width:100%;padding-top:.05rem}
+.tabs-bar .tabs{background:transparent;border-bottom:none;padding:0;width:100%}
 .tabs{display:flex;align-items:stretch;gap:0;background:var(--rc-primary);padding:0 1.5rem;border-bottom:1px solid rgba(255,255,255,.1);overflow-x:auto}
 .tabs-nav-main{display:flex;flex-shrink:0}
 .tab{padding:.6rem 1rem;color:#ccc;cursor:pointer;font-size:.8rem;font-weight:500;border-bottom:3px solid transparent;transition:all .2s;white-space:nowrap}
@@ -124,7 +128,7 @@ table.entries tr:hover{background:#f0f4ff}
 .save-success-banner{background:#e8f8ee;border:1px solid #b8e0c8;border-left:4px solid var(--rc-green);padding:.65rem .85rem;margin-bottom:.75rem;border-radius:0 8px 8px 0;font-size:.85rem;font-weight:600;color:#1a5c38}
 .field-invalid{border-color:#e74c3c!important;box-shadow:0 0 0 2px rgba(231,76,60,.2)!important;outline:none}
 .field-readonly{background:#f4f4f8!important;color:var(--rc-muted);cursor:not-allowed}
-.mitarbeiter-mode #tabs{display:none!important}
+.mitarbeiter-mode #tabsBar{display:none!important}
 .mitarbeiter-mode #page-overview,
 .mitarbeiter-mode #page-export,
 .mitarbeiter-mode #page-admin{display:none!important}
@@ -207,8 +211,7 @@ tr.adm-user-row--blocked td:first-child+td+td+td{font-weight:600}
 .session-boot-splash__box{color:#fff;font-size:.9rem;padding:1rem 1.25rem;border-radius:10px;background:rgba(255,255,255,.08);border:1px solid rgba(255,255,255,.12)}
 body.session-booting .session-boot-splash{display:flex}
 body.session-booting #loginOverlay{display:none!important}
-body.session-booting #appHeader,
-body.session-booting #tabs,
+body.session-booting #appChrome,
 body.session-booting #appMain{display:none!important}
 body.session-booting.rc-app-backcasting > *:not(.session-boot-splash){visibility:hidden}
 

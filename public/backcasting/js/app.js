@@ -184,7 +184,6 @@ async function setBcViewUnit(unit){
   await renderBcUnitSwitcher();
   if(isBcViewAll()){
     plan = { meta:{}, measures:{} };
-    updateMeta();
     initSelectors();
     return;
   }
@@ -192,7 +191,6 @@ async function setBcViewUnit(unit){
   await syncPlanMetaFromContext();
   savePlanLocal();
   initSelectors();
-  updateMeta();
 }
 
 function uid(){return 'm'+Date.now().toString(36)+Math.random().toString(36).slice(2,7)}
@@ -220,7 +218,6 @@ function savePlanLocal(){
   } else {
     memoryStore.plan = JSON.parse(JSON.stringify(plan));
   }
-  updateMeta();
 }
 async function savePlan(options = {}){
   const allowIncomplete = Boolean(options.allowIncomplete);
@@ -295,24 +292,6 @@ async function loadPlanFromApi(){
   } catch (_e) {
     return false;
   }
-}
-
-function updateMeta(){
-  const m=plan.meta||{};
-  const mode = storageAvailable ? 'Speicherung aktiv' : 'Sandbox-Modus ohne Browser-Speicherung';
-  const el = document.getElementById('planMeta');
-  if(!el) return;
-  if(isBcViewAll()){
-    el.innerHTML = '<b>Alle Units</b><br><span style="opacity:.8">Zum Bearbeiten eine Unit wählen · '+mode+'</span>';
-    return;
-  }
-  const unit = getBcSaveUnit();
-  if(!unit){
-    el.innerHTML = 'Keine Unit gewählt<br><span style="opacity:.8">'+mode+'</span>';
-    return;
-  }
-  const demo = m.is_demo ? ' · Demo' : '';
-  el.innerHTML = '<b>'+esc(m.bereich||unit)+'</b><br>'+esc(m.leiter||'')+demo+'<br><span style="opacity:.8">'+mode+'</span>';
 }
 
 /* ---------- selectors ---------- */
@@ -978,7 +957,7 @@ function importJson(){
   const f=document.getElementById('jsonImport').files[0];if(!f){toast('Bitte JSON wählen');return}
   const r=new FileReader();r.onload=e=>{try{const d=JSON.parse(e.target.result);
     if(d.meta)plan.meta=d.meta; if(d.measures)plan.measures=d.measures; if(d.guidelines)guidelines=d.guidelines;
-    void syncPlanMetaFromContext().then(()=>{saveGuide();savePlan();initSelectors();updateMeta();document.getElementById('expStat').textContent='✓ Import erfolgreich';toast('Import erfolgreich')});
+    void syncPlanMetaFromContext().then(()=>{saveGuide();savePlan();initSelectors();document.getElementById('expStat').textContent='✓ Import erfolgreich';toast('Import erfolgreich')});
   }catch(err){toast('JSON-Fehler: '+err.message)}};r.readAsText(f)
 }
 
@@ -1072,7 +1051,6 @@ async function bootBackcastingPlan(me){
     plan = { meta:{}, measures:{} };
   }
   initSelectors();
-  updateMeta();
   const cs = document.getElementById('csvStatus');
   if(cs) cs.textContent = '✓ '+guidelines.length+' Leitplanken aktiv';
 }
