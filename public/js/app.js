@@ -5077,18 +5077,33 @@ function renderDeployPopover(data) {
   const pop = document.getElementById("deployInfoPopover");
   if (!pop) return;
   const esc = (s) => { const d = document.createElement("div"); d.textContent = s || ""; return d.innerHTML; };
-  const row = (label, value, mono) =>
-    '<div class="deploy-info-popover__row">' +
-    '<span class="deploy-info-popover__label">' + esc(label) + '</span>' +
-    '<span class="deploy-info-popover__value' + (mono ? " deploy-info-popover__value--mono" : "") + '">' + esc(value || "\u2013") + '</span></div>';
+  const srcLabel = data.source === "vercel" ? "Vercel" : data.source === "git" ? "Lokal (git)" : "Unbekannt";
+
+  const commits = Array.isArray(data.commits) ? data.commits : [];
+  let listHtml = "";
+  commits.forEach((c, i) => {
+    const shortMsg = esc(c.message || "\u2013");
+    const summary = '<span class="di-commit__sha">' + esc(c.sha) + '</span> ' +
+      '<span class="di-commit__msg-preview">' + shortMsg + '</span>';
+    listHtml +=
+      '<details class="di-commit"' + (i === 0 ? " open" : "") + '>' +
+        '<summary class="di-commit__summary">' + summary + '</summary>' +
+        '<div class="di-commit__body">' +
+          '<div class="di-commit__detail"><span class="di-commit__lbl">Autor</span> ' + esc(c.author) + '</div>' +
+          '<div class="di-commit__detail"><span class="di-commit__lbl">Datum</span> ' + formatDeployDate(c.date) + '</div>' +
+          '<div class="di-commit__detail"><span class="di-commit__lbl">\u00c4nderung</span> ' + shortMsg + '</div>' +
+        '</div>' +
+      '</details>';
+  });
+
   pop.innerHTML =
-    '<div class="deploy-info-popover__title">\u{1F680} Deployment-Info</div>' +
-    row("Zeitpunkt", formatDeployDate(data.deployedAt)) +
-    row("Commit", data.commitSha, true) +
-    row("\u00c4nderung", data.commitMessage) +
-    row("Autor", data.commitAuthor) +
-    row("Branch", data.branch, true) +
-    row("Quelle", data.source === "vercel" ? "Vercel" : data.source === "git" ? "Lokal (git)" : "Unbekannt");
+    '<div class="deploy-info-popover__title">\u{1F680} Letzte \u00c4nderungen</div>' +
+    '<div class="deploy-info-popover__meta">' +
+      '<span>' + esc(data.branch || "\u2013") + '</span> \u00b7 ' +
+      '<span>' + srcLabel + '</span> \u00b7 ' +
+      '<span>Server ' + formatDeployDate(data.deployedAt) + '</span>' +
+    '</div>' +
+    (listHtml || '<div class="deploy-info-popover__row">Keine Commits verf\u00fcgbar</div>');
 }
 
 async function toggleDeployInfo() {
@@ -5099,7 +5114,7 @@ async function toggleDeployInfo() {
     try {
       deployInfoCache = await api("/api/admin/deploy-info");
     } catch (_e) {
-      deployInfoCache = { commitSha: "", commitMessage: "Nicht verf\u00fcgbar", deployedAt: "", source: "unknown" };
+      deployInfoCache = { deployedAt: "", source: "unknown", branch: "", commits: [] };
     }
   }
   renderDeployPopover(deployInfoCache);

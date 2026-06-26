@@ -31,39 +31,47 @@ const { execSync } = require("child_process");
 const SERVER_STARTED_AT = new Date().toISOString();
 const DEPLOY_INFO = (function collectDeployInfo() {
   const env = process.env;
+  const SEP = "||";
+  const parseBranch = (refs) =>
+    (refs || "").replace(/.*HEAD -> /, "").split(",")[0].trim() || "";
+
   if (env.VERCEL_GIT_COMMIT_SHA) {
     return {
-      commitSha: (env.VERCEL_GIT_COMMIT_SHA || "").slice(0, 8),
-      commitMessage: env.VERCEL_GIT_COMMIT_MESSAGE || "",
-      commitAuthor: env.VERCEL_GIT_COMMIT_AUTHOR_NAME || "",
-      branch: env.VERCEL_GIT_COMMIT_REF || "",
       deployedAt: SERVER_STARTED_AT,
       source: "vercel",
+      branch: env.VERCEL_GIT_COMMIT_REF || "",
+      commits: [{
+        sha: (env.VERCEL_GIT_COMMIT_SHA || "").slice(0, 8),
+        message: env.VERCEL_GIT_COMMIT_MESSAGE || "",
+        author: env.VERCEL_GIT_COMMIT_AUTHOR_NAME || "",
+        date: SERVER_STARTED_AT,
+      }],
     };
   }
   try {
-    const log = execSync("git log -1 --format=%H||%s||%an||%D", {
-      encoding: "utf-8",
-      timeout: 3000,
-    }).trim();
-    const [sha, msg, author, refs] = log.split("||");
-    const branch = (refs || "").replace(/.*HEAD -> /, "").split(",")[0].trim() || "";
-    return {
-      commitSha: (sha || "").slice(0, 8),
-      commitMessage: msg || "",
-      commitAuthor: author || "",
-      branch,
-      deployedAt: SERVER_STARTED_AT,
-      source: "git",
-    };
+    const raw = execSync(
+      `git log -10 --format=%H${SEP}%s${SEP}%an${SEP}%aI${SEP}%D`,
+      { encoding: "utf-8", timeout: 5000 }
+    ).trim();
+    const lines = raw.split("\n").filter(Boolean);
+    let branch = "";
+    const commits = lines.map((line) => {
+      const [sha, msg, author, date, refs] = line.split(SEP);
+      if (!branch && refs) branch = parseBranch(refs);
+      return {
+        sha: (sha || "").slice(0, 8),
+        message: msg || "",
+        author: author || "",
+        date: date || "",
+      };
+    });
+    return { deployedAt: SERVER_STARTED_AT, source: "git", branch, commits };
   } catch (_e) {
     return {
-      commitSha: "",
-      commitMessage: "",
-      commitAuthor: "",
-      branch: "",
       deployedAt: SERVER_STARTED_AT,
       source: "unknown",
+      branch: "",
+      commits: [],
     };
   }
 })();
