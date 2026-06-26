@@ -127,8 +127,273 @@ const FORTSCHRITT_TIPS = {
       <li><b>SOLL (durchgezogene Linie)</b> – jährliche Zielwerte aus Backcasting-Meilensteinen</li>
       <li><b>IST (gestrichelte Linie)</b> – projizierter Verlauf vom Ist-Stand 2026 linear zum Soll-Ziel 2029</li>
       <li>Bei <b>Alle Units</b> werden alle Standard-Units farblich überlagert; die Legende zeigt Linienart und Unit-Farben getrennt</li>
-    </ul>`,
+    </ul>
+    <p>Ausführliche Feldzuordnung Phase&nbsp;1 ↔ Backcasting: Register <em>Erläuterung Berechnung</em>.</p>`,
 };
+
+const FORTSCHRITT_FIELD_MAPPINGS = [
+  {
+    kpi: "Umsatz (TEUR)",
+    views: ["Gesamtfortschritt", "Detail"],
+    phase1: {
+      area: "Portfolio · Status",
+      fields: ["jahresumsatz_teur"],
+      agg: "Summe über alle Portfolio-Positionen der Unit",
+    },
+    phase2: {
+      area: "Meilenstein · Planung",
+      fields: ["ziel_umsatz_teur"],
+      agg: "Summe aller Meilensteine (kind = wsYear) für das Jahr",
+    },
+    calc: "IST = ein aktueller Gesamtumsatz; Zeitstrahl: lineare Projektion 2026→2029 zum SOLL 2029",
+    example: {
+      phase1Items: [
+        { label: "AMS Copilot (Produkte)", field: "jahresumsatz_teur", value: "120" },
+        { label: "Managed Ops (Services)", field: "jahresumsatz_teur", value: "80" },
+      ],
+      phase1Calc: "120 + 80",
+      phase1Result: "200 TEUR",
+      phase2Items: [
+        { label: "Meilenstein WS A · 2027", field: "ziel_umsatz_teur", value: "130" },
+        { label: "Meilenstein WS B · 2027", field: "ziel_umsatz_teur", value: "90" },
+      ],
+      phase2Calc: "130 + 90",
+      phase2Result: "220 TEUR",
+      steps: [
+        "<b>Detail:</b> Δ = SOLL − IST = 220 − 200 = <b>+20 TEUR</b>",
+        "Δ% = 20 ÷ 220 × 100 ≈ <b>9,1&nbsp;%</b> → Status: <em>auf Plan</em> (≥ −5&nbsp;%)",
+        "<b>Zeitstrahl 2027:</b> IST-Start 2026 = 200; SOLL 2029 = 280 → linear: 200 + (280−200) × ⅓ ≈ <b>227 TEUR</b>",
+      ],
+      outcome: "IST 200 TEUR · SOLL 220 TEUR · Δ +9,1&nbsp;%",
+    },
+  },
+  {
+    kpi: "Headcount",
+    views: ["Gesamtfortschritt", "Detail"],
+    phase1: {
+      area: "Organisation · Status",
+      fields: ["gliederungen[].headcount", "rollen[].anzahl (Fallback)"],
+      agg: "Summe Headcount in technologischen Gliederungen",
+    },
+    phase2: {
+      area: "Meilenstein · Planung",
+      fields: ["ziel_headcount"],
+      agg: "Maximum über alle Meilensteine des Jahres",
+    },
+    calc: "IST = aktueller Headcount; Zeitstrahl: lineare Projektion zum SOLL 2029",
+    example: {
+      phase1Items: [
+        { label: "Gliederung Data &amp; AI", field: "headcount", value: "12" },
+        { label: "Gliederung Cloud", field: "headcount", value: "8" },
+      ],
+      phase1Calc: "12 + 8",
+      phase1Result: "20 MA",
+      phase2Items: [
+        { label: "Meilenstein WS A · 2027", field: "ziel_headcount", value: "22" },
+        { label: "Meilenstein WS B · 2027", field: "ziel_headcount", value: "25" },
+      ],
+      phase2Calc: "max(22, 25)",
+      phase2Result: "25 MA",
+      steps: [
+        "<b>Detail:</b> Δ = SOLL − IST = 25 − 20 = <b>+5 MA</b>",
+        "Δ% = 5 ÷ 25 × 100 = <b>20&nbsp;%</b> → Status: <em>auf Plan</em>",
+        "<b>Zeitstrahl 2028:</b> IST-Start 2026 = 20; SOLL 2029 = 28 → linear: 20 + (28−20) × ⅔ ≈ <b>25 MA</b>",
+      ],
+      outcome: "IST 20 MA · SOLL 25 MA · Δ +20&nbsp;%",
+    },
+  },
+  {
+    kpi: "Zertifizierungsquote (%)",
+    views: ["Gesamtfortschritt", "Detail"],
+    phase1: {
+      area: "Skills · Status",
+      fields: ["zertifiziert = „ja“"],
+      agg: "Anteil zertifizierter Mitarbeitender an allen Skill-Einträgen",
+    },
+    phase2: {
+      area: "Meilenstein · Planung",
+      fields: ["ziel_anteil_prozent"],
+      agg: "Höchster Anteil (max) über Meilensteine des Jahres",
+    },
+    calc: "Detail: IST ≥ SOLL = auf Plan; Zeitstrahl: lineare Projektion der Quote",
+    example: {
+      phase1Items: [
+        { label: "Mitarbeiter A", field: "zertifiziert", value: "ja" },
+        { label: "Mitarbeiter B", field: "zertifiziert", value: "ja" },
+        { label: "Mitarbeiter C", field: "zertifiziert", value: "nein" },
+      ],
+      phase1Calc: "2 ÷ 3 × 100",
+      phase1Result: "66,7 %",
+      phase2Items: [
+        { label: "Meilenstein WS A · 2027", field: "ziel_anteil_prozent", value: "70" },
+        { label: "Meilenstein WS B · 2027", field: "ziel_anteil_prozent", value: "75" },
+      ],
+      phase2Calc: "max(70, 75)",
+      phase2Result: "75 %",
+      steps: [
+        "<b>Detail:</b> Δ = IST − SOLL = 66,7 − 75 = <b>−8,3&nbsp;Pp</b>",
+        "66,7&nbsp;% &lt; 75&nbsp;% → Status: <em>leicht hinter Plan</em> (≥ SOLL − 10&nbsp;%)",
+        "<b>Zeitstrahl 2028:</b> IST-Start 66,7&nbsp;%; SOLL 2029 = 85&nbsp;% → linear ≈ <b>78,8&nbsp;%</b>",
+      ],
+      outcome: "IST 66,7&nbsp;% · SOLL 75&nbsp;% · leicht hinter Plan",
+    },
+  },
+  {
+    kpi: "Skill-Lücken",
+    views: ["Detail"],
+    phase1: {
+      area: "Skills · Status",
+      fields: ["skills[].level", "skills[].kategorie"],
+      agg: "Ø Skill-Level je Kategorie in der Unit",
+    },
+    phase2: {
+      area: "Meilenstein · Planung",
+      fields: ["ziel_skill_kategorie", "ziel_skill_level_min", "ziel_anteil_prozent (optional)"],
+      agg: "Je gesetztem Skill-Ziel im Meilenstein",
+    },
+    calc: "Gap = Ø Level IST − Mindest-Level SOLL (nur Detailfortschritt, nicht im Zeitstrahl)",
+    example: {
+      phase1Items: [
+        { label: "MA 1 · Cloud", field: "level", value: "2" },
+        { label: "MA 2 · Cloud", field: "level", value: "3" },
+        { label: "MA 3 · Cloud", field: "level", value: "4" },
+      ],
+      phase1Calc: "(2 + 3 + 4) ÷ 3",
+      phase1Result: "Ø 3,0",
+      phase2Items: [
+        { label: "Meilenstein WS Cloud · 2027", field: "ziel_skill_kategorie", value: "Cloud" },
+        { label: "gleicher Meilenstein", field: "ziel_skill_level_min", value: "3,5" },
+      ],
+      phase2Calc: "Mindest-Level SOLL",
+      phase2Result: "3,5",
+      steps: [
+        "<b>Gap</b> = Ø Level IST − Mindest-Level SOLL = 3,0 − 3,5 = <b>−0,5</b>",
+        "−0,5 ≥ −0,5 → Status: <em>leicht hinter Plan</em>",
+      ],
+      outcome: "IST Ø 3,0 · SOLL min. 3,5 · Gap −0,5",
+    },
+  },
+];
+
+let fortschrittErlaeuterungRendered = false;
+
+function ftCodeList(fields) {
+  return (fields || [])
+    .map((f) => `<code>${f}</code>`)
+    .join(", ");
+}
+
+function renderFortschrittExampleItem(item) {
+  return `<li class="ft-methodik-example__row">
+    <span class="ft-methodik-example__label">${item.label}</span>
+    <code class="ft-methodik-example__field">${item.field}</code>
+    <span class="ft-methodik-example__value">= ${item.value}</span>
+  </li>`;
+}
+
+function renderFortschrittMappingExample(row) {
+  const ex = row.example;
+  if (!ex) return "";
+
+  const phase1List = (ex.phase1Items || []).map(renderFortschrittExampleItem).join("");
+  const phase2List = (ex.phase2Items || []).map(renderFortschrittExampleItem).join("");
+  const steps = (ex.steps || []).map((s) => `<li>${s}</li>`).join("");
+
+  return `<div class="ft-methodik-example" aria-label="Beispiel ${ftEscAttr(row.kpi)}">
+    <div class="ft-methodik-example__title">Beispielrechnung</div>
+    <div class="ft-methodik-example__grid">
+      <div class="ft-methodik-example__col ft-methodik-example__col--p1">
+        <div class="ft-methodik-example__col-head">Phase 1 · Quelldaten</div>
+        <ul class="ft-methodik-example__list">${phase1List}</ul>
+        <div class="ft-methodik-example__formula">${ex.phase1Calc} → <strong>IST ${ex.phase1Result}</strong></div>
+      </div>
+      <div class="ft-methodik-example__col ft-methodik-example__col--p2">
+        <div class="ft-methodik-example__col-head">Phase 2 · Quelldaten (Jahr 2027)</div>
+        <ul class="ft-methodik-example__list">${phase2List}</ul>
+        <div class="ft-methodik-example__formula">${ex.phase2Calc} → <strong>SOLL ${ex.phase2Result}</strong></div>
+      </div>
+    </div>
+    <div class="ft-methodik-example__calc">
+      <div class="ft-methodik-example__col-head">Berechnung &amp; Ergebnis</div>
+      <ol class="ft-methodik-example__steps">${steps}</ol>
+      <div class="ft-methodik-example__outcome">${ex.outcome}</div>
+    </div>
+  </div>`;
+}
+
+function renderFortschrittMappingRow(row) {
+  const views = (row.views || [])
+    .map((v) => `<span>${v}</span>`)
+    .join("");
+  return `<div class="ft-methodik-flow" role="group" aria-label="${ftEscAttr(row.kpi)}">
+    <div class="ft-methodik-flow__step ft-methodik-flow__step--p1">
+      <div class="ft-methodik-flow__label">Phase 1 · Status</div>
+      <div class="ft-methodik-flow__title">${row.phase1.area}</div>
+      <p class="ft-methodik-flow__fields">Felder: ${ftCodeList(row.phase1.fields)}</p>
+      <div class="ft-methodik-flow__agg">${row.phase1.agg}</div>
+    </div>
+    <div class="ft-methodik-flow__arrow" aria-hidden="true">→</div>
+    <div class="ft-methodik-flow__step ft-methodik-flow__step--kpi">
+      <div class="ft-methodik-flow__label">KPI</div>
+      <div class="ft-methodik-flow__title">${row.kpi}</div>
+      <div class="ft-methodik-views">${views}</div>
+    </div>
+    <div class="ft-methodik-flow__arrow" aria-hidden="true">←</div>
+    <div class="ft-methodik-flow__step ft-methodik-flow__step--p2">
+      <div class="ft-methodik-flow__label">Phase 2 · Backcasting</div>
+      <div class="ft-methodik-flow__title">${row.phase2.area}</div>
+      <p class="ft-methodik-flow__fields">Felder: ${ftCodeList(row.phase2.fields)}</p>
+      <div class="ft-methodik-flow__agg">${row.phase2.agg}</div>
+    </div>
+  </div>
+  <p class="ft-methodik-note" style="margin-top:.35rem;margin-bottom:.45rem">${row.calc}</p>
+  ${renderFortschrittMappingExample(row)}`;
+}
+
+function renderFortschrittErlaeuterungHtml() {
+  const mappingRows = FORTSCHRITT_FIELD_MAPPINGS.map(renderFortschrittMappingRow).join("");
+
+  const pipelineGesamt = `<div class="ft-methodik-pipeline">
+    <div class="ft-methodik-pipeline__item"><strong>1 · Daten laden</strong>Unit-Filter → API <code>/api/dashboard/timeline</code></div>
+    <div class="ft-methodik-pipeline__item"><strong>2 · IST aggregieren</strong>Phase-1-Einträge (<code>entries</code>) je Unit</div>
+    <div class="ft-methodik-pipeline__item"><strong>3 · SOLL aggregieren</strong>Backcasting-Plan (<code>backcasting_plans</code>) je Jahr 2026–2029</div>
+    <div class="ft-methodik-pipeline__item"><strong>4 · Zeitstrahl</strong>SOLL = Ziel je Jahr; IST = linear von IST-Start zu SOLL 2029</div>
+  </div>`;
+
+  const pipelineDetail = `<div class="ft-methodik-pipeline">
+    <div class="ft-methodik-pipeline__item"><strong>1 · Daten laden</strong>Unit + Jahr → API <code>/api/dashboard/snapshot</code></div>
+    <div class="ft-methodik-pipeline__item"><strong>2 · Vergleich</strong>IST-Stand Phase 1 vs. aggregierte Meilenstein-Ziele des Jahres</div>
+    <div class="ft-methodik-pipeline__item"><strong>3 · Ampel</strong>Abweichung: grün ≥ −5&nbsp;%, gelb −5 bis −15&nbsp;%, rot darunter (Zertifizierung: eigene Schwellen)</div>
+  </div>`;
+
+  return `<div class="card ft-methodik-card ft-methodik-card--page">
+    <div class="ft-methodik-body">
+      <h4>Ablauf Gesamtfortschritt (Zeitstrahl)</h4>
+      ${pipelineGesamt}
+      <h4>Ablauf Detailfortschritt (IST vs. SOLL)</h4>
+      ${pipelineDetail}
+      <h4>Feldzuordnung je Kennzahl</h4>
+      <p style="color:var(--rc-muted);font-size:.72rem;margin:0 0 .5rem">
+        Links: Erfassungsfelder aus der <strong>Statusaufnahme (Phase 1)</strong>.
+        Rechts: Ziel-Felder in <strong>Plan-Meilensteinen (Phase 2)</strong> (<code>kind = wsYear</code>, gefiltert nach <code>jahr</code>).
+      </p>
+      ${mappingRows}
+      <p class="ft-methodik-note">
+        Gemeinsame Server-Logik: <code>server/dashboard-service.js</code> (<code>aggregatePhase1Entries</code>, <code>aggregatePlanForYear</code>, <code>buildDashboardTimeline</code> / <code>buildDashboardSnapshot</code>).
+        Zeitstrahl: Register <em>Gesamtfortschritt</em>. IST/SOLL-Details und Skill-Lücken: Register <em>Detailfortschritt</em>.
+      </p>
+    </div>
+  </div>`;
+}
+
+function renderFortschrittErlaeuterungPage() {
+  const mount = document.getElementById("fortschrittErlaeuterungMount");
+  if (!mount) return;
+  if (!fortschrittErlaeuterungRendered) {
+    mount.innerHTML = renderFortschrittErlaeuterungHtml();
+    fortschrittErlaeuterungRendered = true;
+  }
+}
 
 function fortschrittTipPageIds() {
   return ["page-fortschritt", "page-gesamtfortschritt"];

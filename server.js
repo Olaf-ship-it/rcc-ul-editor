@@ -20,6 +20,12 @@ const {
   getGuidelines,
   updateGuidelines,
 } = require("./server/guidelines-service");
+const {
+  ensurePresenceSchema,
+  upsertHeartbeat,
+  listOnlineUsers,
+  removePresence,
+} = require("./server/presence-service");
 
 const app = express();
 const PORT = process.env.PORT || 3000;
@@ -2282,6 +2288,7 @@ async function initDb() {
   await ensureDemoSchema();
   await ensureGuidelinesSchema(pool);
   await seedGuidelinesIfEmpty(pool);
+  await ensurePresenceSchema(pool);
   await backfillSkillEntryPositionIds();
   await backfillSkillEntryCategoryIds();
 
@@ -2513,9 +2520,36 @@ app.post("/api/auth/login", async (req, res) => {
   });
 });
 
-app.post("/api/auth/logout", (_req, res) => {
+app.post("/api/auth/logout", (req, res) => {
+  const token = req.cookies[TOKEN_COOKIE];
+  if (token) {
+    try {
+      const decoded = jwt.verify(token, JWT_SECRET);
+      void removePresence(pool, decoded.sub);
+    } catch (_error) {
+      /* ignore invalid token */
+    }
+  }
   res.clearCookie(TOKEN_COOKIE, { ...cookieOptions(), maxAge: 0 });
   return res.json({ ok: true });
+});
+
+app.post("/api/presence/heartbeat", auth, async (req, res) => {
+  try {
+    await upsertHeartbeat(pool, req.user, req.body || {});
+    return res.json({ ok: true });
+  } catch (error) {
+    return res.status(400).json({ error: error.message || "Heartbeat fehlgeschlagen." });
+  }
+});
+
+app.get("/api/admin/presence", auth, requireAdmin, async (_req, res) => {
+  try {
+    const users = await listOnlineUsers(pool);
+    return res.json({ users });
+  } catch (error) {
+    return res.status(500).json({ error: error.message || "Presence konnte nicht geladen werden." });
+  }
 });
 
 app.get("/api/auth/me", auth, async (req, res) => {

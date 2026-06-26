@@ -1499,6 +1499,7 @@ function setSuperAdminViewUnit(unit) {
   } else if (typeof updateFortschrittDemoControls === "function") {
     updateFortschrittDemoControls();
   }
+  refreshPresenceTracking();
 }
 
 function requireSaveUnit() {
@@ -1614,8 +1615,40 @@ function getActiveAppPage() {
 }
 
 const PHASE1_TAB_PAGES = ["portfolio", "organisation", "skills", "overview", "export"];
-const PHASE3_TAB_PAGES = ["gesamtfortschritt", "fortschritt"];
+const PHASE3_TAB_PAGES = ["gesamtfortschritt", "fortschritt", "fortschritt-erlaeuterung"];
 const ADMIN_SUBTAB_MODES = ["users", "skills", "roles", "leitplanken", "permissions", "org", "demo"];
+
+function resolvePresenceContext() {
+  if (isMitarbeiter) return "phase1";
+  const page = getActiveAppPage();
+  if (page === "admin") return "admin";
+  if (PHASE3_TAB_PAGES.includes(page)) return "fortschritt";
+  return "phase1";
+}
+
+function resolvePresenceUnit() {
+  if (typeof isSuperAdminViewAll === "function" && isSuperAdminViewAll()) return "Alle Units";
+  if (typeof getSaveUnit === "function") {
+    const unit = String(getSaveUnit() || "").trim();
+    if (unit) return unit;
+  }
+  return String(currentUnit || "").trim();
+}
+
+function startPresenceTracking() {
+  if (typeof window.rcPresence?.init !== "function") return;
+  window.rcPresence.init({
+    email: currentEmail,
+    isAdmin,
+    getContext: resolvePresenceContext,
+    getUnit: resolvePresenceUnit,
+  });
+}
+
+function refreshPresenceTracking() {
+  window.rcPresence?.refresh?.();
+  if (isAdmin) window.rcPresence?.refreshList?.();
+}
 
 function isDemoDatenViewActive() {
   return getActiveAppPage() === "admin" && adminSubtab === "demo";
@@ -2739,6 +2772,7 @@ async function doLogin(){
 
 async function doLogout(){
   const wasMitarbeiter = document.body.classList.contains("mitarbeiter-mode");
+  window.rcPresence?.stop?.();
   try { await api("/api/auth/logout", { method: "POST" }); } catch (_e) {}
   currentUnit='';currentName='';currentEmail='';isAdmin=false;isSuperAdmin=false;isMitarbeiter=false;userModules={ backcasting: false, fortschritt: false };currentSkillEntryId=null;currentPersonalnummer='';superAdminViewUnit='all';userUnits=[];
   rcViewUnitPersist?.clearPersistedViewUnit?.();
@@ -2755,7 +2789,7 @@ function getDirectNavPageFromQuery() {
   if (isMitarbeiter) return "";
   const page = new URLSearchParams(window.location.search).get("page");
   if ((page === "admin" || page === "demo-daten") && isAdmin) return "admin";
-  if ((page === "gesamtfortschritt" || page === "fortschritt") && canAccessPhase3Area()) return page;
+  if (PHASE3_TAB_PAGES.includes(page) && canAccessPhase3Area()) return page;
   return "";
 }
 
@@ -2819,6 +2853,7 @@ async function showApp(options = {}){
     if (isAdmin) void initAdminPage();
     if (!isMitarbeiter) void refreshUnitContextPanels();
   }
+  startPresenceTracking();
 }
 
 function applyPageFromQuery(options = {}) {
@@ -2852,11 +2887,12 @@ function applyPageFromQuery(options = {}) {
     clearAppPageQueryFromUrl();
     return;
   }
-  if (page === "gesamtfortschritt" || page === "fortschritt") {
+  if (PHASE3_TAB_PAGES.includes(page)) {
     if (!canAccessPhase3Area()) return;
     switchTab(page);
     if (page === "gesamtfortschritt") renderGesamtfortschrittDashboard();
-    else renderFortschrittDashboard();
+    else if (page === "fortschritt") renderFortschrittDashboard();
+    else renderFortschrittErlaeuterungPage();
     clearAppPageQueryFromUrl();
   }
 }
@@ -2958,6 +2994,7 @@ document.querySelectorAll("#tabs .tab").forEach((t) => {
   if (p === "admin") initAdminPage();
   if (p === "gesamtfortschritt") renderGesamtfortschrittDashboard();
   if (p === "fortschritt") renderFortschrittDashboard();
+  if (p === "fortschritt-erlaeuterung") renderFortschrittErlaeuterungPage();
   if (p === "portfolio") {
     renderPortfolio();
     refreshUnitContextPanels();
@@ -2994,10 +3031,13 @@ function updateAppModuleNavActive(page) {
     if (page === "admin" && adminSubtab === "demo") {
       subtitleEl.textContent = "Demo-Datensätze für IST/SOLL-Tests je Unit";
     } else if (onPhase3) {
-      subtitleEl.textContent =
-        page === "gesamtfortschritt"
-          ? "Zeitstrahl 2026–2029 · Umsatz, Headcount & Zertifizierung"
-          : "Detailfortschritt · IST vs. SOLL je Unit und Jahr";
+      if (page === "gesamtfortschritt") {
+        subtitleEl.textContent = "Zeitstrahl 2026–2029 · Umsatz, Headcount & Zertifizierung";
+      } else if (page === "fortschritt-erlaeuterung") {
+        subtitleEl.textContent = "Methodik & Feldzuordnung Phase 1 ↔ Phase 2";
+      } else {
+        subtitleEl.textContent = "Detailfortschritt · IST vs. SOLL je Unit und Jahr";
+      }
     } else if (page === "admin") {
       subtitleEl.textContent = "Benutzer, Kataloge, Leitplanken und Organigramm";
     } else {
@@ -3017,6 +3057,7 @@ function switchTab(p){
   updateAppModuleNavActive(p);
   const page = document.getElementById("page-" + p);
   if (page && prevPage !== p) collapseAllCollapsibleSections(page);
+  refreshPresenceTracking();
 }
 
 // ===== PORTFOLIO =====

@@ -81,6 +81,7 @@
       const logoutBtn = document.getElementById("bcLogoutBtn");
       if (logoutBtn) {
         logoutBtn.addEventListener("click", async function () {
+          window.rcPresence?.stop?.();
           try {
             await fetch("/api/auth/logout", { method: "POST", credentials: "same-origin" });
           } catch (_e) { /* ignore */ }
@@ -93,6 +94,17 @@
       if (fsLink) fsLink.style.display = me.modules?.fortschritt || isAdmin ? "" : "none";
       setSessionBootState("authenticated");
       bindBcHeaderNav();
+      if (typeof window.rcPresence?.init === "function") {
+        window.rcPresence.init({
+          email: me.email || "",
+          isAdmin,
+          getContext: () => "backcasting",
+          getUnit: () => {
+            const unit = window.rcViewUnitPersist?.readPersistedViewUnit?.() || me.unit || "";
+            return unit === "all" ? "Alle Units" : String(unit || "").trim();
+          },
+        });
+      }
       document.dispatchEvent(
         new CustomEvent("rc-backcasting-ready", {
           detail: { ...me, roles, units, isSuperAdmin, isAdmin },
