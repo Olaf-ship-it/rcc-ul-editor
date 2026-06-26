@@ -26,6 +26,47 @@ const {
   listOnlineUsers,
   removePresence,
 } = require("./server/presence-service");
+const { execSync } = require("child_process");
+
+const SERVER_STARTED_AT = new Date().toISOString();
+const DEPLOY_INFO = (function collectDeployInfo() {
+  const env = process.env;
+  if (env.VERCEL_GIT_COMMIT_SHA) {
+    return {
+      commitSha: (env.VERCEL_GIT_COMMIT_SHA || "").slice(0, 8),
+      commitMessage: env.VERCEL_GIT_COMMIT_MESSAGE || "",
+      commitAuthor: env.VERCEL_GIT_COMMIT_AUTHOR_NAME || "",
+      branch: env.VERCEL_GIT_COMMIT_REF || "",
+      deployedAt: SERVER_STARTED_AT,
+      source: "vercel",
+    };
+  }
+  try {
+    const log = execSync("git log -1 --format=%H||%s||%an||%D", {
+      encoding: "utf-8",
+      timeout: 3000,
+    }).trim();
+    const [sha, msg, author, refs] = log.split("||");
+    const branch = (refs || "").replace(/.*HEAD -> /, "").split(",")[0].trim() || "";
+    return {
+      commitSha: (sha || "").slice(0, 8),
+      commitMessage: msg || "",
+      commitAuthor: author || "",
+      branch,
+      deployedAt: SERVER_STARTED_AT,
+      source: "git",
+    };
+  } catch (_e) {
+    return {
+      commitSha: "",
+      commitMessage: "",
+      commitAuthor: "",
+      branch: "",
+      deployedAt: SERVER_STARTED_AT,
+      source: "unknown",
+    };
+  }
+})();
 
 const app = express();
 const PORT = process.env.PORT || 3000;
@@ -2353,6 +2394,46 @@ async function syncAppRolesAndPositionsCatalog() {
   }
 }
 
+const DEFAULT_PLANNING_YEARS = { startYear: 2026, endYear: 2029 };
+
+async function ensureAppConfigSchema() {
+  await pool.query(`
+    CREATE TABLE IF NOT EXISTS app_config (
+      id TEXT PRIMARY KEY,
+      payload JSONB NOT NULL,
+      updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+    )
+  `);
+  const existing = await pool.query("SELECT id FROM app_config WHERE id = 'planning_years'");
+  if (!existing.rows.length) {
+    await pool.query(
+      `INSERT INTO app_config (id, payload) VALUES ('planning_years', $1::jsonb)`,
+      [JSON.stringify(DEFAULT_PLANNING_YEARS)]
+    );
+  }
+}
+
+async function getPlanningYears() {
+  try {
+    const { rows } = await pool.query(
+      "SELECT payload FROM app_config WHERE id = 'planning_years'"
+    );
+    if (rows.length) {
+      const p = rows[0].payload;
+      const start = Number(p.startYear) || DEFAULT_PLANNING_YEARS.startYear;
+      const end = Number(p.endYear) || DEFAULT_PLANNING_YEARS.endYear;
+      if (end >= start) {
+        const years = [];
+        for (let y = start; y <= end; y++) years.push(y);
+        return { startYear: start, endYear: end, years };
+      }
+    }
+  } catch (_e) { /* fallback */ }
+  const years = [];
+  for (let y = DEFAULT_PLANNING_YEARS.startYear; y <= DEFAULT_PLANNING_YEARS.endYear; y++) years.push(y);
+  return { ...DEFAULT_PLANNING_YEARS, years };
+}
+
 async function initDb() {
   await pool.query(`
     CREATE TABLE IF NOT EXISTS users (
@@ -2394,6 +2475,7 @@ async function initDb() {
   await ensureGuidelinesSchema(pool);
   await seedGuidelinesIfEmpty(pool);
   await ensurePresenceSchema(pool);
+  await ensureAppConfigSchema();
   await backfillSkillEntryPositionIds();
   await backfillSkillEntryCategoryIds();
 
@@ -2654,6 +2736,44 @@ app.get("/api/admin/presence", auth, requireAdmin, async (_req, res) => {
     return res.json({ users });
   } catch (error) {
     return res.status(500).json({ error: error.message || "Presence konnte nicht geladen werden." });
+  }
+});
+
+app.get("/api/admin/deploy-info", auth, requireAdmin, (_req, res) => {
+  return res.json(DEPLOY_INFO);
+});
+
+app.get("/api/config/planning-years", auth, async (_req, res) => {
+  try {
+    return res.json(await getPlanningYears());
+  } catch (error) {
+    return res.status(500).json({ error: "Planungszeitraum konnte nicht geladen werden." });
+  }
+});
+
+app.put("/api/admin/config/planning-years", auth, requireAdmin, async (req, res) => {
+  const { startYear, endYear } = req.body || {};
+  const s = Number(startYear);
+  const e = Number(endYear);
+  if (!Number.isInteger(s) || !Number.isInteger(e)) {
+    return res.status(400).json({ error: "Start- und Endjahr muessen ganze Zahlen sein." });
+  }
+  if (s < 2025 || s > 2035) {
+    return res.status(400).json({ error: "Startjahr muss zwischen 2025 und 2035 liegen." });
+  }
+  if (e < s + 1 || e > 2040) {
+    return res.status(400).json({ error: "Endjahr muss mindestens 1 Jahr nach dem Startjahr liegen (max. 2040)." });
+  }
+  try {
+    await pool.query(
+      `INSERT INTO app_config (id, payload, updated_at)
+       VALUES ('planning_years', $1::jsonb, NOW())
+       ON CONFLICT (id) DO UPDATE SET payload = $1::jsonb, updated_at = NOW()`,
+      [JSON.stringify({ startYear: s, endYear: e })]
+    );
+    return res.json(await getPlanningYears());
+  } catch (error) {
+    return res.status(500).json({ error: "Planungszeitraum konnte nicht gespeichert werden." });
   }
 });
 
@@ -3107,7 +3227,8 @@ app.get("/api/dashboard/timeline", auth, async (req, res) => {
     return res.status(403).json({ error: "Kein Zugriff auf Phase 3 · Fortschritt." });
   }
 
-  const years = DEFAULT_TIMELINE_YEARS;
+  const planningConfig = await getPlanningYears();
+  const years = planningConfig.years;
 
   if (req.query.all === "true") {
     if (!isAdminRole(req.user)) {
@@ -3310,7 +3431,11 @@ app.get("/api/demo/status", auth, async (req, res) => {
 
 async function loadDemoDataForUnit(unit, email) {
   await removeDemoDataForUnit(unit);
-  const { entries, plan, summary } = buildDemoDataForUnit(unit);
+  const planningCfg = await getPlanningYears();
+  const { entries, plan, summary } = buildDemoDataForUnit(unit, {
+    milestoneYears: planningCfg.years,
+    referenceYear: planningCfg.startYear,
+  });
   await insertDemoEntries(entries, email);
   await upsertBackcastingPlan(
     unit,
@@ -3392,7 +3517,11 @@ app.post("/api/demo/load", auth, async (req, res) => {
   });
 });
 
-app.delete("/api/demo/remove", auth, async (req, res) => {
+function isDemoRemoveAllUnitsFlag(value) {
+  return value === true || value === "true" || value === "1" || value === 1;
+}
+
+async function handleDemoRemove(req, res) {
   if (isPureMitarbeiterRole(req.user)) {
     return res.status(403).json({ error: "Kein Zugriff." });
   }
@@ -3403,7 +3532,8 @@ app.delete("/api/demo/remove", auth, async (req, res) => {
   ) {
     return res.status(403).json({ error: "Kein Zugriff auf Demo-Daten." });
   }
-  const loadAll = req.body?.allUnits === true || req.query?.allUnits === "true";
+  const loadAll =
+    isDemoRemoveAllUnitsFlag(req.body?.allUnits) || isDemoRemoveAllUnitsFlag(req.query?.allUnits);
   if (loadAll) {
     if (!isAdminRole(req.user)) {
       return res.status(403).json({ error: "Demo für alle Units nur für Admins." });
@@ -3430,10 +3560,17 @@ app.delete("/api/demo/remove", auth, async (req, res) => {
     });
   }
 
-  const resolved = resolveDashboardUnit(req, req.body?.unit || req.query?.unit);
+  const requestedUnit = String(req.body?.unit || req.query?.unit || "").trim();
+  const resolved = resolveDashboardUnit(req, requestedUnit);
   if (resolved.error) return res.status(403).json({ error: resolved.error });
   const unit = resolved.unit;
-  if (!unit) return res.status(400).json({ error: "Unit fehlt." });
+  if (!unit) {
+    return res.status(400).json({
+      error: requestedUnit
+        ? "Unit konnte nicht aufgelöst werden."
+        : "Unit fehlt. Bitte eine Unit wählen oder allUnits=true verwenden.",
+    });
+  }
   if (!(await canAccessUnit(req, unit))) {
     return res.status(403).json({ error: "Kein Zugriff auf diese Unit." });
   }
@@ -3452,7 +3589,10 @@ app.delete("/api/demo/remove", auth, async (req, res) => {
     removedEntries: delEntries.rowCount,
     removedPlans: delPlans.rowCount,
   });
-});
+}
+
+app.delete("/api/demo/remove", auth, handleDemoRemove);
+app.post("/api/demo/remove", auth, handleDemoRemove);
 
 app.get("/api/guidelines", auth, async (req, res) => {
   if (!canReadGuidelines(req.user)) {

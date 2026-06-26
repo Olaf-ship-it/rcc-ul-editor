@@ -1638,7 +1638,7 @@ function getActiveAppPage() {
 
 const PHASE1_TAB_PAGES = ["portfolio", "organisation", "skills", "overview", "export"];
 const PHASE3_TAB_PAGES = ["gesamtfortschritt", "fortschritt", "fortschritt-erlaeuterung"];
-const ADMIN_SUBTAB_MODES = ["users", "skills", "roles", "leitplanken", "permissions", "org", "demo"];
+const ADMIN_SUBTAB_MODES = ["users", "skills", "roles", "leitplanken", "permissions", "org", "demo", "settings"];
 
 function resolvePresenceContext() {
   if (isMitarbeiter) return "phase1";
@@ -1741,7 +1741,7 @@ function applyMitarbeiterLayout() {
   if (subtitleEl) {
     subtitleEl.textContent = isMitarbeiter
       ? "Meine Fachskills und Soft Skills pflegen"
-      : "Portfolio, Organisation & Skill-Matrix · Transformation 2026–2029";
+      : "Portfolio, Organisation & Skill-Matrix \u00b7 Transformation " + planningYearRange();
   }
 
   const readonlyFields = ["sk_personalnummer", "sk_nachname", "sk_vorname", "sk_email"];
@@ -2839,9 +2839,10 @@ async function showApp(options = {}){
   updateHeaderUnitDisplay();
   updateSuperAdminFormMode();
   checkAdmin();
+  initDeployInfo();
   updateAppModuleLauncher(userModules);
 
-  const bootTasks = [renderHeaderUnitSwitcher()];
+  const bootTasks = [renderHeaderUnitSwitcher(), loadPlanningYears()];
   if (!lightBoot) {
     bootTasks.push(
       loadSkillCategoriesFromApi(),
@@ -3054,7 +3055,7 @@ function updateAppModuleNavActive(page) {
       subtitleEl.textContent = "Demo-Datensätze für IST/SOLL-Tests je Unit";
     } else if (onPhase3) {
       if (page === "gesamtfortschritt") {
-        subtitleEl.textContent = "Zeitstrahl 2026–2029 · Umsatz, Headcount & Zertifizierung";
+        subtitleEl.textContent = "Zeitstrahl " + planningYearRange() + " \u00b7 Umsatz, Headcount & Zertifizierung";
       } else if (page === "fortschritt-erlaeuterung") {
         subtitleEl.textContent = "Methodik & Feldzuordnung Phase 1 ↔ Phase 2";
       } else {
@@ -3064,7 +3065,7 @@ function updateAppModuleNavActive(page) {
       subtitleEl.textContent = "Benutzer, Kataloge, Leitplanken und Organigramm";
     } else {
       subtitleEl.textContent =
-        "Portfolio, Organisation & Skill-Matrix · Transformation 2026–2029";
+        "Portfolio, Organisation & Skill-Matrix \u00b7 Transformation " + planningYearRange();
     }
   }
 }
@@ -5003,16 +5004,16 @@ function exportMD(){const a=getAll();if(!a.length){toast('Keine Daten.','#e74c3c
         md+='| Bereich | Headcount | Umsatz | Beschreibung |\n|---|---:|---|---|\n';
         e.gliederungen.forEach(g=>{
           md+=`| ${String(g.bereich||'').replace(/\|/g,'/')} | ${g.headcount!=null?g.headcount:'–'} | ${String(g.umsatz||'').replace(/\|/g,'/')||'–'} | ${String(g.beschreibung||'').replace(/\|/g,'/').replace(/\n/g,' ')} |\n`;
-        });
-        md+='\n';
+      });
+      md+='\n';
       }
       if(Array.isArray(e.rollen)&&e.rollen.length){
         md+='| Rolle | Anzahl | Bemerkung |\n|---|---:|---|\n';
         e.rollen.forEach(r=>{
           md+=`| ${String(r.rolle||'').replace(/\|/g,'/')} | ${r.anzahl!=null?r.anzahl:'–'} | ${String(r.bemerkung||'').replace(/\|/g,'/')} |\n`;
-        });
-        md+='\n';
-      }
+    });
+    md+='\n';
+  }
       if(e.bemerkung)md+=`**Bemerkung:** ${String(e.bemerkung).replace(/\n/g,' ')}\n\n`;
     });
   }
@@ -5037,7 +5038,7 @@ function exportMD(){const a=getAll();if(!a.length){toast('Keine Daten.','#e74c3c
     });
     md += "\n";
   }
-  md+='---\n*Generiert aus Unitleiter-Erfassung realcore · Transformation 2026–2029*\n';
+  md+='---\n*Generiert aus Unitleiter-Erfassung realcore \u00b7 Transformation ' + planningYearRange() + '*\n';
   const b=new Blob([md],{type:'text/markdown;charset=utf-8'});
   dl(b,'Unitleiter_'+getExportUnitSlug()+'_'+today()+'.md');toast('Markdown exportiert!');}
 async function clearAll(){
@@ -5057,7 +5058,135 @@ function checkAdmin(){
   if (adminHeaderBtn) adminHeaderBtn.style.display = isAdmin ? '' : 'none';
   const superCard = document.getElementById('superAdminUnitsCard');
   if (superCard) superCard.style.display = isSuperAdmin ? '' : 'none';
+  const deployBtn = document.getElementById("btnDeployInfo");
+  if (deployBtn) deployBtn.style.display = isAdmin ? "" : "none";
 }
+
+let deployInfoCache = null;
+
+function formatDeployDate(iso) {
+  if (!iso) return "\u2013";
+  try {
+    const d = new Date(iso);
+    return d.toLocaleDateString("de-DE", { day: "2-digit", month: "2-digit", year: "numeric" }) +
+      ", " + d.toLocaleTimeString("de-DE", { hour: "2-digit", minute: "2-digit" });
+  } catch (_e) { return iso; }
+}
+
+function renderDeployPopover(data) {
+  const pop = document.getElementById("deployInfoPopover");
+  if (!pop) return;
+  const esc = (s) => { const d = document.createElement("div"); d.textContent = s || ""; return d.innerHTML; };
+  const row = (label, value, mono) =>
+    '<div class="deploy-info-popover__row">' +
+    '<span class="deploy-info-popover__label">' + esc(label) + '</span>' +
+    '<span class="deploy-info-popover__value' + (mono ? " deploy-info-popover__value--mono" : "") + '">' + esc(value || "\u2013") + '</span></div>';
+  pop.innerHTML =
+    '<div class="deploy-info-popover__title">\u{1F680} Deployment-Info</div>' +
+    row("Zeitpunkt", formatDeployDate(data.deployedAt)) +
+    row("Commit", data.commitSha, true) +
+    row("\u00c4nderung", data.commitMessage) +
+    row("Autor", data.commitAuthor) +
+    row("Branch", data.branch, true) +
+    row("Quelle", data.source === "vercel" ? "Vercel" : data.source === "git" ? "Lokal (git)" : "Unbekannt");
+}
+
+async function toggleDeployInfo() {
+  const pop = document.getElementById("deployInfoPopover");
+  if (!pop) return;
+  if (!pop.hidden) { pop.hidden = true; return; }
+  if (!deployInfoCache) {
+    try {
+      deployInfoCache = await api("/api/admin/deploy-info");
+    } catch (_e) {
+      deployInfoCache = { commitSha: "", commitMessage: "Nicht verf\u00fcgbar", deployedAt: "", source: "unknown" };
+    }
+  }
+  renderDeployPopover(deployInfoCache);
+  pop.hidden = false;
+}
+
+function initDeployInfo() {
+  const btn = document.getElementById("btnDeployInfo");
+  if (!btn) return;
+  btn.addEventListener("click", (e) => { e.stopPropagation(); toggleDeployInfo(); });
+  document.addEventListener("click", (e) => {
+    const pop = document.getElementById("deployInfoPopover");
+    if (pop && !pop.hidden && !pop.contains(e.target) && e.target !== btn && !btn.contains(e.target)) {
+      pop.hidden = true;
+    }
+  });
+}
+
+let _planningYearsCache = null;
+
+function planningYearRange() {
+  const c = _planningYearsCache;
+  const s = c?.startYear || 2026;
+  const e = c?.endYear || 2029;
+  return s + "\u2013" + e;
+}
+
+async function loadPlanningYears(force) {
+  if (_planningYearsCache && !force) return _planningYearsCache;
+  try {
+    const data = await api("/api/config/planning-years");
+    _planningYearsCache = data;
+    window._rcPlanningYears = data.years;
+    document.querySelectorAll(".planning-yr-range").forEach(el => {
+      el.textContent = data.startYear + "\u2013" + data.endYear;
+    });
+    return data;
+  } catch (_e) {
+    return _planningYearsCache || { startYear: 2026, endYear: 2029, years: [2026, 2027, 2028, 2029] };
+  }
+}
+
+function initAdminSettings() {
+  loadPlanningYears().then((cfg) => {
+    const selStart = document.getElementById("settingsStartYear");
+    const selEnd = document.getElementById("settingsEndYear");
+    if (!selStart || !selEnd) return;
+    selStart.innerHTML = "";
+    for (let y = 2025; y <= 2035; y++) {
+      const o = document.createElement("option");
+      o.value = y; o.textContent = y;
+      if (y === cfg.startYear) o.selected = true;
+      selStart.appendChild(o);
+    }
+    const fillEnd = () => {
+      const s = Number(selStart.value);
+      const prevEnd = Number(selEnd.value) || cfg.endYear;
+      selEnd.innerHTML = "";
+      for (let y = s + 1; y <= 2040; y++) {
+        const o = document.createElement("option");
+        o.value = y; o.textContent = y;
+        if (y === prevEnd) o.selected = true;
+        selEnd.appendChild(o);
+      }
+    };
+    fillEnd();
+    selStart.onchange = fillEnd;
+  });
+}
+
+window.savePlanningYears = async function savePlanningYears() {
+  const status = document.getElementById("settingsPlanningStatus");
+  const s = Number(document.getElementById("settingsStartYear")?.value);
+  const e = Number(document.getElementById("settingsEndYear")?.value);
+  if (!s || !e) return;
+  if (status) status.textContent = "Speichern…";
+  try {
+    const result = await api("/api/admin/config/planning-years", {
+      method: "PUT",
+      body: JSON.stringify({ startYear: s, endYear: e }),
+    });
+    _planningYearsCache = result;
+    if (status) { status.textContent = "Gespeichert. Seite neu laden, damit alle Bereiche aktualisiert werden."; status.style.color = "var(--rc-accent)"; }
+  } catch (err) {
+    if (status) { status.textContent = err.message || "Fehler beim Speichern."; status.style.color = "var(--rc-danger)"; }
+  }
+};
 
 let adminSubtab = "users";
 
@@ -5079,6 +5208,7 @@ function setAdminSubtab(mode) {
     "adminPanelPermissions",
     "adminPanelOrg",
     "adminPanelDemo",
+    "adminPanelSettings",
   ].forEach(collapseAdminPanelDetails);
   document.getElementById("btnAdminSubtabUsers")?.classList.toggle("active", adminSubtab === "users");
   document.getElementById("btnAdminSubtabSkills")?.classList.toggle("active", adminSubtab === "skills");
@@ -5091,6 +5221,7 @@ function setAdminSubtab(mode) {
     ?.classList.toggle("active", adminSubtab === "permissions");
   document.getElementById("btnAdminSubtabOrg")?.classList.toggle("active", adminSubtab === "org");
   document.getElementById("btnAdminSubtabDemo")?.classList.toggle("active", adminSubtab === "demo");
+  document.getElementById("btnAdminSubtabSettings")?.classList.toggle("active", adminSubtab === "settings");
   const usersPanel = document.getElementById("adminPanelUsers");
   const skillsPanel = document.getElementById("adminPanelSkills");
   const rolesPanel = document.getElementById("adminPanelRoles");
@@ -5098,6 +5229,7 @@ function setAdminSubtab(mode) {
   const permissionsPanel = document.getElementById("adminPanelPermissions");
   const orgPanel = document.getElementById("adminPanelOrg");
   const demoPanel = document.getElementById("adminPanelDemo");
+  const settingsPanel = document.getElementById("adminPanelSettings");
   if (usersPanel) usersPanel.style.display = adminSubtab === "users" ? "" : "none";
   if (skillsPanel) skillsPanel.style.display = adminSubtab === "skills" ? "" : "none";
   if (rolesPanel) rolesPanel.style.display = adminSubtab === "roles" ? "" : "none";
@@ -5105,6 +5237,7 @@ function setAdminSubtab(mode) {
   if (permissionsPanel) permissionsPanel.style.display = adminSubtab === "permissions" ? "" : "none";
   if (orgPanel) orgPanel.style.display = adminSubtab === "org" ? "" : "none";
   if (demoPanel) demoPanel.style.display = adminSubtab === "demo" ? "" : "none";
+  if (settingsPanel) settingsPanel.style.display = adminSubtab === "settings" ? "" : "none";
   if (adminSubtab === "skills") renderAdminSkillCategories();
   if (adminSubtab === "roles") renderAdminRolesAndPositions();
   if (adminSubtab === "leitplanken" && typeof initAdminLeitplanken === "function") {
@@ -5117,6 +5250,7 @@ function setAdminSubtab(mode) {
   if (adminSubtab === "demo" && typeof renderDemoDatenPage === "function") {
     renderDemoDatenPage();
   }
+  if (adminSubtab === "settings") initAdminSettings();
   if (getActiveAppPage() === "admin") updateAppModuleNavActive("admin");
 }
 
@@ -7455,6 +7589,9 @@ document
   ?.addEventListener("click", () => setAdminSubtab("permissions"));
 document.getElementById("btnAdminSubtabOrg")?.addEventListener("click", () => setAdminSubtab("org"));
 document.getElementById("btnAdminSubtabDemo")?.addEventListener("click", () => setAdminSubtab("demo"));
+document
+  .getElementById("btnAdminSubtabSettings")
+  ?.addEventListener("click", () => setAdminSubtab("settings"));
 document.getElementById("btnAdminRoleNew")?.addEventListener("click", () => openAdminRoleEdit(null));
 document.getElementById("btnAdminPositionNew")?.addEventListener("click", () => openAdminPositionEdit(null));
 document.getElementById("admRoleEditCancel")?.addEventListener("click", closeAdminRoleEdit);

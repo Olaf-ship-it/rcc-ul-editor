@@ -520,7 +520,7 @@ function renderFortschrittTimelineStyleLegend(color = "#334155", extraClass = ""
     </span>
     <span class="fortschritt-timeline-legend-item ft-tl-legend-item--ist">
       ${ftTimelineLineSwatch("ist", color)}
-      <span><strong>IST</strong> · projiziert 2026→2029 <span class="ft-tl-legend-hint">(gestrichelt)</span></span>
+      <span><strong>IST</strong> \u00b7 projiziert ${(window._rcPlanningYears||[2026,2029])[0]}\u2192${(window._rcPlanningYears||[2026,2029]).slice(-1)[0]} <span class="ft-tl-legend-hint">(gestrichelt)</span></span>
     </span>
   </div>`;
 }
@@ -651,7 +651,7 @@ function renderFortschrittAllUnitsLegend(timelineData) {
 }
 
 function renderFortschrittTimeline(timelineData, allUnits) {
-  const years = timelineData?.years || [2026, 2027, 2028, 2029];
+  const years = timelineData?.years || (window._rcPlanningYears || [2026, 2027, 2028, 2029]);
   const kpiKeys = ["umsatz", "headcount", "zertifizierung"];
   const kpiLabels = {
     umsatz: "Umsatz (TEUR)",
@@ -674,13 +674,14 @@ function renderFortschrittTimeline(timelineData, allUnits) {
     })
     .join("");
 
+  const yr = years[0] + "\u2013" + years[years.length - 1];
   const subtitle = allUnits
-    ? "Alle Standard-Units · SOLL aus Plan-Meilensteinen, IST linear 2026→2029"
-    : `Unit: ${esc(timelineData.unit || fortschrittUnit())} · SOLL aus Plan-Meilensteinen, IST linear 2026→2029`;
+    ? "Alle Standard-Units \u00b7 SOLL aus Plan-Meilensteinen, IST linear " + years[0] + "\u2192" + years[years.length - 1]
+    : `Unit: ${esc(timelineData.unit || fortschrittUnit())} \u00b7 SOLL aus Plan-Meilensteinen, IST linear ${years[0]}\u2192${years[years.length - 1]}`;
   const legendColor = allUnits ? "#334155" : FORTSCHRITT_UNIT_COLORS[0];
 
   return `<div class="card fortschritt-timeline-card">
-    ${fortschrittSectionHeader("Zeitstrahl · Unit-Planung 2026–2029", "Zeitstrahl – Klicken für Erklärung", FORTSCHRITT_TIPS.zeitstrahl)}
+    ${fortschrittSectionHeader("Zeitstrahl \u00b7 Unit-Planung " + yr, "Zeitstrahl \u2013 Klicken f\u00fcr Erkl\u00e4rung", FORTSCHRITT_TIPS.zeitstrahl)}
     <p class="fortschritt-hint">${subtitle}</p>
     ${renderFortschrittTimelineStyleLegend(legendColor, "fortschritt-timeline-style--global")}
     ${allUnits ? renderFortschrittAllUnitsLegend(timelineData) : ""}
@@ -1385,8 +1386,10 @@ async function loadFortschrittDashboard() {
   const root = document.getElementById("fortschrittContent");
   if (!root) return;
 
+  const _yr = (window._rcPlanningYears||[2026,2029]);
+  const _yrRange = _yr[0] + "–" + _yr.slice(-1)[0];
   const emptyDetailsMsg =
-    '<div class="card"><p class="fortschritt-empty">Bitte im <strong>Filter</strong> oben eine konkrete Unit wählen (nicht „Alle Units“), um IST/SOLL-Details zu vergleichen.<br><span style="font-size:.78rem;color:var(--rc-muted)">Den Zeitstrahl 2026–2029 finden Sie im Register <strong>Gesamtfortschritt</strong>. Demo-Daten pflegen Admins im Admin-Bereich unter dem Register <strong>Demo-Daten</strong>.</span></p></div>';
+    '<div class="card"><p class="fortschritt-empty">Bitte im <strong>Filter</strong> oben eine konkrete Unit wählen (nicht „Alle Units“), um IST/SOLL-Details zu vergleichen.<br><span style="font-size:.78rem;color:var(--rc-muted)">Den Zeitstrahl ' + _yrRange + ' finden Sie im Register <strong>Gesamtfortschritt</strong>. Demo-Daten pflegen Admins im Admin-Bereich unter dem Register <strong>Demo-Daten</strong>.</span></p></div>';
 
   if (!unit) {
     root.innerHTML = emptyDetailsMsg;
@@ -1453,10 +1456,7 @@ async function removeFortschrittDemoDataAll() {
     return;
   }
   try {
-    await api("/api/demo/remove", {
-      method: "DELETE",
-      body: JSON.stringify({ allUnits: true }),
-    });
+    await api("/api/demo/remove?allUnits=true", { method: "DELETE" });
     clearDemoLoadPanel();
     await afterDemoDataChanged({
       filterMode: "all",
@@ -1514,10 +1514,7 @@ async function removeFortschrittDemoData() {
   }
   if (!confirm(`Alle Demo-Daten für „${unit}“ entfernen? Echte Erfassungen bleiben erhalten.`)) return;
   try {
-    await api("/api/demo/remove", {
-      method: "DELETE",
-      body: JSON.stringify({ unit }),
-    });
+    await api(`/api/demo/remove?unit=${encodeURIComponent(unit)}`, { method: "DELETE" });
     clearDemoLoadPanel();
     await afterDemoDataChanged({
       filterMode: "unit",
@@ -1559,9 +1556,35 @@ function renderGesamtfortschrittDashboard() {
   void prepareGesamtfortschrittView();
 }
 
+async function populateFortschrittYearSelect() {
+  const sel = document.getElementById("fortschrittYear");
+  if (!sel || sel.children.length) return;
+  try {
+    const cfg = typeof loadPlanningYears === "function"
+      ? await loadPlanningYears()
+      : await fetch("/api/config/planning-years", { credentials: "include" }).then(r => r.json());
+    const years = cfg?.years || [2026, 2027, 2028, 2029];
+    window._rcPlanningYears = years;
+    const cur = new Date().getFullYear();
+    years.forEach(y => {
+      const o = document.createElement("option");
+      o.value = y; o.textContent = y;
+      if (y === cur || (!years.includes(cur) && y === years[0])) o.selected = true;
+      sel.appendChild(o);
+    });
+    fortschrittYear = parseInt(sel.value, 10) || years[0];
+  } catch (_e) {
+    [2026, 2027, 2028, 2029].forEach(y => {
+      const o = document.createElement("option");
+      o.value = y; o.textContent = y; sel.appendChild(o);
+    });
+  }
+}
+
 async function prepareFortschrittView() {
   if (!fortschrittInitDone) {
     fortschrittInitDone = true;
+    await populateFortschrittYearSelect();
     const yearEl = document.getElementById("fortschrittYear");
     if (yearEl) yearEl.addEventListener("change", () => void prepareFortschrittView());
     document.getElementById("btnFortschrittReload")?.addEventListener("click", () => void prepareFortschrittView());

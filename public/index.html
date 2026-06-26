@@ -19,7 +19,7 @@
     <aside class="login-brand" aria-hidden="true">
       <div class="login-brand__mark">RCC</div>
       <h1 class="login-brand__title">Strategische<br>Planung</h1>
-      <p class="login-brand__tagline">realcore · Transformation 2026–2029</p>
+      <p class="login-brand__tagline">realcore · Transformation <span class="planning-yr-range">2026–2029</span></p>
       <ul class="login-brand__phases">
         <li><span>1</span> Status Aufnahme</li>
         <li><span>2</span> Backcasting-Planung</li>
@@ -54,10 +54,14 @@
 <div class="header" id="appHeader" style="display:none">
   <div class="header-top">
     <div class="header-top-title">
-      <span class="header-unit-bar-label" id="appHeaderSubtitle">Portfolio, Organisation &amp; Skill-Matrix · Transformation 2026–2029</span>
+      <span class="header-unit-bar-label" id="appHeaderSubtitle">Portfolio, Organisation &amp; Skill-Matrix · Transformation <span class="planning-yr-range">2026–2029</span></span>
     </div>
     <div class="header-account">
       <div id="headerPresence" class="header-presence" hidden aria-label="Aktive Benutzer"></div>
+      <button type="button" class="btn-header-icon btn-header-deploy" id="btnDeployInfo" style="display:none" aria-label="Deployment-Info" title="Deployment-Info">
+        <svg viewBox="0 0 24 24" width="18" height="18" aria-hidden="true" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><line x1="12" y1="16" x2="12" y2="12"/><line x1="12" y1="8" x2="12.01" y2="8"/></svg>
+      </button>
+      <div class="deploy-info-popover" id="deployInfoPopover" hidden></div>
       <a class="btn-header-icon btn-header-admin" href="#" id="launcherAdmin" style="display:none" aria-label="Administration" title="Administration">
         <svg viewBox="0 0 24 24" width="18" height="18" aria-hidden="true" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 15a3 3 0 1 0 0-6 3 3 0 0 0 0 6Z"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 1 1-4 0v-.09a1.65 1.65 0 0 0-1-1.51 1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06A1.65 1.65 0 0 0 5 15.4a1.65 1.65 0 0 0-1.51-1H3a2 2 0 1 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06A1.65 1.65 0 0 0 9 5.6a1.65 1.65 0 0 0 1-1.51V3a2 2 0 1 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06A1.65 1.65 0 0 0 19.4 9c.36.48.58 1.07.6 1.68V12a2 2 0 1 1-4 0v-.09a1.65 1.65 0 0 0-1-1.51Z"/></svg>
       </a>
@@ -568,12 +572,12 @@
   <div class="card" style="border-left-color:var(--rc-accent2);margin-bottom:1rem">
     <div class="ft-tip-title-row ft-has-tip" tabindex="0" role="button" aria-expanded="false" aria-label="Gesamtfortschritt – Klicken für Erklärung">
       <span class="ft-stat-tip-icon" aria-hidden="true">i</span>
-      <h3 style="margin:0">Gesamtfortschritt · Zeitstrahl 2026–2029</h3>
+      <h3 style="margin:0">Gesamtfortschritt · Zeitstrahl <span class="planning-yr-range">2026–2029</span></h3>
       <div class="ft-stat-tooltip ft-stat-tooltip--title" role="dialog" aria-label="Erklärung Gesamtfortschritt">
         <button type="button" class="ft-stat-tip-close" aria-label="Schließen">×</button>
-        <strong>Gesamtfortschritt · Zeitstrahl 2026–2029</strong>
-        <p>Zeigt den Planverlauf der drei Kern-KPIs (Umsatz, Headcount, Zertifizierung) über die Jahre 2026 bis 2029.</p>
-        <p><b>SOLL (durchgezogene Linie)</b> – jährliche Zielwerte aus Backcasting-Meilensteinen. <b>IST (gestrichelte Linie)</b> – projizierter Verlauf vom Ist-Stand 2026 linear zum Soll-Ziel 2029.</p>
+        <strong>Gesamtfortschritt · Zeitstrahl <span class="planning-yr-range">2026–2029</span></strong>
+        <p>Zeigt den Planverlauf der drei Kern-KPIs (Umsatz, Headcount, Zertifizierung) über den konfigurierten Planungszeitraum.</p>
+        <p><b>SOLL (durchgezogene Linie)</b> – jährliche Zielwerte aus Backcasting-Meilensteinen. <b>IST (gestrichelte Linie)</b> – projizierter Verlauf vom Ist-Stand linear zum Soll-Ziel.</p>
         <p>Bei <b>Alle Units</b> (Admin) werden alle Standard-Units farblich überlagert. Für IST/SOLL-Details je Unit nutzen Sie das Register <em>Detailfortschritt</em>.</p>
       </div>
     </div>
@@ -600,7 +604,7 @@
         <strong>Detailfortschritt · IST vs. SOLL</strong>
         <p>Diese Ansicht vergleicht den <b>Ist-Stand</b> aus Phase&nbsp;1 (Status Aufnahme) mit den <b>Soll-Vorgaben</b> aus der Backcasting-Planung (Phase&nbsp;2) für die gewählte Unit.</p>
         <p><b>IST</b> = aktuelle Erfassung (Portfolio, Organisation, Skills). <b>SOLL</b> = aggregierte Zielwerte aus Plan-Meilensteinen des gewählten Jahres.</p>
-        <p>Den Zeitstrahl 2026–2029 finden Sie im Register <em>Gesamtfortschritt</em>. Das Jahr steuert hier die Detail-Ansicht (KPI-Karten, Meilensteine). Demo-Datensätze pflegen Sie im Admin-Bereich unter dem Register <em>Demo-Daten</em>.</p>
+        <p>Den Zeitstrahl (<span class="planning-yr-range">2026–2029</span>) finden Sie im Register <em>Gesamtfortschritt</em>. Das Jahr steuert hier die Detail-Ansicht (KPI-Karten, Meilensteine). Demo-Datensätze pflegen Sie im Admin-Bereich unter dem Register <em>Demo-Daten</em>.</p>
         <p>Feldzuordnung Phase&nbsp;1 ↔ Backcasting: Register <em>Erläuterung Berechnung</em>.</p>
       </div>
     </div>
@@ -610,12 +614,7 @@
     <div class="fortschritt-toolbar">
       <div>
         <label>Jahr (Plan)</label>
-        <select id="fortschrittYear">
-          <option value="2026">2026</option>
-          <option value="2027">2027</option>
-          <option value="2028">2028</option>
-          <option value="2029">2029</option>
-        </select>
+        <select id="fortschrittYear"></select>
       </div>
       <div class="fortschritt-toolbar-actions">
         <button type="button" class="btn btn-outline btn-sm" id="btnFortschrittReload">Aktualisieren</button>
@@ -662,6 +661,7 @@
     <button type="button" class="status-subtab-btn" id="btnAdminSubtabPermissions" data-mode="permissions">🔐 Rollen &amp; Berechtigungen</button>
     <button type="button" class="status-subtab-btn" id="btnAdminSubtabOrg" data-mode="org">🏛️ Organigramm</button>
     <button type="button" class="status-subtab-btn" id="btnAdminSubtabDemo" data-mode="demo">🧪 Demo-Daten</button>
+    <button type="button" class="status-subtab-btn" id="btnAdminSubtabSettings" data-mode="settings">⚙️ Einstellungen</button>
   </div>
 
   <div id="adminPanelUsers">
@@ -963,17 +963,19 @@
         Pflege erfolgt hier im Admin-Bereich; in Backcasting werden die Leitplanken nur gelesen und für die Planung genutzt.
       </p>
       <div class="card" style="margin-bottom:1rem;background:#f8fafc">
-        <h4 style="margin:0 0 .5rem;font-size:.9rem">Leitplanken-Datenquelle</h4>
+        <h4 style="margin:0 0 .5rem;font-size:.9rem">Leitplanken importieren / exportieren</h4>
         <p style="color:var(--rc-muted);font-size:.78rem;margin:0 0 .65rem">
-          Standard: eingebettete <strong>RL_Strategie</strong>-Leitplanken (<span id="embCount">–</span> Vorgaben) als Server-Seed.
-          Optional eigene CSV laden oder eingebettete Leitplanken wiederherstellen — danach „Speichern“ für alle Nutzer wirksam machen.
+          CSV-Import: Leitplanken aus einer Datei laden — danach „Speichern“ klicken, damit die Änderung für alle Nutzer wirksam wird.
         </p>
         <div class="btn-group" style="margin-top:0;align-items:center;flex-wrap:wrap">
           <input type="file" id="csvFile" accept=".csv">
           <button type="button" class="btn btn-outline btn-sm" onclick="loadCsv()">CSV laden</button>
-          <button type="button" class="btn btn-outline btn-sm" onclick="resetEmbedded()">Eingebettete Leitplanken verwenden</button>
         </div>
         <p id="csvStatus" style="color:var(--rc-muted);font-size:.75rem;margin:.5rem 0 0"></p>
+        <div class="btn-group" style="margin-top:.75rem;align-items:center;flex-wrap:wrap">
+          <button type="button" class="btn btn-outline btn-sm" onclick="exportAdminGuidelinesCsv()">⬇ CSV exportieren</button>
+          <button type="button" class="btn btn-outline btn-sm" onclick="exportAdminGuidelinesJson()">⬇ JSON exportieren</button>
+        </div>
       </div>
       <div class="card" style="margin-bottom:0">
         <div style="display:flex;flex-wrap:wrap;gap:.5rem;justify-content:space-between;align-items:center;margin-bottom:.5rem">
@@ -1099,6 +1101,33 @@
           Der Zeitstrahl (2026–2029) ist im Register <em>Gesamtfortschritt</em> einsehbar.
           IST/SOLL-Details je Unit im Register <em>Detailfortschritt</em> (konkrete Unit im Filter wählen).
         </p>
+      </div>
+    </div>
+  </div>
+
+  <div id="adminPanelSettings" style="display:none">
+    <div class="card" style="border-left-color:var(--rc-accent2);margin-bottom:1rem">
+      <h3 style="color:var(--rc-accent2)">Einstellungen</h3>
+      <div class="card" style="margin-bottom:1rem;background:#f8fafc">
+        <h4 style="margin:0 0 .5rem;font-size:.9rem">Planungszeitraum</h4>
+        <p style="color:var(--rc-muted);font-size:.78rem;margin:0 0 .75rem">
+          Legt den Zeithorizont fest, der in Phase 2 (Backcasting) und Phase 3 (Fortschritt) verwendet wird.
+          Bereits erfasste Planungsdaten bleiben bei Verkleinerung erhalten und werden bei erneuter Erweiterung wieder sichtbar.
+        </p>
+        <div class="row row2" style="margin-bottom:.75rem;max-width:28rem">
+          <div>
+            <label for="settingsStartYear">Startjahr</label>
+            <select id="settingsStartYear"></select>
+          </div>
+          <div>
+            <label for="settingsEndYear">Endjahr</label>
+            <select id="settingsEndYear"></select>
+          </div>
+        </div>
+        <div class="btn-group" style="margin-top:0;align-items:center">
+          <button type="button" class="btn btn-sm btn-primary" onclick="savePlanningYears()">Speichern</button>
+          <span id="settingsPlanningStatus" style="color:var(--rc-muted);font-size:.75rem;margin-left:.5rem"></span>
+        </div>
       </div>
     </div>
   </div>
@@ -1318,7 +1347,7 @@
 <script src="/js/harmonization-data.js"></script>
 <script src="/js/view-unit-persist.js"></script>
 <script src="/js/presence.js"></script>
-<script src="/js/fortschritt-dashboard.js?v=20260624f"></script>
-<script src="/backcasting/js/guidelines.js"></script>
+<script src="/js/fortschritt-dashboard.js?v=20260626a"></script>
+<script src="/backcasting/js/guidelines.js?v=20260626a"></script>
 <script src="/js/roles-permissions-doc.js"></script>
 <script src="/js/app.js"></script>

@@ -366,10 +366,10 @@ const WORKSTREAM_MILESTONES = [
   },
 ];
 
-function buildBackcastingDemoPlan(unit = DEMO_UNIT) {
+function buildBackcastingDemoPlan(unit = DEMO_UNIT, milestoneYears) {
   const profile = getUnitProfile(unit);
   const measures = {};
-  const years = [2026, 2027, 2028, 2029];
+  const years = milestoneYears || DEMO_MILESTONE_YEARS;
 
   years.forEach((year) => {
     const targets = profile.planTargets[year] || profile.planTargets[2027];
@@ -435,11 +435,13 @@ function buildDemoStatusSummary(entries, plan, year = DEMO_REFERENCE_YEAR) {
   };
 }
 
-function buildDemoDataForUnit(unit) {
+function buildDemoDataForUnit(unit, opts) {
+  const milestoneYears = opts?.milestoneYears;
+  const refYear = opts?.referenceYear;
   const phase1 = buildPhase1DemoEntries(unit);
-  const plan = buildBackcastingDemoPlan(unit);
+  const plan = buildBackcastingDemoPlan(unit, milestoneYears);
   const entries = phase1.entries;
-  const summary = buildDemoStatusSummary(entries, plan);
+  const summary = buildDemoStatusSummary(entries, plan, refYear);
   return {
     unit,
     entries,

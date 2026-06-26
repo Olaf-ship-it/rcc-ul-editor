@@ -4,7 +4,7 @@
 (function () {
   const LS_GUIDE = "rc_bc_guidelines";
   const LS_MIGRATED = "rc_bc_guidelines_migrated";
-  const EMBEDDED = (window.BC_EMBEDDED || []).slice();
+  const EMBEDDED = [];
 
   var guidelines = [];
   var guidelinesVersion = 1;
@@ -264,18 +264,6 @@
     r.readAsText(f, "utf-8");
   }
 
-  function resetEmbedded() {
-    guidelines = normalizeGuidelineIds(EMBEDDED.slice());
-    markGuidelinesDirty();
-    initGuidelineSelectors();
-    const msg = "✓ Eingebettete Leitplanken geladen (" + guidelines.length + ", ungespeichert)";
-    const cs = document.getElementById("csvStatus");
-    if (cs) cs.textContent = msg;
-    const pcs = document.getElementById("planCsvStatus");
-    if (pcs) pcs.textContent = msg;
-    bcToast("Eingebettete Leitplanken geladen – bitte Speichern klicken");
-  }
-
   function initGuidelineSelectors() {
     const wss = workstreams();
     const gpWs = document.getElementById("gpWs");
@@ -283,8 +271,6 @@
       gpWs.innerHTML =
         '<option value="">Alle</option>' + wss.map((w) => "<option>" + esc(w) + "</option>").join("");
     }
-    const emb = document.getElementById("embCount");
-    if (emb) emb.textContent = EMBEDDED.length;
     if (document.getElementById("gpTable")) renderGuidelineEditor();
     updateGuideStatusLabels();
   }
@@ -364,7 +350,7 @@
       ["festlegung", "text"],
       ["zielwert", "text"],
       ["zieljahr", "text"],
-      ["zielquartal", "text"],
+      ["zielquartal", "quartal"],
       ["verantwortlich", "text"],
       ["abhaengigkeiten", "text"],
       ["begruendung", "text"],
@@ -412,6 +398,21 @@
             ">M</option><option" +
             (v === "N" ? " selected" : "") +
             ">N</option></select></td>";
+        } else if (t === "quartal") {
+          h +=
+            "<td><select onchange=\"gpInput('" +
+            gid +
+            "','" +
+            k +
+            "',this.value)\">" +
+            '<option value="">' +
+            "</option>" +
+            ["Q1", "Q2", "Q3", "Q4"]
+              .map(function (q) {
+                return "<option" + (v === q ? " selected" : "") + ">" + q + "</option>";
+              })
+              .join("") +
+            "</select></td>";
         } else {
           const isLong = [
             "leitfrage",
@@ -494,6 +495,44 @@
     initGuidelineSelectors();
   }
 
+  function dlFile(name, content, type) {
+    const b = new Blob([content], { type });
+    const u = URL.createObjectURL(b);
+    const a = document.createElement("a");
+    a.href = u;
+    a.download = name;
+    a.click();
+    URL.revokeObjectURL(u);
+  }
+
+  function exportAdminGuidelinesCsv() {
+    const cols = [
+      "workstream", "kategorie", "prioritaet", "leitfrage", "festlegung",
+      "zielwert", "zieljahr", "zielquartal", "verantwortlich",
+      "abhaengigkeiten", "begruendung", "auswirkungen",
+    ];
+    const rows = [cols.join(";")];
+    (guidelines || []).forEach(function (g) {
+      rows.push(
+        cols.map(function (c) {
+          var v = g && g[c] != null ? String(g[c]) : "";
+          return '"' + v.replace(/"/g, '""') + '"';
+        }).join(";")
+      );
+    });
+    dlFile("leitplanken.csv", "\ufeff" + rows.join("\n"), "text/csv");
+    bcToast("Leitplanken-CSV exportiert");
+  }
+
+  function exportAdminGuidelinesJson() {
+    dlFile(
+      "leitplanken.json",
+      JSON.stringify(guidelines || [], null, 2),
+      "application/json"
+    );
+    bcToast("Leitplanken-JSON exportiert");
+  }
+
   /** @deprecated Nur für Abwärtskompatibilität – persistiert nicht mehr lokal */
   function saveGuide() {
     updateGuideStatusLabels();
@@ -512,7 +551,6 @@
   window.saveGuide = saveGuide;
   window.workstreams = workstreams;
   window.loadCsv = loadCsv;
-  window.resetEmbedded = resetEmbedded;
   window.initGuidelineSelectors = initGuidelineSelectors;
   window.addGuidelineRow = addGuidelineRow;
   window.dupGuidelineRow = dupGuidelineRow;
@@ -521,4 +559,6 @@
   window.renderGuidelineEditor = renderGuidelineEditor;
   window.saveGuidelinesAndRefresh = saveGuidelinesAndRefresh;
   window.initAdminLeitplanken = initAdminLeitplanken;
+  window.exportAdminGuidelinesCsv = exportAdminGuidelinesCsv;
+  window.exportAdminGuidelinesJson = exportAdminGuidelinesJson;
 })();

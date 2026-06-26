@@ -1,6 +1,6 @@
 console.log("APP_BOOT", new Date().toISOString());
 window.__APP_BOOTED__ = true;
-const YEARS=[2026,2027,2028,2029];
+let YEARS=[2026,2027,2028,2029];
 const TYPES=["Produkt","Service","Lösung","Organisation","Skill","Sales","Partner","Tech"];
 const STATUSES=["Geplant","In Arbeit","Abgeschlossen","Blockiert"];
 const LS_PLAN = "rc_bc_plan";
@@ -424,7 +424,7 @@ function renderWsDetail(ws){
 
   let h='<div class="ws-split" id="wsSplit">'+
     '<div class="ws-left ws-plan" id="wsLeft">'+
-      '<h3 style="margin-top:0;color:var(--rc-accent2)">Erfassung / Backcasting je Jahr (2026 → 2029) <span class="bc-tag" id="wsEntryCount">0 Einträge</span></h3>';
+      '<h3 style="margin-top:0;color:var(--rc-accent2)">Erfassung / Backcasting je Jahr ('+YEARS[0]+' → '+YEARS[YEARS.length-1]+') <span class="bc-tag" id="wsEntryCount">0 Einträge</span></h3>';
 
 
   YEARS.forEach((yr,idx)=>{
@@ -958,20 +958,6 @@ function exportCsv(){
   dl('backcasting_workstream_plan_'+(plan.meta?.unit||plan.meta?.bereich||'plan').replace(/\s+/g,'_')+'.csv','\ufeff'+rows.join('\n'),'text/csv');toast('CSV exportiert')
 }
 
-function exportGuidelinesCsv(){
-  const cols=['workstream','kategorie','prioritaet','leitfrage','festlegung','zielwert','zieljahr','zielquartal','verantwortlich','abhaengigkeiten','begruendung','auswirkungen'];
-  let rows=[cols.join(';')];
-  (guidelines||[]).forEach(g=>{
-    const row = cols.map(c=>{
-      const v = g && g[c]!=null ? String(g[c]) : '';
-      return '"'+v.replace(/"/g,'""')+'"';
-    }).join(';');
-    rows.push(row);
-  });
-  dl('backcasting_leitplanken_'+(plan.meta?.unit||plan.meta?.bereich||'plan').replace(/\s+/g,'_')+'.csv','\ufeff'+rows.join('\n'),'text/csv');
-  toast('Leitplanken-CSV exportiert');
-}
-
 function importJson(){
   const f=document.getElementById('jsonImport').files[0];if(!f){toast('Bitte JSON wählen');return}
   const r=new FileReader();r.onload=e=>{try{const d=JSON.parse(e.target.result);
@@ -1043,6 +1029,13 @@ document.querySelectorAll('#bcTabs .tab').forEach(b=>b.onclick=()=>{
 initPlanState();
 
 async function bootBackcastingPlan(me) {
+  try {
+    const resp = await fetch("/api/config/planning-years", { credentials: "include" });
+    if (resp.ok) {
+      const cfg = await resp.json();
+      if (Array.isArray(cfg.years) && cfg.years.length) YEARS = cfg.years;
+    }
+  } catch (_e) { /* keep default YEARS */ }
   if (typeof loadGuideState === "function") await loadGuideState();
   initBcSessionFromDetail(me);
   initBcUnitSwitcher();
