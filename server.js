@@ -31,7 +31,7 @@ const { execSync } = require("child_process");
 const SERVER_STARTED_AT = new Date().toISOString();
 const DEPLOY_INFO = (function collectDeployInfo() {
   const env = process.env;
-  const SEP = "||";
+  const SEP = "\x1f";
   const parseBranch = (refs) =>
     (refs || "").replace(/.*HEAD -> /, "").split(",")[0].trim() || "";
 
@@ -49,20 +49,26 @@ const DEPLOY_INFO = (function collectDeployInfo() {
     };
   }
   try {
-    const raw = execSync(
-      `git log -10 --format=%H${SEP}%s${SEP}%an${SEP}%aI${SEP}%D`,
-      { encoding: "utf-8", timeout: 5000 }
-    ).trim();
+    const fmt = ["%H", "%s", "%an", "%aI", "%D"].join(SEP);
+    const raw = execSync(`git log -10 --format=${fmt}`, {
+      encoding: "utf-8",
+      timeout: 5000,
+    }).trim();
     const lines = raw.split("\n").filter(Boolean);
     let branch = "";
     const commits = lines.map((line) => {
-      const [sha, msg, author, date, refs] = line.split(SEP);
+      const parts = line.split(SEP);
+      const sha = parts[0] || "";
+      const msg = parts[1] || "";
+      const author = parts[2] || "";
+      const date = parts[3] || "";
+      const refs = parts[4] || "";
       if (!branch && refs) branch = parseBranch(refs);
       return {
-        sha: (sha || "").slice(0, 8),
-        message: msg || "",
-        author: author || "",
-        date: date || "",
+        sha: sha.slice(0, 8),
+        message: msg,
+        author,
+        date,
       };
     });
     return { deployedAt: SERVER_STARTED_AT, source: "git", branch, commits };
