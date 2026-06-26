@@ -29,25 +29,12 @@ const {
 const { execSync } = require("child_process");
 
 const SERVER_STARTED_AT = new Date().toISOString();
-const DEPLOY_INFO = (function collectDeployInfo() {
-  const env = process.env;
+let _deployInfoCache = null;
+
+function collectLocalGitInfo() {
   const SEP = "\x1f";
   const parseBranch = (refs) =>
     (refs || "").replace(/.*HEAD -> /, "").split(",")[0].trim() || "";
-
-  if (env.VERCEL_GIT_COMMIT_SHA) {
-    return {
-      deployedAt: SERVER_STARTED_AT,
-      source: "vercel",
-      branch: env.VERCEL_GIT_COMMIT_REF || "",
-      commits: [{
-        sha: (env.VERCEL_GIT_COMMIT_SHA || "").slice(0, 8),
-        message: env.VERCEL_GIT_COMMIT_MESSAGE || "",
-        author: env.VERCEL_GIT_COMMIT_AUTHOR_NAME || "",
-        date: SERVER_STARTED_AT,
-      }],
-    };
-  }
   try {
     const fmt = ["%H", "%s", "%an", "%aI", "%D"].join(SEP);
     const raw = execSync(`git log -10 --format=${fmt}`, {
@@ -58,29 +45,91 @@ const DEPLOY_INFO = (function collectDeployInfo() {
     let branch = "";
     const commits = lines.map((line) => {
       const parts = line.split(SEP);
-      const sha = parts[0] || "";
-      const msg = parts[1] || "";
-      const author = parts[2] || "";
-      const date = parts[3] || "";
-      const refs = parts[4] || "";
-      if (!branch && refs) branch = parseBranch(refs);
+      if (!branch && parts[4]) branch = parseBranch(parts[4]);
       return {
-        sha: sha.slice(0, 8),
-        message: msg,
-        author,
-        date,
+        sha: (parts[0] || "").slice(0, 8),
+        message: parts[1] || "",
+        author: parts[2] || "",
+        date: parts[3] || "",
       };
     });
     return { deployedAt: SERVER_STARTED_AT, source: "git", branch, commits };
   } catch (_e) {
-    return {
-      deployedAt: SERVER_STARTED_AT,
-      source: "unknown",
-      branch: "",
-      commits: [],
-    };
+    return null;
   }
-})();
+}
+
+async function fetchGitHubCommits(owner, repo, branch) {
+  const https = require("https");
+  const url = `https://api.github.com/repos/${owner}/${repo}/commits?sha=${encodeURIComponent(branch)}&per_page=10`;
+  return new Promise((resolve) => {
+    const req = https.get(url, { headers: { "User-Agent": "rcc-ul-editor", Accept: "application/vnd.github+json" }, timeout: 5000 }, (res) => {
+      let body = "";
+      res.on("data", (d) => (body += d));
+      res.on("end", () => {
+        try {
+          if (res.statusCode !== 200) return resolve(null);
+          const data = JSON.parse(body);
+          if (!Array.isArray(data)) return resolve(null);
+          resolve(data.map((c) => ({
+            sha: (c.sha || "").slice(0, 8),
+            message: c.commit?.message?.split("\n")[0] || "",
+            author: c.commit?.author?.name || c.author?.login || "",
+            date: c.commit?.author?.date || "",
+          })));
+        } catch (_e) { resolve(null); }
+      });
+    });
+    req.on("error", () => resolve(null));
+    req.on("timeout", () => { req.destroy(); resolve(null); });
+  });
+}
+
+async function getDeployInfo() {
+  if (_deployInfoCache) return _deployInfoCache;
+
+  const local = collectLocalGitInfo();
+  if (local && local.commits.length > 1) {
+    _deployInfoCache = local;
+    return _deployInfoCache;
+  }
+
+  const env = process.env;
+  const owner = env.VERCEL_GIT_REPO_OWNER;
+  const repo = env.VERCEL_GIT_REPO_SLUG;
+  const branch = env.VERCEL_GIT_COMMIT_REF || "main";
+
+  if (owner && repo) {
+    const ghCommits = await fetchGitHubCommits(owner, repo, branch);
+    if (ghCommits && ghCommits.length) {
+      _deployInfoCache = { deployedAt: SERVER_STARTED_AT, source: "vercel", branch, commits: ghCommits };
+      return _deployInfoCache;
+    }
+  }
+
+  if (local) {
+    _deployInfoCache = local;
+    return _deployInfoCache;
+  }
+
+  if (env.VERCEL_GIT_COMMIT_SHA) {
+    _deployInfoCache = {
+      deployedAt: SERVER_STARTED_AT,
+      source: "vercel",
+      branch,
+      commits: [{
+        sha: (env.VERCEL_GIT_COMMIT_SHA || "").slice(0, 8),
+        message: env.VERCEL_GIT_COMMIT_MESSAGE || "",
+        author: env.VERCEL_GIT_COMMIT_AUTHOR_NAME || "",
+        date: SERVER_STARTED_AT,
+      }],
+    };
+    return _deployInfoCache;
+  }
+
+  _deployInfoCache = { deployedAt: SERVER_STARTED_AT, source: "unknown", branch: "", commits: [] };
+  return _deployInfoCache;
+}
 
 const app = express();
 const PORT = process.env.PORT || 3000;
@@ -2753,8 +2802,8 @@ app.get("/api/admin/presence", auth, requireAdmin, async (_req, res) => {
   }
 });
 
-app.get("/api/admin/deploy-info", auth, requireAdmin, (_req, res) => {
-  return res.json(DEPLOY_INFO);
+app.get("/api/admin/deploy-info", auth, requireAdmin, async (_req, res) => {
+  return res.json(await getDeployInfo());
 });
 
 app.get("/api/config/planning-years", auth, async (_req, res) => {
