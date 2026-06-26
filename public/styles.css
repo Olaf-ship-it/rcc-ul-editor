@@ -177,6 +177,10 @@ tr.adm-user-row--blocked td:first-child+td+td+td{font-weight:600}
 .adm-users-filter-input,.adm-users-filter-select{width:100%;min-width:7.5rem;margin:0;padding:.28rem .4rem;font-size:.75rem;font-weight:400;text-transform:none;letter-spacing:normal;border:1px solid var(--rc-border,#dde1e6);border-radius:5px;background:#fff;color:var(--rc-text,#1a1a2e)}
 .adm-users-filter-input:focus,.adm-users-filter-select:focus{outline:2px solid var(--rc-accent);outline-offset:1px}
 .adm-users-filter-select{cursor:pointer}
+.admin-catalog-actions{display:inline-flex;align-items:center;gap:.3rem;flex-wrap:wrap}
+.admin-catalog-order__btn{display:inline-flex;align-items:center;justify-content:center;width:1.55rem;height:1.55rem;padding:0;border:1px solid var(--rc-border);border-radius:var(--rc-radius);background:#fff;color:var(--rc-primary);cursor:pointer;font-family:inherit;font-size:.78rem;line-height:1;flex-shrink:0}
+.admin-catalog-order__btn:hover:not(:disabled){border-color:var(--rc-accent);color:var(--rc-accent2)}
+.admin-catalog-order__btn:disabled{opacity:.35;cursor:not-allowed}
 
 /* LOGIN */
 .login-overlay{position:fixed;inset:0;background:rgba(26,26,46,.55);display:flex;align-items:center;justify-content:center;z-index:200;padding:1.25rem}

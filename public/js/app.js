@@ -694,20 +694,35 @@ function validateSoftSkillRowsDOM() {
 let appPositionsCatalog = [];
 let appRolesCatalog = [];
 
+function catalogSortOrder(item) {
+  const raw = item?.sortOrder ?? item?.sort_order;
+  const n = Number(raw);
+  return Number.isFinite(n) ? n : 0;
+}
+
+function sortCatalogItems(items) {
+  return [...(items || [])].sort(
+    (a, b) =>
+      catalogSortOrder(a) - catalogSortOrder(b) ||
+      String(a?.name || "").localeCompare(String(b?.name || ""), "de")
+  );
+}
+
 function getSkillOrgRolesCatalog() {
-  if (adminAppRolesCache.length) return adminAppRolesCache;
-  if (appRolesCatalog.length) return appRolesCatalog;
+  if (adminAppRolesCache.length) return sortCatalogItems(adminAppRolesCache);
+  if (appRolesCatalog.length) return sortCatalogItems(appRolesCatalog);
   return [];
 }
 
 function getSkillPositionsCatalog() {
-  if (adminAppPositionsCache.length) {
-    return adminAppPositionsCache
-      .map((p) => ({ id: Number(p.id), name: p.name }))
-      .filter((p) => Number.isInteger(p.id) && p.id > 0);
-  }
-  if (appPositionsCatalog.length) return appPositionsCatalog;
-  return (APP_POSITIONS || []).map((name, index) => ({ id: index + 1, name }));
+  const source = adminAppPositionsCache.length
+    ? adminAppPositionsCache
+    : appPositionsCatalog.length
+      ? appPositionsCatalog
+      : (APP_POSITIONS || []).map((name, index) => ({ id: index + 1, name, sortOrder: index }));
+  return sortCatalogItems(source)
+    .map((p) => ({ id: Number(p.id), name: p.name, sortOrder: catalogSortOrder(p) }))
+    .filter((p) => Number.isInteger(p.id) && p.id > 0);
 }
 
 function resolveSkillEntryOrgRoleIds(entry) {
@@ -1116,17 +1131,24 @@ function userMatchesAdminUserFilters(u, filters) {
   return true;
 }
 
-function populateAdminUserSelectFilterOptions(selectId, emptyLabel, catalogNames, userValueGetter) {
+function populateAdminUserSelectFilterOptions(selectId, emptyLabel, catalogItems, userValueGetter) {
   const select = document.getElementById(selectId);
   if (!select) return;
   const current = select.value;
-  const names = new Set((catalogNames || []).filter(Boolean));
+  const names = new Set();
+  const orderedFromCatalog = sortCatalogItems(catalogItems || [])
+    .map((item) => item?.name)
+    .filter(Boolean);
+  orderedFromCatalog.forEach((name) => names.add(name));
   adminUsersCache.forEach((u) => {
     (userValueGetter(u) || []).forEach((name) => {
       if (name) names.add(name);
     });
   });
-  const sorted = [...names].sort((a, b) => a.localeCompare(b, "de"));
+  const extras = [...names]
+    .filter((name) => !orderedFromCatalog.includes(name))
+    .sort((a, b) => a.localeCompare(b, "de"));
+  const sorted = [...orderedFromCatalog.filter((name) => names.has(name)), ...extras];
   select.innerHTML =
     `<option value="">${esc(emptyLabel)}</option>` +
     sorted
@@ -1150,7 +1172,7 @@ function populateAdminUserPositionFilterOptions() {
   populateAdminUserSelectFilterOptions(
     "admUserFilterPosition",
     "Alle Positionen",
-    adminAppPositionsCache.map((p) => p.name),
+    adminAppPositionsCache,
     (u) => (Array.isArray(u.userPositions) ? u.userPositions : [])
   );
 }
@@ -1159,7 +1181,7 @@ function populateAdminUserOrgRoleFilterOptions() {
   populateAdminUserSelectFilterOptions(
     "admUserFilterOrgRole",
     "Alle Rollen",
-    adminAppRolesCache.map((r) => r.name),
+    adminAppRolesCache,
     (u) => (Array.isArray(u.userOrgRoles) ? u.userOrgRoles : [])
   );
 }
@@ -2109,14 +2131,14 @@ function normalizeBigIntArrayClient(values) {
 }
 
 function getAdminRolesCatalogForForm() {
-  if (adminAppRolesCache.length) return adminAppRolesCache;
-  if (appRolesCatalog.length) return appRolesCatalog;
+  if (adminAppRolesCache.length) return sortCatalogItems(adminAppRolesCache);
+  if (appRolesCatalog.length) return sortCatalogItems(appRolesCatalog);
   return getCatalogRoleNamesForUserForm().map((name) => ({ id: name, name }));
 }
 
 function getAdminPositionsCatalogForForm() {
-  if (adminAppPositionsCache.length) return adminAppPositionsCache;
-  if (appPositionsCatalog.length) return appPositionsCatalog;
+  if (adminAppPositionsCache.length) return sortCatalogItems(adminAppPositionsCache);
+  if (appPositionsCatalog.length) return sortCatalogItems(appPositionsCatalog);
   return getCatalogPositionNamesForUserForm().map((name) => ({ id: name, name }));
 }
 
@@ -6331,6 +6353,10 @@ function setOrgRollen(names) {
   }
 }
 
+function setOrgRollenFromCatalog(items) {
+  setOrgRollen(sortCatalogItems(items).map((item) => item.name).filter(Boolean));
+}
+
 function setAppPositions(names) {
   const list = Array.isArray(names) ? names.map((n) => String(n).trim()).filter(Boolean) : [];
   if (typeof APP_POSITIONS !== "undefined") {
@@ -6339,13 +6365,17 @@ function setAppPositions(names) {
   }
 }
 
+function setAppPositionsFromCatalog(items) {
+  setAppPositions(sortCatalogItems(items).map((item) => item.name).filter(Boolean));
+}
+
 async function loadAppRolesFromApi() {
   try {
     const roles = await api("/api/app-roles");
-    appRolesCatalog = (roles || [])
-      .map((r) => ({ id: Number(r.id), name: r.name }))
+    appRolesCatalog = sortCatalogItems(roles || [])
+      .map((r) => ({ id: Number(r.id), name: r.name, sortOrder: catalogSortOrder(r) }))
       .filter((r) => Number.isInteger(r.id) && r.id > 0);
-    setOrgRollen(appRolesCatalog.map((r) => r.name));
+    setOrgRollenFromCatalog(appRolesCatalog);
     refreshOrgRolleSelects();
     return roles;
   } catch (_e) {
@@ -6358,10 +6388,10 @@ async function loadAppRolesFromApi() {
 async function loadAppPositionsFromApi() {
   try {
     const positions = await api("/api/app-positions");
-    appPositionsCatalog = (positions || [])
-      .map((p) => ({ id: Number(p.id), name: p.name }))
+    appPositionsCatalog = sortCatalogItems(positions || [])
+      .map((p) => ({ id: Number(p.id), name: p.name, sortOrder: catalogSortOrder(p) }))
       .filter((p) => Number.isInteger(p.id) && p.id > 0);
-    setAppPositions(appPositionsCatalog.map((p) => p.name));
+    setAppPositionsFromCatalog(appPositionsCatalog);
     if (document.getElementById("sk_org_roles")) {
       const editId = document.getElementById("sk_editId")?.value;
       const entry = editId
@@ -6386,8 +6416,8 @@ async function loadAppRolePositionCatalogFromApi() {
 
 async function loadAdminAppRolesCache() {
   try {
-    adminAppRolesCache = await api("/api/admin/app-roles");
-    if (!Array.isArray(adminAppRolesCache)) adminAppRolesCache = [];
+    const roles = await api("/api/admin/app-roles");
+    applyAdminAppRolesCache(Array.isArray(roles) ? roles : []);
   } catch (error) {
     adminAppRolesCache = [];
     console.error("Rollen laden fehlgeschlagen:", error);
@@ -6397,12 +6427,8 @@ async function loadAdminAppRolesCache() {
 
 async function loadAdminAppPositionsCache() {
   try {
-    adminAppPositionsCache = await api("/api/admin/app-positions");
-    if (!Array.isArray(adminAppPositionsCache)) adminAppPositionsCache = [];
-    appPositionsCatalog = adminAppPositionsCache
-      .map((p) => ({ id: Number(p.id), name: p.name }))
-      .filter((p) => Number.isInteger(p.id) && p.id > 0);
-    setAppPositions(appPositionsCatalog.map((p) => p.name));
+    const positions = await api("/api/admin/app-positions");
+    applyAdminAppPositionsCache(Array.isArray(positions) ? positions : []);
   } catch (error) {
     adminAppPositionsCache = [];
     console.error("Positionen laden fehlgeschlagen:", error);
@@ -6410,36 +6436,127 @@ async function loadAdminAppPositionsCache() {
   }
 }
 
-function renderAdminCatalogTable({ tbodyId, emptyId, items, editAction, deleteAction, onEdit, onDelete }) {
+function renderAdminCatalogTable({
+  tbodyId,
+  emptyId,
+  items,
+  editAction,
+  deleteAction,
+  moveUpAction,
+  moveDownAction,
+  onEdit,
+  onDelete,
+  onMove,
+}) {
   const tbody = document.getElementById(tbodyId);
   const empty = document.getElementById(emptyId);
+  const sortedItems = sortCatalogItems(items);
   if (!tbody) return;
-  if (!items.length) {
+  if (!sortedItems.length) {
     tbody.innerHTML = "";
     if (empty) empty.style.display = "block";
     return;
   }
   if (empty) empty.style.display = "none";
-  tbody.innerHTML = items
-    .map(
-      (item) =>
+  tbody.innerHTML = sortedItems
+    .map((item, index) => {
+      const isFirst = index === 0;
+      const isLast = index === sortedItems.length - 1;
+      return (
         `<tr>` +
         `<td><strong>${esc(item.name)}</strong></td>` +
         `<td style="white-space:nowrap">` +
-        `<button type="button" class="btn btn-sm btn-outline" data-action="${editAction}" data-item-id="${item.id}">✏️ Bearbeiten</button> ` +
+        `<div class="admin-catalog-actions">` +
+        `<button type="button" class="admin-catalog-order__btn" data-action="${moveUpAction}" data-item-id="${item.id}" aria-label="Nach oben"${isFirst ? " disabled" : ""}>↑</button>` +
+        `<button type="button" class="btn btn-sm btn-outline" data-action="${editAction}" data-item-id="${item.id}">✏️ Bearbeiten</button>` +
+        `<button type="button" class="admin-catalog-order__btn" data-action="${moveDownAction}" data-item-id="${item.id}" aria-label="Nach unten"${isLast ? " disabled" : ""}>↓</button>` +
         `<button type="button" class="btn btn-sm btn-danger" data-action="${deleteAction}" data-item-id="${item.id}">🗑️</button>` +
+        `</div>` +
         `</td></tr>`
-    )
+      );
+    })
     .join("");
   tbody.querySelectorAll(`[data-action="${editAction}"]`).forEach((btn) => {
     btn.addEventListener("click", () => {
-      const item = items.find((r) => String(r.id) === String(btn.getAttribute("data-item-id")));
+      const item = sortedItems.find((r) => String(r.id) === String(btn.getAttribute("data-item-id")));
       if (item) onEdit(item);
     });
   });
   tbody.querySelectorAll(`[data-action="${deleteAction}"]`).forEach((btn) => {
     btn.addEventListener("click", () => onDelete(btn.getAttribute("data-item-id")));
   });
+  if (onMove) {
+    tbody.querySelectorAll(`[data-action="${moveUpAction}"]`).forEach((btn) => {
+      btn.addEventListener("click", () => {
+        if (btn.disabled) return;
+        onMove(btn.getAttribute("data-item-id"), "up");
+      });
+    });
+    tbody.querySelectorAll(`[data-action="${moveDownAction}"]`).forEach((btn) => {
+      btn.addEventListener("click", () => {
+        if (btn.disabled) return;
+        onMove(btn.getAttribute("data-item-id"), "down");
+      });
+    });
+  }
+}
+
+async function refreshAdminCatalogDependents() {
+  refreshOrgRolleSelects();
+  populateAdminUserPositionFilterOptions();
+  populateAdminUserOrgRoleFilterOptions();
+  if (document.getElementById("adm_edit_user_org_roles_select")) {
+    renderAdminUserCatalogCheckboxes("adm_edit_");
+  }
+  const editId = document.getElementById("sk_editId")?.value;
+  const skillEntry = editId ? load("skill").find((x) => String(x.id) === String(editId)) : null;
+  if (document.getElementById("sk_org_roles")) {
+    renderSkillEmployeeCatalogCheckboxes(skillEntry || null);
+  }
+}
+
+function applyAdminAppRolesCache(items) {
+  adminAppRolesCache = sortCatalogItems(items || []);
+  appRolesCatalog = adminAppRolesCache
+    .map((r) => ({ id: Number(r.id), name: r.name, sortOrder: catalogSortOrder(r) }))
+    .filter((r) => Number.isInteger(r.id) && r.id > 0);
+  setOrgRollenFromCatalog(adminAppRolesCache);
+}
+
+function applyAdminAppPositionsCache(items) {
+  adminAppPositionsCache = sortCatalogItems(items || []);
+  appPositionsCatalog = adminAppPositionsCache
+    .map((p) => ({ id: Number(p.id), name: p.name, sortOrder: catalogSortOrder(p) }))
+    .filter((p) => Number.isInteger(p.id) && p.id > 0);
+  setAppPositionsFromCatalog(adminAppPositionsCache);
+}
+
+async function moveAdminAppRole(id, direction) {
+  try {
+    const result = await api(`/api/admin/app-roles/${id}/move`, {
+      method: "POST",
+      body: JSON.stringify({ direction }),
+    });
+    applyAdminAppRolesCache(result.items || []);
+    await renderAdminRolesAndPositions();
+    await refreshAdminCatalogDependents();
+  } catch (error) {
+    toast(error.message || "Reihenfolge konnte nicht geändert werden.", "#e74c3c", 5000);
+  }
+}
+
+async function moveAdminAppPosition(id, direction) {
+  try {
+    const result = await api(`/api/admin/app-positions/${id}/move`, {
+      method: "POST",
+      body: JSON.stringify({ direction }),
+    });
+    applyAdminAppPositionsCache(result.items || []);
+    await renderAdminRolesAndPositions();
+    await refreshAdminCatalogDependents();
+  } catch (error) {
+    toast(error.message || "Reihenfolge konnte nicht geändert werden.", "#e74c3c", 5000);
+  }
 }
 
 async function renderAdminRolesAndPositions() {
@@ -6452,8 +6569,11 @@ async function renderAdminRolesAndPositions() {
     items: adminAppRolesCache,
     editAction: "edit-role",
     deleteAction: "delete-role",
+    moveUpAction: "move-role-up",
+    moveDownAction: "move-role-down",
     onEdit: openAdminRoleEdit,
     onDelete: deleteAdminAppRole,
+    onMove: moveAdminAppRole,
   });
   renderAdminCatalogTable({
     tbodyId: "admPositionsBody",
@@ -6461,8 +6581,11 @@ async function renderAdminRolesAndPositions() {
     items: adminAppPositionsCache,
     editAction: "edit-position",
     deleteAction: "delete-position",
+    moveUpAction: "move-position-up",
+    moveDownAction: "move-position-down",
     onEdit: openAdminPositionEdit,
     onDelete: deleteAdminAppPosition,
+    onMove: moveAdminAppPosition,
   });
 }
 
@@ -6510,12 +6633,7 @@ async function saveAdminRoleEdit() {
     await loadAppRolePositionCatalogFromApi();
     await renderAdminRolesAndPositions();
     if (isAdmin) await renderAdminUsers();
-    refreshOrgRolleSelects();
-    const editId = document.getElementById("sk_editId")?.value;
-    const entry = editId
-      ? load("skill").find((x) => String(x.id) === String(editId))
-      : null;
-    renderSkillEmployeeCatalogCheckboxes(entry || null);
+    await refreshAdminCatalogDependents();
   }, 450);
 }
 
@@ -6526,6 +6644,7 @@ async function deleteAdminAppRole(id) {
   await api(`/api/admin/app-roles/${id}`, { method: "DELETE" });
   await loadAppRolePositionCatalogFromApi();
   await renderAdminRolesAndPositions();
+  await refreshAdminCatalogDependents();
   toast("Rolle geloescht.", "#e74c3c");
 }
 
@@ -6575,11 +6694,7 @@ async function saveAdminPositionEdit() {
     await loadAppRolePositionCatalogFromApi();
     await renderAdminRolesAndPositions();
     if (isAdmin) await renderAdminUsers();
-    const editId = document.getElementById("sk_editId")?.value;
-    const entry = editId
-      ? load("skill").find((x) => String(x.id) === String(editId))
-      : null;
-    renderSkillEmployeeCatalogCheckboxes(entry || null);
+    await refreshAdminCatalogDependents();
   }, 450);
 }
 
@@ -6590,6 +6705,7 @@ async function deleteAdminAppPosition(id) {
   await api(`/api/admin/app-positions/${id}`, { method: "DELETE" });
   await loadAppRolePositionCatalogFromApi();
   await renderAdminRolesAndPositions();
+  await refreshAdminCatalogDependents();
   toast("Position geloescht.", "#e74c3c");
 }
 
@@ -6616,7 +6732,8 @@ async function loadSkillCategoriesFromApi() {
 
 async function loadAdminCategoriesCache() {
   try {
-    adminCategoriesCache = await api("/api/admin/skill-categories");
+    const data = await api("/api/admin/skill-categories");
+    adminCategoriesCache = sortCatalogItems(Array.isArray(data) ? data : []);
   } catch (_e) {
     adminCategoriesCache = [];
   }
@@ -6624,6 +6741,32 @@ async function loadAdminCategoriesCache() {
 
 function normalizeAdminCategoryKind(kind) {
   return kind === "soft" ? "soft" : "tech";
+}
+
+function applyAdminSkillCategoriesForKind(kind, items) {
+  const safeKind = normalizeAdminCategoryKind(kind);
+  const sorted = sortCatalogItems(items || []);
+  adminCategoriesCache = [
+    ...adminCategoriesCache.filter((c) => c.kind !== safeKind),
+    ...sorted,
+  ];
+}
+
+async function moveAdminSkillCategory(id, direction) {
+  try {
+    const result = await api(`/api/admin/skill-categories/${id}/move`, {
+      method: "POST",
+      body: JSON.stringify({ direction }),
+    });
+    applyAdminSkillCategoriesForKind(result.kind, result.items || []);
+    await loadSkillCategoriesFromApi();
+    renderAdminCategoryTable(result.kind);
+    refreshOpenSkillCategorySelects();
+    refreshSkillAssessmentCategoryLabels();
+    refreshSkillInfoPanel();
+  } catch (error) {
+    toast(error.message || "Reihenfolge konnte nicht geändert werden.", "#e74c3c", 5000);
+  }
 }
 
 function renderAdminCategoryTable(kind) {
@@ -6634,7 +6777,7 @@ function renderAdminCategoryTable(kind) {
   const countEl = document.getElementById(`adm${suffix}CatCount`);
   if (!tbody) return;
 
-  const rows = adminCategoriesCache.filter((c) => c.kind === safeKind);
+  const rows = sortCatalogItems(adminCategoriesCache.filter((c) => c.kind === safeKind));
   if (countEl) countEl.textContent = String(rows.length);
   if (!rows.length) {
     tbody.innerHTML = "";
@@ -6644,17 +6787,24 @@ function renderAdminCategoryTable(kind) {
   if (empty) empty.style.display = "none";
 
   tbody.innerHTML = rows
-    .map(
-      (c) =>
+    .map((c, index) => {
+      const isFirst = index === 0;
+      const isLast = index === rows.length - 1;
+      return (
         `<tr>` +
         `<td><strong>${esc(c.name)}</strong></td>` +
         `<td>${esc(c.beschreibung || "–")}</td>` +
         `<td>${esc(c.beispiel || "–")}</td>` +
         `<td style="white-space:nowrap">` +
-        `<button type="button" class="btn btn-sm btn-outline" data-action="edit-cat" data-cat-id="${c.id}">✏️ Bearbeiten</button> ` +
+        `<div class="admin-catalog-actions">` +
+        `<button type="button" class="admin-catalog-order__btn" data-action="move-cat-up" data-cat-id="${c.id}" aria-label="Nach oben"${isFirst ? " disabled" : ""}>↑</button>` +
+        `<button type="button" class="btn btn-sm btn-outline" data-action="edit-cat" data-cat-id="${c.id}">✏️ Bearbeiten</button>` +
+        `<button type="button" class="admin-catalog-order__btn" data-action="move-cat-down" data-cat-id="${c.id}" aria-label="Nach unten"${isLast ? " disabled" : ""}>↓</button>` +
         `<button type="button" class="btn btn-sm btn-danger" data-action="delete-cat" data-cat-id="${c.id}">🗑️</button>` +
+        `</div>` +
         `</td></tr>`
-    )
+      );
+    })
     .join("");
 
   tbody.querySelectorAll('[data-action="edit-cat"]').forEach((btn) => {
@@ -6665,6 +6815,18 @@ function renderAdminCategoryTable(kind) {
   });
   tbody.querySelectorAll('[data-action="delete-cat"]').forEach((btn) => {
     btn.addEventListener("click", () => deleteAdminCategory(btn.getAttribute("data-cat-id")));
+  });
+  tbody.querySelectorAll('[data-action="move-cat-up"]').forEach((btn) => {
+    btn.addEventListener("click", () => {
+      if (btn.disabled) return;
+      void moveAdminSkillCategory(btn.getAttribute("data-cat-id"), "up");
+    });
+  });
+  tbody.querySelectorAll('[data-action="move-cat-down"]').forEach((btn) => {
+    btn.addEventListener("click", () => {
+      if (btn.disabled) return;
+      void moveAdminSkillCategory(btn.getAttribute("data-cat-id"), "down");
+    });
   });
 }
 

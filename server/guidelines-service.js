@@ -1,23 +1,7 @@
 const crypto = require("crypto");
-const fs = require("fs");
-const path = require("path");
 
 const GLOBAL_ID = "global";
 const SEED_EMAIL = "system@seed";
-
-function loadEmbeddedGuidelinesFromFile() {
-  const filePath = path.join(__dirname, "../public/backcasting/js/embedded-data.js");
-  const content = fs.readFileSync(filePath, "utf8");
-  const match = content.match(/window\.BC_EMBEDDED\s*=\s*(\[[\s\S]*\])\s*;?/);
-  if (!match) {
-    throw new Error("BC_EMBEDDED not found in embedded-data.js");
-  }
-  const parsed = JSON.parse(match[1]);
-  if (!Array.isArray(parsed)) {
-    throw new Error("BC_EMBEDDED is not an array");
-  }
-  return parsed;
-}
 
 function normalizeGuidelineIds(guidelines) {
   if (!Array.isArray(guidelines)) return [];
@@ -42,8 +26,7 @@ async function ensureGuidelinesSchema(pool) {
 async function seedGuidelinesIfEmpty(pool) {
   const { rows } = await pool.query("SELECT id FROM gf_guidelines WHERE id = $1", [GLOBAL_ID]);
   if (rows.length) return false;
-  const embedded = loadEmbeddedGuidelinesFromFile();
-  const guidelines = normalizeGuidelineIds(embedded);
+  const guidelines = normalizeGuidelineIds([]);
   await pool.query(
     `INSERT INTO gf_guidelines (id, payload, version, updated_by_email)
      VALUES ($1, $2::jsonb, 1, $3)`,

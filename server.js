@@ -1646,6 +1646,111 @@ async function getCatalogNameById(table, id) {
   return result.rows[0]?.name || null;
 }
 
+async function moveCatalogItem(table, id, direction) {
+  const safeTable = table === "app_positions" ? "app_positions" : "app_roles";
+  const dir = direction === "up" ? "up" : direction === "down" ? "down" : null;
+  if (!dir) return { error: "invalid_direction" };
+
+  const targetId = Number(id);
+  if (!Number.isInteger(targetId) || targetId <= 0) return { error: "not_found" };
+
+  await pool.query("BEGIN");
+  try {
+    const { rows } = await pool.query(
+      `SELECT id, sort_order FROM ${safeTable} ORDER BY sort_order, name`
+    );
+    const idx = rows.findIndex((row) => Number(row.id) === targetId);
+    if (idx < 0) {
+      await pool.query("ROLLBACK");
+      return { error: "not_found" };
+    }
+    const swapIdx = dir === "up" ? idx - 1 : idx + 1;
+    if (swapIdx < 0 || swapIdx >= rows.length) {
+      await pool.query("ROLLBACK");
+      return { error: "boundary" };
+    }
+    const current = rows[idx];
+    const neighbor = rows[swapIdx];
+    await pool.query(`UPDATE ${safeTable} SET sort_order = $1, updated_at = NOW() WHERE id = $2`, [
+      neighbor.sort_order,
+      current.id,
+    ]);
+    await pool.query(`UPDATE ${safeTable} SET sort_order = $1, updated_at = NOW() WHERE id = $2`, [
+      current.sort_order,
+      neighbor.id,
+    ]);
+    await pool.query("COMMIT");
+    return { ok: true };
+  } catch (error) {
+    await pool.query("ROLLBACK");
+    throw error;
+  }
+}
+
+async function listCatalogNameRows(table) {
+  const safeTable = table === "app_positions" ? "app_positions" : "app_roles";
+  const result = await pool.query(
+    `SELECT id, name, sort_order FROM ${safeTable} ORDER BY sort_order, name`
+  );
+  return result.rows.map(mapCatalogNameRow);
+}
+
+async function moveSkillCategoryItem(pool, id, direction) {
+  const dir = direction === "up" ? "up" : direction === "down" ? "down" : null;
+  if (!dir) return { error: "invalid_direction" };
+
+  const targetId = Number(id);
+  if (!Number.isInteger(targetId) || targetId <= 0) return { error: "not_found" };
+
+  const existing = await pool.query("SELECT id, kind FROM skill_categories WHERE id = $1", [targetId]);
+  const kind = existing.rows[0]?.kind;
+  if (!kind) return { error: "not_found" };
+
+  await pool.query("BEGIN");
+  try {
+    const { rows } = await pool.query(
+      `SELECT id, sort_order FROM skill_categories WHERE kind = $1 ORDER BY sort_order, name`,
+      [kind]
+    );
+    const idx = rows.findIndex((row) => Number(row.id) === targetId);
+    if (idx < 0) {
+      await pool.query("ROLLBACK");
+      return { error: "not_found" };
+    }
+    const swapIdx = dir === "up" ? idx - 1 : idx + 1;
+    if (swapIdx < 0 || swapIdx >= rows.length) {
+      await pool.query("ROLLBACK");
+      return { error: "boundary" };
+    }
+    const current = rows[idx];
+    const neighbor = rows[swapIdx];
+    await pool.query(
+      `UPDATE skill_categories SET sort_order = $1, updated_at = NOW() WHERE id = $2`,
+      [neighbor.sort_order, current.id]
+    );
+    await pool.query(
+      `UPDATE skill_categories SET sort_order = $1, updated_at = NOW() WHERE id = $2`,
+      [current.sort_order, neighbor.id]
+    );
+    await pool.query("COMMIT");
+    return { ok: true, kind };
+  } catch (error) {
+    await pool.query("ROLLBACK");
+    throw error;
+  }
+}
+
+async function listSkillCategoryRows(pool, kind) {
+  const result = await pool.query(
+    `SELECT id, kind, name, beschreibung, beispiel, sort_order
+     FROM skill_categories
+     WHERE kind = $1
+     ORDER BY sort_order, name`,
+    [kind]
+  );
+  return result.rows.map(mapSkillCategoryRow);
+}
+
 async function cascadeUserCatalogArrayRename(column, oldName, newName) {
   if (!oldName || !newName || oldName === newName) return 0;
   const safeColumn = column === "user_positions" ? "user_positions" : "user_org_roles";
@@ -3777,6 +3882,29 @@ app.put("/api/admin/skill-categories/:id", auth, requireAdmin, async (req, res) 
   }
 });
 
+app.post("/api/admin/skill-categories/:id/move", auth, requireAdmin, async (req, res) => {
+  const { id } = req.params;
+  const direction = String(req.body?.direction || "").trim().toLowerCase();
+  try {
+    const result = await moveSkillCategoryItem(pool, id, direction);
+    if (result.error === "not_found") {
+      return res.status(404).json({ error: "Kategorie nicht gefunden." });
+    }
+    if (result.error === "invalid_direction") {
+      return res.status(400).json({ error: "Ungueltige Richtung." });
+    }
+    if (result.error === "boundary") {
+      return res.status(400).json({ error: "Kategorie kann in diese Richtung nicht verschoben werden." });
+    }
+    return res.json({
+      kind: result.kind,
+      items: await listSkillCategoryRows(pool, result.kind),
+    });
+  } catch (_error) {
+    return res.status(500).json({ error: "Reihenfolge konnte nicht geaendert werden." });
+  }
+});
+
 app.delete("/api/admin/skill-categories/:id", auth, requireAdmin, async (req, res) => {
   const { id } = req.params;
   const existing = await pool.query("SELECT id, kind, name FROM skill_categories WHERE id = $1", [id]);
@@ -3842,6 +3970,26 @@ app.put("/api/admin/app-roles/:id", auth, requireAdmin, async (req, res) => {
   }
 });
 
+app.post("/api/admin/app-roles/:id/move", auth, requireAdmin, async (req, res) => {
+  const { id } = req.params;
+  const direction = String(req.body?.direction || "").trim().toLowerCase();
+  try {
+    const result = await moveCatalogItem("app_roles", id, direction);
+    if (result.error === "not_found") {
+      return res.status(404).json({ error: "Rolle nicht gefunden." });
+    }
+    if (result.error === "invalid_direction") {
+      return res.status(400).json({ error: "Ungueltige Richtung." });
+    }
+    if (result.error === "boundary") {
+      return res.status(400).json({ error: "Rolle kann in diese Richtung nicht verschoben werden." });
+    }
+    return res.json({ items: await listCatalogNameRows("app_roles") });
+  } catch (_error) {
+    return res.status(500).json({ error: "Reihenfolge konnte nicht geaendert werden." });
+  }
+});
+
 app.delete("/api/admin/app-roles/:id", auth, requireAdmin, async (req, res) => {
   const { id } = req.params;
   const name = await getCatalogNameById("app_roles", id);
@@ -3900,6 +4048,26 @@ app.put("/api/admin/app-positions/:id", auth, requireAdmin, async (req, res) => 
     return res.json(mapCatalogNameRow(row));
   } catch (error) {
     return res.status(400).json({ error: "Position konnte nicht aktualisiert werden (evtl. Name bereits vergeben)." });
+  }
+});
+
+app.post("/api/admin/app-positions/:id/move", auth, requireAdmin, async (req, res) => {
+  const { id } = req.params;
+  const direction = String(req.body?.direction || "").trim().toLowerCase();
+  try {
+    const result = await moveCatalogItem("app_positions", id, direction);
+    if (result.error === "not_found") {
+      return res.status(404).json({ error: "Position nicht gefunden." });
+    }
+    if (result.error === "invalid_direction") {
+      return res.status(400).json({ error: "Ungueltige Richtung." });
+    }
+    if (result.error === "boundary") {
+      return res.status(400).json({ error: "Position kann in diese Richtung nicht verschoben werden." });
+    }
+    return res.json({ items: await listCatalogNameRows("app_positions") });
+  } catch (_error) {
+    return res.status(500).json({ error: "Reihenfolge konnte nicht geaendert werden." });
   }
 });
 
