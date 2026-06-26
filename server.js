@@ -14,6 +14,12 @@ const {
   buildDemoStatusSummary,
 } = require("./server/demo-data");
 const { buildDashboardSnapshot, buildDashboardTimeline, DEFAULT_TIMELINE_YEARS } = require("./server/dashboard-service");
+const {
+  ensureGuidelinesSchema,
+  seedGuidelinesIfEmpty,
+  getGuidelines,
+  updateGuidelines,
+} = require("./server/guidelines-service");
 
 const app = express();
 const PORT = process.env.PORT || 3000;
@@ -229,6 +235,10 @@ function canAccessBackcasting(roleOrUser) {
     return userHasRole(roleOrUser, "backcasting");
   }
   return roleOrUser === "backcasting";
+}
+
+function canReadGuidelines(user) {
+  return canAccessBackcasting(user) || isAdminRole(user);
 }
 
 function canAccessFortschritt(roleOrUser) {
@@ -2270,6 +2280,8 @@ async function initDb() {
 
   await ensureEntriesTypeConstraint();
   await ensureDemoSchema();
+  await ensureGuidelinesSchema(pool);
+  await seedGuidelinesIfEmpty(pool);
   await backfillSkillEntryPositionIds();
   await backfillSkillEntryCategoryIds();
 
@@ -3301,6 +3313,62 @@ app.delete("/api/demo/remove", auth, async (req, res) => {
     removedEntries: delEntries.rowCount,
     removedPlans: delPlans.rowCount,
   });
+});
+
+app.get("/api/guidelines", auth, async (req, res) => {
+  if (!canReadGuidelines(req.user)) {
+    return res.status(403).json({ error: "Kein Zugriff auf Leitplanken." });
+  }
+  try {
+    const data = await getGuidelines(pool);
+    return res.json(data);
+  } catch (error) {
+    console.error("GET /api/guidelines", error);
+    return res.status(500).json({ error: "Leitplanken konnten nicht geladen werden." });
+  }
+});
+
+app.put("/api/admin/guidelines", auth, requireAdmin, async (req, res) => {
+  const { guidelines, version, force } = req.body || {};
+  if (!Number.isInteger(version) || version < 1) {
+    return res.status(400).json({ error: "version fehlt oder ist ungültig." });
+  }
+  if (!Array.isArray(guidelines)) {
+    return res.status(400).json({ error: "guidelines muss ein Array sein." });
+  }
+  if (force && !isSuperAdminRole(req.user)) {
+    return res.status(403).json({ error: "Nur Super-Admin darf Änderungen erzwingen." });
+  }
+  try {
+    const result = await updateGuidelines(pool, {
+      guidelines,
+      version,
+      updatedByEmail: req.user.email,
+      force: Boolean(force),
+    });
+    if (result.error) {
+      return res.status(400).json({ error: result.error });
+    }
+    if (result.conflict) {
+      return res.status(409).json({
+        error: "Konflikt: Leitplanken wurden zwischenzeitlich geändert.",
+        guidelines: result.guidelines,
+        version: result.version,
+        updatedAt: result.updatedAt,
+        updatedBy: result.updatedBy,
+      });
+    }
+    return res.json({
+      ok: true,
+      guidelines: result.guidelines,
+      version: result.version,
+      updatedAt: result.updatedAt,
+      updatedBy: result.updatedBy,
+    });
+  } catch (error) {
+    console.error("PUT /api/admin/guidelines", error);
+    return res.status(500).json({ error: "Speichern fehlgeschlagen." });
+  }
 });
 
 app.get("/api/backcasting/plan", auth, async (req, res) => {

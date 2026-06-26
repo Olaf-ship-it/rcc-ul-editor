@@ -941,14 +941,14 @@
     <div class="card" style="border-left-color:var(--rc-accent2);margin-bottom:1rem">
       <h3 style="color:var(--rc-accent2)">📐 GF-Leitplanken pflegen</h3>
       <p style="color:var(--rc-muted);font-size:.82rem;margin-bottom:1rem">
-        Globale Geschäftsführungs-Leitplanken für <strong>Phase 2 · Backcasting</strong> (gelten für alle Units im Browser-Speicher).
+        Globale Geschäftsführungs-Leitplanken für <strong>Phase 2 · Backcasting</strong> (gelten zentral für alle Units auf dem Server).
         Pflege erfolgt hier im Admin-Bereich; in Backcasting werden die Leitplanken nur gelesen und für die Planung genutzt.
       </p>
       <div class="card" style="margin-bottom:1rem;background:#f8fafc">
         <h4 style="margin:0 0 .5rem;font-size:.9rem">Leitplanken-Datenquelle</h4>
         <p style="color:var(--rc-muted);font-size:.78rem;margin:0 0 .65rem">
-          Standard: eingebettete <strong>RL_Strategie</strong>-Leitplanken (<span id="embCount">–</span> Vorgaben).
-          Optional eigene CSV laden oder eingebettete Leitplanken wiederherstellen.
+          Standard: eingebettete <strong>RL_Strategie</strong>-Leitplanken (<span id="embCount">–</span> Vorgaben) als Server-Seed.
+          Optional eigene CSV laden oder eingebettete Leitplanken wiederherstellen — danach „Speichern“ für alle Nutzer wirksam machen.
         </p>
         <div class="btn-group" style="margin-top:0;align-items:center;flex-wrap:wrap">
           <input type="file" id="csvFile" accept=".csv">
@@ -966,7 +966,8 @@
           </div>
         </div>
         <p style="color:var(--rc-muted);font-size:.78rem;margin:0 0 .75rem">
-          Änderungen wirken sich nach Speichern auf „Leitplanken“ und „Planung“ in Phase 2 aus (Seite neu laden falls Backcasting bereits offen ist).
+          Änderungen werden zentral gespeichert und wirken nach Speichern auf „Leitplanken“ und „Planung“ in Phase 2 aus.
+          Bei gleichzeitiger Bearbeitung durch mehrere Admins wird ein Konflikt gemeldet (Seite neu laden falls Backcasting bereits offen ist).
         </p>
         <div class="row row2" style="margin-bottom:.65rem">
           <div><label>Workstream</label><select id="gpWs" onchange="renderGuidelineEditor()"></select></div>

@@ -3,11 +3,10 @@ window.__APP_BOOTED__ = true;
 const YEARS=[2026,2027,2028,2029];
 const TYPES=["Produkt","Service","Lösung","Organisation","Skill","Sales","Partner","Tech"];
 const STATUSES=["Geplant","In Arbeit","Abgeschlossen","Blockiert"];
-const LS_PLAN="rc_bc_plan";
+const LS_PLAN = "rc_bc_plan";
+const LS_PLAN_MIGRATED = "rc_bc_plan_migrated";
 
-let plan=null, currentCat=null;
-let storageAvailable = true;
-let memoryStore = { plan: null };
+let plan = { meta: {}, measures: {} }, currentCat = null;
 let bcUserUnit = '';
 let bcViewUnit = '';
 let bcUserUnits = [];
@@ -189,7 +188,6 @@ async function setBcViewUnit(unit){
   }
   await loadPlanFromApi();
   await syncPlanMetaFromContext();
-  savePlanLocal();
   initSelectors();
 }
 
@@ -200,43 +198,53 @@ function catId(g){return g.workstream+'||'+g.kategorie}
 function wsId(ws){return 'WS||'+ws}
 
 /* ---------- init ---------- */
-function loadState(){
-  if(typeof loadGuideState==='function') loadGuideState();
+function initPlanState() {
+  plan = { meta: {}, measures: {} };
+}
+
+function planHasMeasures(payload) {
+  const measures = payload?.measures || {};
+  return Object.values(measures).some((list) => Array.isArray(list) && list.length > 0);
+}
+
+function maybeMigrateLocalPlan() {
   try {
-    const sp=localStorage.getItem(LS_PLAN);
-    plan = sp? JSON.parse(sp): {meta:{},measures:{}};
-  } catch(err) {
-    storageAvailable = false;
-    plan = memoryStore.plan ? JSON.parse(JSON.stringify(memoryStore.plan)) : {meta:{},measures:{}};
+    if (localStorage.getItem(LS_PLAN_MIGRATED)) return false;
+    const raw = localStorage.getItem(LS_PLAN);
+    if (!raw) return false;
+    const local = JSON.parse(raw);
+    if (!local || !planHasMeasures(local)) return false;
+    plan = {
+      meta: local.meta && typeof local.meta === "object" ? local.meta : {},
+      measures: local.measures && typeof local.measures === "object" ? local.measures : {},
+    };
+    if (!plan.measures) plan.measures = {};
+    localStorage.setItem(LS_PLAN_MIGRATED, "1");
+    localStorage.removeItem(LS_PLAN);
+    toast("Plan aus lokalem Browser-Speicher übernommen – wird auf den Server gespeichert …");
+    return true;
+  } catch (_err) {
+    return false;
   }
-  if(!plan.measures) plan.measures={};
 }
-function savePlanLocal(){
-  if(storageAvailable){
-    try { localStorage.setItem(LS_PLAN,JSON.stringify(plan)); }
-    catch(err){ storageAvailable = false; memoryStore.plan = JSON.parse(JSON.stringify(plan)); }
-  } else {
-    memoryStore.plan = JSON.parse(JSON.stringify(plan));
-  }
-}
-async function savePlan(options = {}){
+
+async function savePlan(options = {}) {
   const allowIncomplete = Boolean(options.allowIncomplete);
   const silent = Boolean(options.silent);
-  if(isBcViewAll()) return false;
-  if(!requireBcSaveUnit()) return false;
+  if (isBcViewAll()) return false;
+  if (!requireBcSaveUnit()) return false;
   await syncPlanMetaFromContext();
-  savePlanLocal();
-  if(!allowIncomplete && findMilestonesMissingErgebnis().length){
-    if(!silent) toast('Bitte bei allen Meilensteinen „Ergebnis / Artefakt“ ausfüllen.', '#e74c3c');
+  if (!allowIncomplete && findMilestonesMissingErgebnis().length) {
+    if (!silent) toast("Bitte bei allen Meilensteinen „Ergebnis / Artefakt“ ausfüllen.", "#e74c3c");
     return false;
   }
   const unit = getBcSaveUnit();
-  if(!unit) return false;
+  if (!unit) return false;
   try {
-    await fetch('/api/backcasting/plan', {
-      method: 'PUT',
-      credentials: 'same-origin',
-      headers: { 'Content-Type': 'application/json' },
+    const res = await fetch("/api/backcasting/plan", {
+      method: "PUT",
+      credentials: "same-origin",
+      headers: { "Content-Type": "application/json" },
       body: JSON.stringify({
         unit,
         meta: plan.meta,
@@ -244,9 +252,16 @@ async function savePlan(options = {}){
         is_demo: Boolean(plan.meta?.is_demo),
       }),
     });
+    if (!res.ok) {
+      const body = await res.json().catch(() => ({}));
+      if (!silent) toast(body.error || "Speichern fehlgeschlagen", "#e74c3c");
+      return false;
+    }
     return true;
-  } catch (_e) { /* lokaler Cache bleibt */ }
-  return false;
+  } catch (_e) {
+    if (!silent) toast("Speichern fehlgeschlagen", "#e74c3c");
+    return false;
+  }
 }
 
 async function saveMilestone(ws, yr, idx){
@@ -269,25 +284,30 @@ async function saveMilestone(ws, yr, idx){
   if(ok) toast('Gespeichert');
 }
 
-async function loadPlanFromApi(){
+async function loadPlanFromApi() {
   const unit = getBcSaveUnit();
-  if(!unit) return false;
+  if (!unit) return false;
   try {
-    const res = await fetch('/api/backcasting/plan?unit='+encodeURIComponent(unit), { credentials: 'same-origin' });
-    if(!res.ok) return false;
+    const res = await fetch("/api/backcasting/plan?unit=" + encodeURIComponent(unit), {
+      credentials: "same-origin",
+    });
+    if (!res.ok) return false;
     const data = await res.json();
-    if(!data.plan){
-      plan = { meta:{}, measures:{} };
+    if (!data.plan) {
+      if (maybeMigrateLocalPlan()) {
+        await syncPlanMetaFromContext();
+        await savePlan({ allowIncomplete: true, silent: true });
+        return true;
+      }
+      plan = { meta: {}, measures: {} };
       await syncPlanMetaFromContext();
-      savePlanLocal();
       return true;
     }
     plan.meta = data.plan.meta || {};
     plan.measures = data.plan.measures || {};
-    if(data.plan.is_demo) plan.meta.is_demo = true;
-    else if(plan.meta) delete plan.meta.is_demo;
+    if (data.plan.is_demo) plan.meta.is_demo = true;
+    else if (plan.meta) delete plan.meta.is_demo;
     await syncPlanMetaFromContext();
-    savePlanLocal();
     return true;
   } catch (_e) {
     return false;
@@ -442,11 +462,10 @@ function getWsEntries(ws, yr){
   return Array.isArray(v) ? v : [v];
 }
 
-function setWsEntries(ws, yr, arr){
-  if(!requireBcSaveUnit()) return;
-  const key = wsId(ws)+'||'+yr;
-  plan.measures[key]=arr;
-  savePlanLocal();
+function setWsEntries(ws, yr, arr) {
+  if (!requireBcSaveUnit()) return;
+  const key = wsId(ws) + "||" + yr;
+  plan.measures[key] = arr;
 }
 
 function initSplitter(){
@@ -455,7 +474,7 @@ function initSplitter(){
   const right=document.getElementById('wsRight');
   if(!resize||!left||!right) return;
 
-  // restore ratio from plan.meta (in-memory/local) if present
+  // restore ratio from plan.meta (in-memory) if present
   const saved = plan?.meta?.splitRatio;
   if(saved && typeof saved==='number'){
     left.style.flex = `0 0 ${Math.max(35, Math.min(80, saved))}%`;
@@ -1021,13 +1040,13 @@ document.querySelectorAll('#bcTabs .tab').forEach(b=>b.onclick=()=>{
 });
 
 /* boot */
-loadState();
-initSelectors();
+initPlanState();
 
-async function bootBackcastingPlan(me){
+async function bootBackcastingPlan(me) {
+  if (typeof loadGuideState === "function") await loadGuideState();
   initBcSessionFromDetail(me);
   initBcUnitSwitcher();
-  const persisted = rcViewUnitPersist?.readPersistedViewUnit?.() || '';
+  const persisted = rcViewUnitPersist?.readPersistedViewUnit?.() || "";
   bcViewUnit =
     rcViewUnitPersist?.resolveViewUnitForSession?.(persisted, {
       isSuperAdmin: bcIsSuperAdmin,
@@ -1036,30 +1055,26 @@ async function bootBackcastingPlan(me){
       currentUnit: bcUserUnit,
     }) ??
     (() => {
-      if (bcIsSuperAdmin || bcIsAdmin) return 'all';
+      if (bcIsSuperAdmin || bcIsAdmin) return "all";
       if (bcUserUnits.length === 1) return bcUserUnits[0];
       if (bcUserUnits.length > 1) return bcUserUnit || bcUserUnits[0];
-      return bcUserUnit || '';
+      return bcUserUnit || "";
     })();
   rcViewUnitPersist?.writePersistedViewUnit?.(bcViewUnit);
   await renderBcUnitSwitcher();
-  if(!isBcViewAll()){
+  if (!isBcViewAll()) {
     await loadPlanFromApi();
     await syncPlanMetaFromContext();
-    savePlanLocal();
-  }else{
-    plan = { meta:{}, measures:{} };
+  } else {
+    plan = { meta: {}, measures: {} };
   }
   initSelectors();
-  const cs = document.getElementById('csvStatus');
-  if(cs) cs.textContent = '✓ '+guidelines.length+' Leitplanken aktiv';
+  const cs = document.getElementById("csvStatus");
+  if (cs) cs.textContent = "✓ " + guidelines.length + " Leitplanken aktiv";
 }
-document.addEventListener('rc-backcasting-ready', (e)=>bootBackcastingPlan(e.detail));
-if(document.body.dataset.rcUserUnit) bootBackcastingPlan(null);
-else {
-  const cs = document.getElementById('csvStatus');
-  if(cs) cs.textContent = '✓ '+guidelines.length+' Leitplanken aktiv';
-}
+
+document.addEventListener('rc-backcasting-ready', (e)=>void bootBackcastingPlan(e.detail));
+if(document.body.dataset.rcUserUnit) void bootBackcastingPlan(null);
 document.getElementById('bcMilestoneEdit')?.addEventListener('click', (e)=>{
   if(e.target.id==='bcMilestoneEdit') closeMilestoneEditModal();
 });

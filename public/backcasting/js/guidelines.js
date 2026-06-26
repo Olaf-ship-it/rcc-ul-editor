@@ -1,18 +1,25 @@
 /**
- * GF-Leitplanken (global, localStorage rc_bc_guidelines) – gemeinsam für Backcasting & Admin.
+ * GF-Leitplanken (global, PostgreSQL via /api/guidelines) – gemeinsam für Backcasting & Admin.
  */
 (function () {
   const LS_GUIDE = "rc_bc_guidelines";
+  const LS_MIGRATED = "rc_bc_guidelines_migrated";
   const EMBEDDED = (window.BC_EMBEDDED || []).slice();
 
   var guidelines = [];
-  var guideStorageAvailable = true;
-  var memoryStoreGuide = null;
+  var guidelinesVersion = 1;
+  var guidelinesDirty = false;
+  var guidelinesUpdatedAt = null;
+  var guidelinesUpdatedBy = null;
 
   function esc(s) {
     return (s == null ? "" : String(s)).replace(/[&<>"]/g, (c) =>
       ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" }[c])
     );
+  }
+
+  function escJs(s) {
+    return String(s).replace(/\\/g, "\\\\").replace(/'/g, "\\'");
   }
 
   function bcToast(m) {
@@ -27,42 +34,134 @@
     }
   }
 
+  function newGuidelineId() {
+    if (typeof crypto !== "undefined" && crypto.randomUUID) return crypto.randomUUID();
+    return "g-" + Date.now() + "-" + Math.random().toString(36).slice(2, 9);
+  }
+
+  function normalizeGuidelineIds(list) {
+    return (list || []).map((g) => ({
+      ...g,
+      id: g?.id && String(g.id).trim() ? String(g.id).trim() : newGuidelineId(),
+    }));
+  }
+
+  function applyGuidelinesPayload(data) {
+    guidelines = normalizeGuidelineIds(Array.isArray(data?.guidelines) ? data.guidelines : []);
+    guidelinesVersion = Number.isInteger(data?.version) ? data.version : 1;
+    guidelinesUpdatedAt = data?.updatedAt || null;
+    guidelinesUpdatedBy = data?.updatedBy || null;
+    guidelinesDirty = false;
+    updateGuideStatusLabels();
+  }
+
+  function isGuidelinesSuperAdmin() {
+    if (typeof window.isSuperAdmin !== "undefined" && window.isSuperAdmin) return true;
+    return document.body.dataset.rcIsSuperAdmin === "1";
+  }
+
   function workstreams() {
     return [...new Set(guidelines.map((g) => g.workstream))];
   }
 
-  function loadGuideState() {
+  async function loadGuideState() {
     try {
-      const sg = localStorage.getItem(LS_GUIDE);
-      guidelines = sg ? JSON.parse(sg) : EMBEDDED.slice();
-    } catch (_err) {
-      guideStorageAvailable = false;
-      guidelines = memoryStoreGuide
-        ? JSON.parse(JSON.stringify(memoryStoreGuide))
-        : EMBEDDED.slice();
+      const res = await fetch("/api/guidelines", { credentials: "include" });
+      if (!res.ok) {
+        throw new Error(res.status === 403 ? "Kein Zugriff" : "Laden fehlgeschlagen (" + res.status + ")");
+      }
+      const data = await res.json();
+      applyGuidelinesPayload(data);
+      return data;
+    } catch (err) {
+      console.warn("loadGuideState:", err);
+      guidelines = normalizeGuidelineIds(EMBEDDED.slice());
+      guidelinesVersion = 1;
+      guidelinesDirty = false;
+      updateGuideStatusLabels();
+      return null;
     }
   }
 
-  function saveGuide() {
-    if (guideStorageAvailable) {
-      try {
-        localStorage.setItem(LS_GUIDE, JSON.stringify(guidelines));
-        updateGuideStatusLabels();
-        return;
-      } catch (_err) {
-        guideStorageAvailable = false;
-      }
-    }
-    memoryStoreGuide = JSON.parse(JSON.stringify(guidelines));
+  function markGuidelinesDirty() {
+    guidelinesDirty = true;
     updateGuideStatusLabels();
   }
 
   function updateGuideStatusLabels() {
-    const msg = "✓ " + guidelines.length + " Leitplanken aktiv";
+    let msg = "✓ " + guidelines.length + " Leitplanken aktiv";
+    if (guidelinesDirty) msg += " (ungespeichert)";
+    if (guidelinesUpdatedBy && !guidelinesDirty) {
+      msg += " · v" + guidelinesVersion;
+    }
     const cs = document.getElementById("csvStatus");
     if (cs) cs.textContent = msg;
     const pcs = document.getElementById("planCsvStatus");
     if (pcs) pcs.textContent = msg;
+  }
+
+  async function saveGuidelinesToServer(options) {
+    const res = await fetch("/api/admin/guidelines", {
+      method: "PUT",
+      credentials: "include",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        version: guidelinesVersion,
+        guidelines: normalizeGuidelineIds(guidelines),
+        force: Boolean(options && options.force),
+      }),
+    });
+    if (res.status === 409) {
+      const body = await res.json();
+      return { conflict: true, body };
+    }
+    if (!res.ok) {
+      const body = await res.json().catch(() => ({}));
+      throw new Error(body.error || "Speichern fehlgeschlagen");
+    }
+    const data = await res.json();
+    applyGuidelinesPayload(data);
+    return { ok: true, data };
+  }
+
+  async function handleGuidelinesConflict(serverBody) {
+    const who = serverBody.updatedBy || "einem anderen Nutzer";
+    const msg =
+      "Leitplanken wurden zwischenzeitlich von " +
+      who +
+      " geändert.\n\nServerstand laden? (Ihre lokalen Änderungen gehen verloren)";
+    if (isGuidelinesSuperAdmin()) {
+      const choice = confirm(
+        "Leitplanken wurden zwischenzeitlich von " +
+          who +
+          " geändert.\n\nOK = Ihre Version erzwingen (Super-Admin)\nAbbrechen = Serverstand laden"
+      );
+      if (choice) {
+        try {
+          const result = await saveGuidelinesToServer({ force: true });
+          if (result.conflict) {
+            applyGuidelinesPayload(result.body);
+            bcToast("Konflikt – Serverstand geladen");
+          } else {
+            bcToast("Leitplanken erzwungen gespeichert");
+          }
+          renderGuidelineEditor();
+          initGuidelineSelectors();
+          if (typeof initSelectors === "function") initSelectors();
+          return;
+        } catch (err) {
+          bcToast(err.message || "Erzwingen fehlgeschlagen");
+          return;
+        }
+      }
+    }
+    if (confirm(msg)) {
+      applyGuidelinesPayload(serverBody);
+      renderGuidelineEditor();
+      initGuidelineSelectors();
+      if (typeof initSelectors === "function") initSelectors();
+      bcToast("Serverstand geladen");
+    }
   }
 
   function parseCSV(text) {
@@ -135,7 +234,7 @@
         const head = rows[0].map(mapHeader);
         const out = [];
         for (let i = 1; i < rows.length; i++) {
-          const o = {};
+          const o = { id: newGuidelineId() };
           rows[i].forEach((v, j) => {
             if (head[j]) o[head[j]] = v.trim();
           });
@@ -150,14 +249,14 @@
           return;
         }
         guidelines = out;
-        saveGuide();
+        markGuidelinesDirty();
         initGuidelineSelectors();
-        const msg = "✓ " + out.length + " Leitplanken geladen aus " + f.name;
+        const msg = "✓ " + out.length + " Leitplanken geladen aus " + f.name + " (ungespeichert)";
         const cs = document.getElementById("csvStatus");
         if (cs) cs.textContent = msg;
         const pcs = document.getElementById("planCsvStatus");
         if (pcs) pcs.textContent = msg;
-        bcToast(out.length + " Leitplanken geladen");
+        bcToast(out.length + " Leitplanken geladen – bitte Speichern klicken");
       } catch (err) {
         bcToast("CSV-Fehler: " + err.message);
       }
@@ -166,15 +265,15 @@
   }
 
   function resetEmbedded() {
-    guidelines = EMBEDDED.slice();
-    saveGuide();
+    guidelines = normalizeGuidelineIds(EMBEDDED.slice());
+    markGuidelinesDirty();
     initGuidelineSelectors();
-    const msg = "✓ Eingebettete Leitplanken aktiv (" + guidelines.length + ")";
+    const msg = "✓ Eingebettete Leitplanken geladen (" + guidelines.length + ", ungespeichert)";
     const cs = document.getElementById("csvStatus");
     if (cs) cs.textContent = msg;
     const pcs = document.getElementById("planCsvStatus");
     if (pcs) pcs.textContent = msg;
-    bcToast("Eingebettete Leitplanken aktiv");
+    bcToast("Eingebettete Leitplanken geladen – bitte Speichern klicken");
   }
 
   function initGuidelineSelectors() {
@@ -192,6 +291,7 @@
 
   function guidelineEmpty() {
     return {
+      id: newGuidelineId(),
       workstream: "",
       kategorie: "",
       prioritaet: "",
@@ -207,31 +307,40 @@
     };
   }
 
+  function findGuidelineIndex(id) {
+    return guidelines.findIndex((g) => g.id === id);
+  }
+
   function addGuidelineRow() {
     guidelines.unshift(guidelineEmpty());
+    markGuidelinesDirty();
     renderGuidelineEditor();
   }
 
-  function dupGuidelineRow(i) {
-    const g = guidelines[i] || guidelineEmpty();
-    guidelines.splice(i + 1, 0, JSON.parse(JSON.stringify(g)));
+  function dupGuidelineRow(id) {
+    const i = findGuidelineIndex(id);
+    if (i < 0) return;
+    const copy = JSON.parse(JSON.stringify(guidelines[i]));
+    copy.id = newGuidelineId();
+    guidelines.splice(i + 1, 0, copy);
+    markGuidelinesDirty();
     renderGuidelineEditor();
   }
 
-  function delGuidelineRow(i) {
+  function delGuidelineRow(id) {
+    const i = findGuidelineIndex(id);
+    if (i < 0) return;
     if (!confirm("Leitplanke löschen?")) return;
     guidelines.splice(i, 1);
+    markGuidelinesDirty();
     renderGuidelineEditor();
   }
 
-  function setGuideline(i, key, val) {
-    const g = guidelines[i];
-    if (!g) return;
-    g[key] = val;
-  }
-
-  function gpInput(i, key, val) {
-    setGuideline(i, key, val);
+  function gpInput(id, key, val) {
+    const i = findGuidelineIndex(id);
+    if (i < 0) return;
+    guidelines[i][key] = val;
+    markGuidelinesDirty();
     if (document.getElementById("lpTable") && typeof renderLeitplanken === "function") {
       renderLeitplanken();
     }
@@ -262,7 +371,7 @@
       ["auswirkungen", "text"],
     ];
 
-    guidelines.forEach((g, idx) => {
+    guidelines.forEach((g) => {
       if (wsF && (g.workstream || "") !== wsF) return;
       if (q) {
         const hay = [
@@ -284,15 +393,16 @@
         if (!hay.includes(q)) return;
       }
 
+      const gid = escJs(g.id);
       const tr = document.createElement("tr");
       let h = "";
       cols.forEach(([k, t]) => {
         const v = g[k] ?? "";
         if (t === "prio") {
           h +=
-            "<td><select onchange=\"gpInput(" +
-            idx +
-            ",'" +
+            "<td><select onchange=\"gpInput('" +
+            gid +
+            "','" +
             k +
             "',this.value)\">" +
             '<option value=""></option><option' +
@@ -313,9 +423,9 @@
           ].includes(k);
           if (isLong) {
             h +=
-              "<td><textarea oninput=\"gpInput(" +
-              idx +
-              ",'" +
+              "<td><textarea oninput=\"gpInput('" +
+              gid +
+              "','" +
               k +
               '\',this.value)" style="min-height:46px">' +
               esc(v) +
@@ -324,9 +434,9 @@
             h +=
               '<td><input value="' +
               esc(v) +
-              "\" oninput=\"gpInput(" +
-              idx +
-              ",'" +
+              "\" oninput=\"gpInput('" +
+              gid +
+              "','" +
               k +
               '\',this.value)"></td>';
           }
@@ -334,28 +444,59 @@
       });
       h +=
         '<td class="no-print" style="white-space:nowrap">' +
-        '<button type="button" class="btn btn-sm btn-outline" onclick="dupGuidelineRow(' +
-        idx +
-        ')">Dupl.</button> ' +
-        '<button type="button" class="btn btn-sm btn-danger btn-outline" onclick="delGuidelineRow(' +
-        idx +
-        ')">Löschen</button>' +
+        '<button type="button" class="btn btn-sm btn-outline" onclick="dupGuidelineRow(\'' +
+        gid +
+        "')\">Dupl.</button> " +
+        '<button type="button" class="btn btn-sm btn-danger btn-outline" onclick="delGuidelineRow(\'' +
+        gid +
+        "')\">Löschen</button>" +
         "</td>";
       tr.innerHTML = h;
       tb.appendChild(tr);
     });
   }
 
-  function saveGuidelinesAndRefresh() {
-    saveGuide();
-    initGuidelineSelectors();
-    if (typeof initSelectors === "function") initSelectors();
-    bcToast("Leitplanken gespeichert");
+  async function saveGuidelinesAndRefresh() {
+    try {
+      const result = await saveGuidelinesToServer();
+      if (result.conflict) {
+        await handleGuidelinesConflict(result.body);
+        return;
+      }
+      initGuidelineSelectors();
+      if (typeof initSelectors === "function") initSelectors();
+      bcToast("Leitplanken gespeichert");
+    } catch (err) {
+      bcToast(err.message || "Speichern fehlgeschlagen");
+    }
   }
 
-  function initAdminLeitplanken() {
-    loadGuideState();
+  function maybeMigrateLocalGuidelines() {
+    try {
+      if (localStorage.getItem(LS_MIGRATED)) return;
+      const localRaw = localStorage.getItem(LS_GUIDE);
+      if (!localRaw) return;
+      const local = JSON.parse(localRaw);
+      if (!Array.isArray(local) || !local.length) return;
+      guidelines = normalizeGuidelineIds(local);
+      markGuidelinesDirty();
+      localStorage.setItem(LS_MIGRATED, "1");
+      localStorage.removeItem(LS_GUIDE);
+      bcToast("Leitplanken aus lokalem Browser-Speicher übernommen – bitte „Speichern“ klicken.");
+    } catch (_err) {
+      /* ignore */
+    }
+  }
+
+  async function initAdminLeitplanken() {
+    await loadGuideState();
+    maybeMigrateLocalGuidelines();
     initGuidelineSelectors();
+  }
+
+  /** @deprecated Nur für Abwärtskompatibilität – persistiert nicht mehr lokal */
+  function saveGuide() {
+    updateGuideStatusLabels();
   }
 
   Object.defineProperty(window, "guidelines", {
