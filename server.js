@@ -13,7 +13,7 @@ const {
   buildDemoDataForUnit,
   buildDemoStatusSummary,
 } = require("./server/demo-data");
-const { buildDashboardSnapshot, buildDashboardTimeline, buildP1DashboardSnapshot, DEFAULT_TIMELINE_YEARS } = require("./server/dashboard-service");
+const { buildDashboardSnapshot, buildDashboardSnapshotAllYears, buildDashboardTimeline, buildP1DashboardSnapshot, buildP1DashboardSnapshotAllYears, buildP1DashboardTimeline, DEFAULT_TIMELINE_YEARS } = require("./server/dashboard-service");
 const {
   ensureGuidelinesSchema,
   seedGuidelinesIfEmpty,
@@ -3272,10 +3272,25 @@ app.get("/api/dashboard/snapshot", auth, async (req, res) => {
   if (!(await canAccessUnit(req, unit))) {
     return res.status(403).json({ error: "Kein Zugriff auf diese Unit." });
   }
-  const year = parseInt(req.query.year, 10) || new Date().getFullYear();
+  const yearParam = req.query.year;
   const entries = await fetchEntriesForUnit(unit);
   const planRow = await fetchBackcastingPlanForUnit(unit);
-  const snapshot = buildDashboardSnapshot(entries, planRow || { measures: {}, meta: {} }, year);
+  const planPayload = planRow || { measures: {}, meta: {} };
+
+  if (yearParam === "all") {
+    const planningConfig = await getPlanningYears();
+    const snapshot = buildDashboardSnapshotAllYears(entries, planPayload, planningConfig.years);
+    const demoEntries = entries.filter((e) => e.is_demo).length;
+    const demoPlan = Boolean(planRow?.is_demo);
+    return res.json({
+      unit,
+      demo: { entries: demoEntries, plan: demoPlan, active: demoEntries > 0 || demoPlan },
+      ...snapshot,
+    });
+  }
+
+  const year = parseInt(yearParam, 10) || new Date().getFullYear();
+  const snapshot = buildDashboardSnapshot(entries, planPayload, year);
   const demoEntries = entries.filter((e) => e.is_demo).length;
   const demoPlan = Boolean(planRow?.is_demo);
   return res.json({
@@ -3296,11 +3311,55 @@ app.get("/api/dashboard/p1-snapshot", auth, async (req, res) => {
   if (!(await canAccessUnit(req, unit))) {
     return res.status(403).json({ error: "Kein Zugriff auf diese Unit." });
   }
-  const year = parseInt(req.query.year, 10) || new Date().getFullYear();
+  const yearParam = req.query.year;
   const entries = await fetchEntriesForUnit(unit);
   const planRow = await fetchBackcastingPlanForUnit(unit);
-  const snapshot = buildP1DashboardSnapshot(entries, planRow || { measures: {}, meta: {} }, year);
+  const planPayload = planRow || { measures: {}, meta: {} };
+
+  if (yearParam === "all") {
+    const planningConfig = await getPlanningYears();
+    const snapshot = buildP1DashboardSnapshotAllYears(entries, planPayload, planningConfig.years);
+    return res.json({ unit, ...snapshot });
+  }
+
+  const year = parseInt(yearParam, 10) || new Date().getFullYear();
+  const snapshot = buildP1DashboardSnapshot(entries, planPayload, year);
   return res.json({ unit, ...snapshot });
+});
+
+app.get("/api/dashboard/p1-timeline", auth, async (req, res) => {
+  if (!canAccessFortschritt(req.user)) {
+    return res.status(403).json({ error: "Kein Zugriff auf Phase 3 \u00b7 Fortschritt." });
+  }
+  const planningConfig = await getPlanningYears();
+  const years = planningConfig.years;
+
+  if (req.query.all === "true") {
+    if (!isAdminRole(req.user)) {
+      return res.status(403).json({ error: "Zeitstrahl f\u00fcr alle Units nur f\u00fcr Admins." });
+    }
+    const units = [];
+    for (const demoUnit of DEMO_UNITS) {
+      if (!(await canAccessUnit(req, demoUnit))) continue;
+      const entries = await fetchEntriesForUnit(demoUnit);
+      const planRow = await fetchBackcastingPlanForUnit(demoUnit);
+      const timeline = buildP1DashboardTimeline(entries, planRow || { measures: {}, meta: {} }, years);
+      units.push({ unit: demoUnit, ...timeline });
+    }
+    return res.json({ all: true, years, units, totalUnits: DEMO_UNITS.length });
+  }
+
+  const resolved = resolveDashboardUnit(req, req.query.unit);
+  if (resolved.error) return res.status(403).json({ error: resolved.error });
+  const unit = resolved.unit;
+  if (!unit) return res.status(400).json({ error: "Unit fehlt oder all=true verwenden." });
+  if (!(await canAccessUnit(req, unit))) {
+    return res.status(403).json({ error: "Kein Zugriff auf diese Unit." });
+  }
+  const entries = await fetchEntriesForUnit(unit);
+  const planRow = await fetchBackcastingPlanForUnit(unit);
+  const timeline = buildP1DashboardTimeline(entries, planRow || { measures: {}, meta: {} }, years);
+  return res.json({ unit, ...timeline });
 });
 
 app.get("/api/dashboard/timeline", auth, async (req, res) => {

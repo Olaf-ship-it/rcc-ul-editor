@@ -68,6 +68,7 @@ function aggregatePhase1Entries(entries) {
   let headcount = 0;
   const headcountByBereich = [];
   const umsatzByBereich = [];
+  const rollenByRolle = [];
   if (organisation) {
     (organisation.gliederungen || []).forEach((g) => {
       const hc = Number(g.headcount) || 0;
@@ -78,8 +79,12 @@ function aggregatePhase1Entries(entries) {
         umsatzByBereich.push({ bereich: g.bereich, teur });
       }
     });
-    if (!headcount && Array.isArray(organisation.rollen)) {
-      headcount = organisation.rollen.reduce((s, r) => s + (Number(r.anzahl) || 0), 0);
+    (organisation.rollen || []).forEach((r) => {
+      if (!r.rolle) return;
+      rollenByRolle.push({ rolle: r.rolle, anzahl: Number(r.anzahl) || 0 });
+    });
+    if (!headcount && rollenByRolle.length) {
+      headcount = rollenByRolle.reduce((s, r) => s + r.anzahl, 0);
     }
   }
 
@@ -107,7 +112,7 @@ function aggregatePhase1Entries(entries) {
     stichtag: organisation?.stichtag || null,
     erfassungsjahr: organisation?.erfassungsjahr || null,
     portfolio: { byCategory, totalTeur: portfolioTotalTeur, mix, count: portfolio.length },
-    organisation: { headcount, headcountByBereich, umsatzByBereich, rollenCount: organisation?.rollen?.length || 0 },
+    organisation: { headcount, headcountByBereich, umsatzByBereich, rollenByRolle, rollenCount: organisation?.rollen?.length || 0 },
     skills: {
       employeeCount: skills.length,
       zertifiziertQuote: zertTotal ? Math.round((zertJa / zertTotal) * 1000) / 10 : null,
@@ -250,6 +255,24 @@ function buildDashboardSnapshot(entries, planPayload, year) {
   };
 }
 
+function buildDashboardSnapshotAllYears(entries, planPayload, years) {
+  const phase1 = aggregatePhase1Entries(entries);
+  const byYear = years.map((year) => {
+    const planYear = aggregatePlanForYear(planPayload, year);
+    const comparison = buildComparison(phase1, planYear);
+    return { year: Number(year), plan: planYear, comparison };
+  });
+  const totalMilestones = byYear.reduce((sum, row) => sum + (row.plan?.milestoneCount || 0), 0);
+  return {
+    allYears: true,
+    years: [...years],
+    phase1,
+    planMeta: planPayload?.meta || null,
+    byYear,
+    totalMilestones,
+  };
+}
+
 const DEFAULT_TIMELINE_YEARS = [2026, 2027, 2028, 2029];
 
 function buildLinearIstSeries(years, istStart, sollEnd) {
@@ -366,16 +389,16 @@ function buildP1Comparison(phase1, p1Plan) {
         const v = parseTeur(m.ziel_umsatz_teur);
         if (v != null) { sollTeur += v; hasSoll = true; }
       });
-      if (!hasSoll) return;
-      const delta = istTeur - sollTeur;
-      const deltaPct = sollTeur > 0 ? (delta / sollTeur) * 100 : null;
+      if (!milestones.length) return;
+      const delta = hasSoll ? istTeur - sollTeur : null;
+      const deltaPct = hasSoll && sollTeur > 0 ? (delta / sollTeur) * 100 : null;
       portfolio.push({
         subcategory,
         label: PORTFOLIO_CATEGORY_LABELS[subcategory] || subcategory,
-        istTeur, sollTeur,
-        delta: Math.round(delta * 10) / 10,
+        istTeur, sollTeur: hasSoll ? sollTeur : null,
+        delta: delta != null ? Math.round(delta * 10) / 10 : null,
         deltaPct: deltaPct != null ? Math.round(deltaPct * 10) / 10 : null,
-        status: statusFromDelta(deltaPct, true),
+        status: hasSoll ? statusFromDelta(deltaPct, true) : "neutral",
         milestones,
       });
     } else if (area === "gliederungen") {
@@ -402,18 +425,19 @@ function buildP1Comparison(phase1, p1Plan) {
         milestones,
       });
     } else if (area === "rollen") {
-      const istAnzahl = 0;
+      const rolleRow = phase1.organisation.rollenByRolle.find((r) => r.rolle === subcategory);
+      const istAnzahl = rolleRow?.anzahl ?? 0;
       let sollAnzahl = 0, hasSoll = false;
       milestones.forEach((m) => {
         const v = parseTeur(m.ziel_anzahl);
         if (v != null) { sollAnzahl = Math.max(sollAnzahl, v); hasSoll = true; }
       });
-      if (!hasSoll) return;
-      const deltaPct = sollAnzahl > 0 ? ((istAnzahl - sollAnzahl) / sollAnzahl) * 100 : null;
+      if (!milestones.length) return;
+      const deltaPct = hasSoll && sollAnzahl > 0 ? ((istAnzahl - sollAnzahl) / sollAnzahl) * 100 : null;
       rollen.push({
         subcategory,
-        istAnzahl, sollAnzahl,
-        status: statusFromDelta(deltaPct, true),
+        istAnzahl, sollAnzahl: hasSoll ? sollAnzahl : null,
+        status: hasSoll ? statusFromDelta(deltaPct, true) : "neutral",
         milestones,
       });
     } else if (area === "skills") {
@@ -441,7 +465,7 @@ function buildP1Comparison(phase1, p1Plan) {
   });
 
   const all = [...portfolio, ...gliederungen, ...rollen, ...skills];
-  const summary = { totalComparisons: all.length, ok: 0, warn: 0, risk: 0, neutral: 0 };
+  const summary = { totalComparisons: all.length, milestoneCount: countP1Milestones({ portfolio, gliederungen, rollen, skills }), ok: 0, warn: 0, risk: 0, neutral: 0 };
   all.forEach((item) => { summary[item.status] = (summary[item.status] || 0) + 1; });
 
   return { portfolio, gliederungen, rollen, skills, summary };
@@ -451,12 +475,141 @@ function buildP1DashboardSnapshot(entries, planPayload, year) {
   const phase1 = aggregatePhase1Entries(entries);
   const p1Plan = aggregateP1PlanForYear(planPayload, year);
   const comparison = buildP1Comparison(phase1, p1Plan);
+  const p1Ist = {
+    portfolio: Object.entries(phase1.portfolio.byCategory).map(([cat, teur]) => ({
+      subcategory: cat,
+      label: PORTFOLIO_CATEGORY_LABELS[cat] || cat,
+      umsatz_teur: teur,
+    })),
+    gliederungen: phase1.organisation.headcountByBereich.map((b) => {
+      const tRow = phase1.organisation.umsatzByBereich.find((u) => u.bereich === b.bereich);
+      return { subcategory: b.bereich, headcount: b.headcount, umsatz_teur: tRow?.teur ?? 0 };
+    }),
+    rollen: phase1.organisation.rollenByRolle.map((r) => ({
+      subcategory: r.rolle, anzahl: r.anzahl,
+    })),
+    skills: phase1.skills.avgSkillByCategory.map((s) => ({
+      subcategory: s.category, avgLevel: s.avgLevel, count: s.count,
+    })),
+  };
   return {
     year: Number(year),
     phase1,
+    p1Ist,
     p1Plan: comparison,
     summary: comparison.summary,
     planMeta: planPayload?.meta || null,
+  };
+}
+
+function mergeP1Summaries(byYear) {
+  const summary = { totalComparisons: 0, milestoneCount: 0, ok: 0, warn: 0, risk: 0, neutral: 0 };
+  byYear.forEach((row) => {
+    const s = row.summary;
+    if (!s) return;
+    summary.totalComparisons += s.totalComparisons || 0;
+    summary.milestoneCount += s.milestoneCount || 0;
+    summary.ok += s.ok || 0;
+    summary.warn += s.warn || 0;
+    summary.risk += s.risk || 0;
+    summary.neutral += s.neutral || 0;
+  });
+  return summary;
+}
+
+function countP1Milestones(comparison) {
+  let count = 0;
+  ["portfolio", "gliederungen", "rollen", "skills"].forEach((key) => {
+    (comparison[key] || []).forEach((item) => {
+      count += (item.milestones || []).length;
+    });
+  });
+  return count;
+}
+
+function buildP1DashboardSnapshotAllYears(entries, planPayload, years) {
+  const phase1 = aggregatePhase1Entries(entries);
+  const p1Ist = {
+    portfolio: Object.entries(phase1.portfolio.byCategory).map(([cat, teur]) => ({
+      subcategory: cat,
+      label: PORTFOLIO_CATEGORY_LABELS[cat] || cat,
+      umsatz_teur: teur,
+    })),
+    gliederungen: phase1.organisation.headcountByBereich.map((b) => {
+      const tRow = phase1.organisation.umsatzByBereich.find((u) => u.bereich === b.bereich);
+      return { subcategory: b.bereich, headcount: b.headcount, umsatz_teur: tRow?.teur ?? 0 };
+    }),
+    rollen: phase1.organisation.rollenByRolle.map((r) => ({
+      subcategory: r.rolle, anzahl: r.anzahl,
+    })),
+    skills: phase1.skills.avgSkillByCategory.map((s) => ({
+      subcategory: s.category, avgLevel: s.avgLevel, count: s.count,
+    })),
+  };
+  const byYear = years.map((year) => {
+    const p1Plan = aggregateP1PlanForYear(planPayload, year);
+    const comparison = buildP1Comparison(phase1, p1Plan);
+    return { year: Number(year), p1Plan: comparison, summary: comparison.summary };
+  });
+  return {
+    allYears: true,
+    years: [...years],
+    phase1,
+    p1Ist,
+    byYear,
+    summary: mergeP1Summaries(byYear),
+    planMeta: planPayload?.meta || null,
+  };
+}
+
+function aggregateP1PlanKpisForYear(planPayload, year) {
+  const measures = planPayload?.measures || {};
+  let zielUmsatzTeur = 0, zielHeadcount = 0;
+  let hasUmsatz = false, hasHc = false;
+  let maxAnteil = null;
+  Object.values(measures).forEach((list) => {
+    (list || []).forEach((m) => {
+      if (!m || m.kind !== "p1Year" || Number(m.jahr) !== Number(year)) return;
+      if (m.area === "portfolio") {
+        const v = parseTeur(m.ziel_umsatz_teur);
+        if (v != null) { zielUmsatzTeur += v; hasUmsatz = true; }
+      } else if (m.area === "gliederungen") {
+        const v = parseTeur(m.ziel_umsatz_teur);
+        if (v != null) { zielUmsatzTeur += v; hasUmsatz = true; }
+        const hc = parseTeur(m.ziel_headcount);
+        if (hc != null) { zielHeadcount = Math.max(zielHeadcount, hc); hasHc = true; }
+      }
+      if (m.ziel_anteil_prozent != null) {
+        const a = Number(m.ziel_anteil_prozent);
+        if (Number.isFinite(a)) maxAnteil = maxAnteil == null ? a : Math.max(maxAnteil, a);
+      }
+    });
+  });
+  return {
+    zielUmsatzTeur: hasUmsatz ? zielUmsatzTeur : null,
+    zielHeadcount: hasHc ? zielHeadcount : null,
+    zielZertifizierungProzent: maxAnteil,
+  };
+}
+
+function buildP1DashboardTimeline(entries, planPayload, years = DEFAULT_TIMELINE_YEARS) {
+  const phase1 = aggregatePhase1Entries(entries);
+  const planByYear = {};
+  years.forEach((y) => {
+    planByYear[y] = aggregateP1PlanKpisForYear(planPayload, y);
+  });
+
+  const kpiDefs = [
+    { key: "umsatz", label: "Umsatz (TEUR)", unit: "TEUR", planKey: "zielUmsatzTeur", getIst: (p1) => p1.portfolio.totalTeur },
+    { key: "headcount", label: "Headcount", unit: "MA", planKey: "zielHeadcount", getIst: (p1) => p1.organisation.headcount },
+    { key: "zertifizierung", label: "Zertifizierungsquote (%)", unit: "%", planKey: "zielZertifizierungProzent", getIst: (p1) => p1.skills.zertifiziertQuote },
+  ];
+
+  const kpis = kpiDefs.map((def) => buildKpiTimelineSeries(years, phase1, planByYear, def));
+  return {
+    years: [...years],
+    kpis,
+    hasData: kpis.some((k) => k.hasData),
   };
 }
 
@@ -488,11 +641,14 @@ function buildDemoEvaluationSummary(entries, planPayload, year = new Date().getF
 
 module.exports = {
   buildDashboardSnapshot,
+  buildDashboardSnapshotAllYears,
   buildDashboardTimeline,
+  buildP1DashboardTimeline,
   aggregatePhase1Entries,
   aggregatePlanForYear,
   aggregateP1PlanForYear,
   buildP1DashboardSnapshot,
+  buildP1DashboardSnapshotAllYears,
   countAllPlanMilestones,
   buildDemoEvaluationSummary,
   DEFAULT_TIMELINE_YEARS,

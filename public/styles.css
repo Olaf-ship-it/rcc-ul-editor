@@ -726,6 +726,11 @@ body.session-booting.rc-app-backcasting > *:not(.session-boot-splash){visibility
 .p1f-summary__chip--ok{background:#f0fdf4;border-color:#bbf7d0;color:#166534}
 .p1f-summary__chip--warn{background:#fefce8;border-color:#fde68a;color:#92400e}
 .p1f-summary__chip--risk{background:#fef2f2;border-color:#fecaca;color:#991b1b}
+.ft-year-section{border:1px solid var(--rc-border);border-radius:var(--rc-radius);margin-bottom:1rem;background:var(--rc-bg)}
+.ft-year-section__head{padding:.65rem .85rem;cursor:pointer;display:flex;align-items:center;gap:.5rem;font-weight:700;font-size:.9rem;user-select:none;list-style:none}
+.ft-year-section__meta{margin-left:auto;font-size:.72rem;font-weight:400;color:var(--rc-muted)}
+.ft-year-section__body{padding:0 .85rem .85rem;display:flex;flex-direction:column;gap:.75rem}
+.p1f-year-section .p1f-area{margin-bottom:.5rem}
 .p1f-area{border:1px solid var(--rc-border);border-radius:var(--rc-radius);margin-bottom:.75rem;background:var(--rc-bg)}
 .p1f-area__head{padding:.65rem .85rem;cursor:pointer;display:flex;align-items:center;gap:.5rem;font-weight:700;font-size:.88rem;user-select:none}
 .p1f-area__icon{font-size:1.1rem}
@@ -739,6 +744,7 @@ body.session-booting.rc-app-backcasting > *:not(.session-boot-splash){visibility
 .p1f-card__head{display:flex;align-items:center;gap:.4rem;margin-bottom:.35rem}
 .p1f-card__status{font-size:.9rem}
 .p1f-card__label{font-size:.82rem;font-weight:700;color:var(--rc-text)}
+.p1f-card__year{margin-left:auto;font-size:.68rem;font-weight:700;color:var(--rc-accent2);background:#eef6ff;border:1px solid #bfdbfe;border-radius:999px;padding:.1rem .45rem}
 .p1f-card__values{display:flex;flex-wrap:wrap;gap:.35rem .75rem;font-size:.78rem;margin-bottom:.35rem}
 .p1f-card__values span{white-space:nowrap}
 .p1f-card__meta{font-size:.72rem;color:var(--rc-muted);margin-top:.25rem}
@@ -751,3 +757,5 @@ body.session-booting.rc-app-backcasting > *:not(.session-boot-splash){visibility
 .p1f-milestone__q{font-weight:700;color:var(--rc-accent2);min-width:1.8rem}
 .p1f-milestone__text{flex:1;color:var(--rc-text)}
 .p1f-milestone__who{color:var(--rc-muted);font-style:italic}
+.p1f-ist-section{margin-bottom:.5rem}
+.p1f-ist-section strong{font-size:.78rem;color:var(--rc-accent2)}

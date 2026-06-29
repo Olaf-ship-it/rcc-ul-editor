@@ -72,20 +72,40 @@ function p1IstBadge(area, item) {
   return "";
 }
 
-function renderP1MilestoneForm(area, sub, yr, idx, ms) {
+function p1MilestoneDomId(area, sub, yr, idx) {
+  return "p1ms_" + area + "_" + sub.replace(/[^a-zA-Z0-9]/g, "_") + "_" + yr + "_" + idx;
+}
+
+function p1MilestoneTitle(ms) {
+  const text = String(ms?.ergebnis || "").trim();
+  if (!text) return "Ergebnis eingeben\u2026";
+  const firstLine = text.split("\n")[0].trim();
+  if (firstLine.length <= 96) return firstLine;
+  return firstLine.slice(0, 93) + "\u2026";
+}
+
+function renderP1MilestoneForm(area, sub, yr, idx, ms, forceOpen) {
   const fields = p1KpiFields(area);
   const eid = "p1_" + area + "_" + sub.replace(/[^a-zA-Z0-9]/g, "_") + "_" + yr + "_" + idx;
+  const mid = p1MilestoneDomId(area, sub, yr, idx);
+  const title = p1MilestoneTitle(ms);
+  const hasErgebnis = Boolean(String(ms.ergebnis || "").trim());
+  const bodyOpen = forceOpen || !hasErgebnis;
+  const titleCls = hasErgebnis ? "p1-ms__title" : "p1-ms__title p1-ms__title--empty";
+  const bodyCls = bodyOpen ? "p1-ms__body" : "p1-ms__body closed";
+  const wrapCls = bodyOpen ? "p1-ms p1-ms--open" : "p1-ms";
 
-  let html = '<div class="p1-ms" data-area="' + escAttr(area) + '" data-sub="' + escAttr(sub) + '" data-yr="' + yr + '" data-idx="' + idx + '">';
-  html += '<div class="p1-ms__head">';
-  html += '<span class="p1-ms__title">' + escAttr(ms.ergebnis ? ms.ergebnis.split("\n")[0].slice(0, 80) : "Neuer Meilenstein") + '</span>';
-  html += '<span class="p1-ms__actions">';
+  let html = '<div class="' + wrapCls + '" data-area="' + escAttr(area) + '" data-sub="' + escAttr(sub) + '" data-yr="' + yr + '" data-idx="' + idx + '">';
+  html += '<div class="p1-ms__head" onclick="toggleP1Ms(\'' + mid + '\')" role="button" tabindex="0" onkeydown="if(event.key===\'Enter\'||event.key===\' \'){event.preventDefault();toggleP1Ms(\'' + mid + '\')}">';
+  html += '<span class="p1-ms__chev" aria-hidden="true"></span>';
+  html += '<span class="' + titleCls + '" id="' + mid + '_title">' + escAttr(title) + '</span>';
+  html += '<span class="p1-ms__actions" onclick="event.stopPropagation()">';
   html += '<button type="button" class="bc-ms-icon-btn --delete" title="L\u00f6schen" onclick="delP1Entry(\'' + escAttr(area) + '\',\'' + escAttr(sub) + '\',' + yr + ',' + idx + ')">\u2716</button>';
   html += '</span></div>';
 
-  html += '<div class="p1-ms__body">';
+  html += '<div id="' + mid + '" class="' + bodyCls + '">';
   html += '<div class="p1-ms__field"><label>Ergebnis / Ma\u00dfnahme</label>';
-  html += '<textarea id="' + eid + '_ergebnis" rows="2" onchange="updP1(this,\'' + escAttr(area) + '\',\'' + escAttr(sub) + '\',' + yr + ',' + idx + ',\'ergebnis\')">' + escAttr(ms.ergebnis || "") + '</textarea></div>';
+  html += '<textarea id="' + eid + '_ergebnis" rows="2" oninput="p1SyncMsTitle(this)" onchange="updP1(this,\'' + escAttr(area) + '\',\'' + escAttr(sub) + '\',' + yr + ',' + idx + ',\'ergebnis\')">' + escAttr(ms.ergebnis || "") + '</textarea></div>';
 
   html += '<div class="p1-ms__kpi-grid">';
   fields.forEach(function(f) {
@@ -113,7 +133,7 @@ function renderP1MilestoneForm(area, sub, yr, idx, ms) {
   return html;
 }
 
-function renderP1YearAccordion(area, sub, yr, isFirst) {
+function renderP1YearAccordion(area, sub, yr, isFirst, openMsIdx) {
   const entries = getP1Entries(area, sub, yr);
   const count = entries.length;
   const openCls = isFirst ? " p1-acc--open" : "";
@@ -124,9 +144,9 @@ function renderP1YearAccordion(area, sub, yr, isFirst) {
   html += '</div>';
   html += '<div class="p1-acc__body">';
   entries.forEach(function(ms, idx) {
-    html += renderP1MilestoneForm(area, sub, yr, idx, ms);
+    html += renderP1MilestoneForm(area, sub, yr, idx, ms, openMsIdx === idx);
   });
-  html += '<button type="button" class="btn btn-sm btn-outline p1-add-btn" onclick="addP1Entry(\'' + escAttr(area) + '\',\'' + escAttr(sub) + '\',' + yr + ')">+ Meilenstein</button>';
+  html += '<button type="button" class="btn btn-sm btn-outline p1-add-btn" onclick="event.stopPropagation();addP1Entry(\'' + escAttr(area) + '\',\'' + escAttr(sub) + '\',' + yr + ')">+ Meilenstein</button>';
   html += '</div></div>';
   return html;
 }
@@ -165,37 +185,14 @@ function renderP1Area(areaDef, items) {
   return html;
 }
 
-async function initPlanungNew() {
-  const root = document.getElementById("planungNewContent");
-  if (!root) return;
-
-  const notice = document.getElementById("bcUnitSaveNoticeNew");
-  if (notice) notice.style.display = isBcViewAll() ? "" : "none";
-
-  if (isBcViewAll()) {
-    root.innerHTML = '<div class="card"><p class="bc-muted">Bitte eine konkrete Unit w\u00e4hlen, um die Phase-1-basierte Planung zu nutzen.</p></div>';
-    return;
-  }
-
-  root.innerHTML = '<div class="card"><p class="bc-muted">Lade Phase-1-Daten\u2026</p></div>';
-
-  try {
-    const unit = typeof bcViewUnit !== "undefined" ? bcViewUnit : "";
-    const resp = await fetch("/api/backcasting/phase1-summary?unit=" + encodeURIComponent(unit), { credentials: "include" });
-    if (!resp.ok) throw new Error("API-Fehler " + resp.status);
-    _p1SummaryCache = await resp.json();
-  } catch (e) {
-    root.innerHTML = '<div class="card"><p style="color:var(--rc-red)">Phase-1-Daten konnten nicht geladen werden: ' + escAttr(e.message) + '</p></div>';
-    return;
-  }
-
+function renderPlanungNewHtml() {
   let html = '<div class="p1-planning">';
   html += '<div class="card" style="margin-bottom:.75rem"><h3 style="margin:0;color:var(--rc-accent2)">Planung NEW \u00b7 Phase-1-basiert</h3>';
   html += '<p class="bc-muted" style="margin:.3rem 0 0">Meilensteinplanung auf Basis der Phase-1-Unterkategorien. IST-Werte werden als Referenz angezeigt.</p></div>';
 
   let hasAny = false;
-  P1_AREAS.forEach(function(areaDef) {
-    const items = _p1SummaryCache[areaDef.key] || [];
+  P1_AREAS.forEach(function (areaDef) {
+    const items = (_p1SummaryCache && _p1SummaryCache[areaDef.key]) || [];
     if (items.length) {
       html += renderP1Area(areaDef, items);
       hasAny = true;
@@ -207,24 +204,149 @@ async function initPlanungNew() {
   }
 
   html += '</div>';
-  root.innerHTML = html;
+  return html;
+}
+
+function collectP1OpenState() {
+  const state = { subcats: [], accs: [], milestones: [] };
+  document.querySelectorAll(".p1-subcat[open]").forEach(function (el) {
+    if (el.id) state.subcats.push(el.id);
+  });
+  document.querySelectorAll(".p1-acc.p1-acc--open").forEach(function (el) {
+    const yr = el.dataset.yr;
+    const subcat = el.closest(".p1-subcat")?.id;
+    if (yr && subcat) state.accs.push({ subcat: subcat, yr: yr });
+  });
+  document.querySelectorAll(".p1-ms__body:not(.closed)").forEach(function (el) {
+    if (el.id) state.milestones.push(el.id);
+  });
+  return state;
+}
+
+function applyP1OpenState(state, focusTarget) {
+  const subcats = new Set(state?.subcats || []);
+  const accKeys = new Set((state?.accs || []).map(function (a) { return a.subcat + "||" + a.yr; }));
+  const milestones = new Set(state?.milestones || []);
+
+  if (focusTarget) {
+    const blockId = "p1block_" + focusTarget.area + "_" + focusTarget.sub.replace(/[^a-zA-Z0-9]/g, "_");
+    subcats.add(blockId);
+    accKeys.add(blockId + "||" + String(focusTarget.yr));
+    if (focusTarget.idx != null) {
+      milestones.add(p1MilestoneDomId(focusTarget.area, focusTarget.sub, focusTarget.yr, focusTarget.idx));
+    }
+  }
+
+  subcats.forEach(function (id) {
+    const el = document.getElementById(id);
+    if (el) el.open = true;
+  });
+
+  accKeys.forEach(function (key) {
+    const parts = key.split("||");
+    const subcatId = parts[0];
+    const yr = parts[1];
+    const sub = document.getElementById(subcatId);
+    const acc = sub?.querySelector('.p1-acc[data-yr="' + yr + '"]');
+    if (acc) acc.classList.add("p1-acc--open");
+  });
+
+  milestones.forEach(function (id) {
+    const body = document.getElementById(id);
+    if (!body) return;
+    body.classList.remove("closed");
+    body.closest(".p1-ms")?.classList.add("p1-ms--open");
+  });
+
+  if (focusTarget && focusTarget.idx != null && focusTarget.idx >= 0) {
+    const textarea = document.getElementById(
+      "p1_" + focusTarget.area + "_" + focusTarget.sub.replace(/[^a-zA-Z0-9]/g, "_") + "_" + focusTarget.yr + "_" + focusTarget.idx + "_ergebnis"
+    );
+    if (textarea) {
+      requestAnimationFrame(function () { textarea.focus(); });
+    }
+  }
+}
+
+function refreshPlanungNewUI(opts) {
+  const root = document.getElementById("planungNewContent");
+  if (!root || !_p1SummaryCache) return;
+  const openState = opts?.openState || collectP1OpenState();
+  root.innerHTML = renderPlanungNewHtml();
+  applyP1OpenState(openState, opts?.focusTarget);
+}
+
+async function initPlanungNew(opts) {
+  const root = document.getElementById("planungNewContent");
+  if (!root) return;
+
+  const notice = document.getElementById("bcUnitSaveNoticeNew");
+  if (notice) notice.style.display = isBcViewAll() ? "" : "none";
+
+  if (isBcViewAll()) {
+    root.innerHTML = '<div class="card"><p class="bc-muted">Bitte eine konkrete Unit w\u00e4hlen, um die Phase-1-basierte Planung zu nutzen.</p></div>';
+    return;
+  }
+
+  const openState = opts?.skipFetch ? (opts.openState || collectP1OpenState()) : null;
+
+  if (!opts?.skipFetch) {
+    root.innerHTML = '<div class="card"><p class="bc-muted">Lade Phase-1-Daten\u2026</p></div>';
+
+    try {
+      const unit = typeof bcViewUnit !== "undefined" ? bcViewUnit : "";
+      const resp = await fetch("/api/backcasting/phase1-summary?unit=" + encodeURIComponent(unit), { credentials: "include" });
+      if (!resp.ok) throw new Error("API-Fehler " + resp.status);
+      _p1SummaryCache = await resp.json();
+    } catch (e) {
+      root.innerHTML = '<div class="card"><p style="color:var(--rc-red)">Phase-1-Daten konnten nicht geladen werden: ' + escAttr(e.message) + '</p></div>';
+      return;
+    }
+  } else if (!_p1SummaryCache) {
+    return initPlanungNew();
+  }
+
+  root.innerHTML = renderPlanungNewHtml();
+  applyP1OpenState(openState || {}, opts?.focusTarget);
   _p1Initialized = true;
 }
 
+window.toggleP1Ms = function (id) {
+  const body = document.getElementById(id);
+  if (!body) return;
+  body.classList.toggle("closed");
+  const wrap = body.closest(".p1-ms");
+  if (wrap) wrap.classList.toggle("p1-ms--open", !body.classList.contains("closed"));
+};
+
+window.p1SyncMsTitle = function (el) {
+  const wrap = el.closest(".p1-ms");
+  const titleEl = wrap?.querySelector(".p1-ms__title");
+  if (!titleEl) return;
+  const text = String(el.value || "").trim();
+  titleEl.textContent = text ? text.split("\n")[0].slice(0, 96) : "Ergebnis eingeben\u2026";
+  titleEl.classList.toggle("p1-ms__title--empty", !text);
+};
+
 window.addP1Entry = function(area, sub, yr) {
   if (!requireBcSaveUnit()) return;
+  const openState = collectP1OpenState();
   const entries = getP1Entries(area, sub, yr);
   entries.unshift(p1MilestoneTemplate(area, sub, yr));
   setP1Entries(area, sub, yr, entries);
-  initPlanungNew();
+  initPlanungNew({ skipFetch: true, openState: openState, focusTarget: { area: area, sub: sub, yr: yr, idx: 0 } });
 };
 
 window.delP1Entry = function(area, sub, yr, idx) {
   if (!confirm("Meilenstein l\u00f6schen?")) return;
+  const openState = collectP1OpenState();
   const entries = getP1Entries(area, sub, yr);
   entries.splice(idx, 1);
   setP1Entries(area, sub, yr, entries);
-  initPlanungNew();
+  const focusTarget = entries.length
+    ? { area: area, sub: sub, yr: yr, idx: Math.min(idx, entries.length - 1) }
+    : { area: area, sub: sub, yr: yr };
+  initPlanungNew({ skipFetch: true, openState: openState, focusTarget: focusTarget });
 };
 
 window.updP1 = function(el, area, sub, yr, idx, field) {
@@ -234,8 +356,12 @@ window.updP1 = function(el, area, sub, yr, idx, field) {
   entries[idx].updatedAt = new Date().toISOString();
   setP1Entries(area, sub, yr, entries);
   if (field === "ergebnis") {
-    const titleEl = el.closest(".p1-ms")?.querySelector(".p1-ms__title");
-    if (titleEl) titleEl.textContent = el.value ? el.value.split("\n")[0].slice(0, 80) : "Neuer Meilenstein";
+    const mid = p1MilestoneDomId(area, sub, yr, idx);
+    const titleEl = document.getElementById(mid + "_title");
+    if (titleEl) {
+      titleEl.textContent = p1MilestoneTitle(entries[idx]);
+      titleEl.classList.toggle("p1-ms__title--empty", !String(el.value || "").trim());
+    }
   }
 };
 
@@ -256,6 +382,13 @@ window.saveP1Milestone = async function(area, sub, yr, idx) {
     alert("Bitte mindestens das Feld \u201eErgebnis / Ma\u00dfnahme\u201c ausf\u00fcllen.");
     return;
   }
+  const openState = collectP1OpenState();
+  const mid = p1MilestoneDomId(area, sub, yr, idx);
+  openState.milestones = (openState.milestones || []).filter(function (id) { return id !== mid; });
   await savePlan({ allowIncomplete: true });
-  initPlanungNew();
+  initPlanungNew({
+    skipFetch: true,
+    openState: openState,
+    focusTarget: { area: area, sub: sub, yr: yr },
+  });
 };

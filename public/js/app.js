@@ -1488,6 +1488,9 @@ function refreshSuperAdminViews() {
   if (document.getElementById("page-gesamtfortschritt")?.classList.contains("active")) {
     renderGesamtfortschrittDashboard();
   }
+  if (document.getElementById("page-gesamtfortschritt-new")?.classList.contains("active") && typeof initGesamtfortschrittNew === "function") {
+    initGesamtfortschrittNew();
+  }
   if (document.getElementById("page-fortschritt")?.classList.contains("active")) {
     renderFortschrittDashboard();
   }
@@ -1515,6 +1518,9 @@ function setSuperAdminViewUnit(unit) {
   if (isAdmin) renderAdminUsers();
   if (document.getElementById("page-gesamtfortschritt")?.classList.contains("active")) {
     renderGesamtfortschrittDashboard();
+  }
+  if (document.getElementById("page-gesamtfortschritt-new")?.classList.contains("active") && typeof initGesamtfortschrittNew === "function") {
+    initGesamtfortschrittNew();
   }
   if (document.getElementById("page-fortschritt")?.classList.contains("active")) {
     renderFortschrittDashboard();
@@ -1643,7 +1649,7 @@ function getActiveAppPage() {
 }
 
 const PHASE1_TAB_PAGES = ["portfolio", "organisation", "skills", "overview", "export"];
-const PHASE3_TAB_PAGES = ["gesamtfortschritt", "fortschritt", "fortschritt-new", "fortschritt-erlaeuterung"];
+const PHASE3_TAB_PAGES = ["gesamtfortschritt", "gesamtfortschritt-new", "fortschritt", "fortschritt-new", "fortschritt-erlaeuterung"];
 const ADMIN_SUBTAB_MODES = ["users", "skills", "roles", "leitplanken", "permissions", "org", "demo", "settings"];
 
 function resolvePresenceContext() {
@@ -3022,6 +3028,7 @@ document.querySelectorAll("#tabs .tab").forEach((t) => {
   if (p === "export") renderExportStats();
   if (p === "admin") initAdminPage();
   if (p === "gesamtfortschritt") renderGesamtfortschrittDashboard();
+  if (p === "gesamtfortschritt-new" && typeof initGesamtfortschrittNew === "function") initGesamtfortschrittNew();
   if (p === "fortschritt") renderFortschrittDashboard();
   if (p === "fortschritt-new" && typeof initFortschrittNew === "function") initFortschrittNew();
   if (p === "fortschritt-erlaeuterung") renderFortschrittErlaeuterungPage();
@@ -3063,6 +3070,8 @@ function updateAppModuleNavActive(page) {
     } else if (onPhase3) {
       if (page === "gesamtfortschritt") {
         subtitleEl.textContent = "Zeitstrahl " + planningYearRange() + " \u00b7 Umsatz, Headcount & Zertifizierung";
+      } else if (page === "gesamtfortschritt-new") {
+        subtitleEl.textContent = "Zeitstrahl " + planningYearRange() + " \u00b7 Phase-1-basiert (Planung NEW)";
       } else if (page === "fortschritt-new") {
         subtitleEl.textContent = "Phase-1-basierter Fortschritt \u00b7 IST vs. SOLL (Planung NEW)";
       } else if (page === "fortschritt-erlaeuterung") {
@@ -4891,6 +4900,9 @@ function switchSuperAdminViewForEntry(entry) {
   if (isAdmin) renderAdminUsers();
   if (document.getElementById("page-gesamtfortschritt")?.classList.contains("active")) {
     renderGesamtfortschrittDashboard();
+  }
+  if (document.getElementById("page-gesamtfortschritt-new")?.classList.contains("active") && typeof initGesamtfortschrittNew === "function") {
+    initGesamtfortschrittNew();
   }
   if (document.getElementById("page-fortschritt")?.classList.contains("active")) {
     renderFortschrittDashboard();

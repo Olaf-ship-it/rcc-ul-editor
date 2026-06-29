@@ -98,6 +98,7 @@
   </div>
   <div class="tabs-nav-main" id="tabsNavPhase3" style="display:none">
     <div class="tab active" data-page="gesamtfortschritt">📈 Gesamtfortschritt</div>
+    <div class="tab" data-page="gesamtfortschritt-new">📈 Gesamtfortschritt NEW</div>
     <div class="tab" data-page="fortschritt">📊 Detailfortschritt</div>
     <div class="tab" data-page="fortschritt-new">📊 Fortschritt NEW</div>
     <div class="tab" data-page="fortschritt-erlaeuterung">📘 Erläuterung Berechnung</div>
@@ -594,6 +595,22 @@
   <div id="gesamtfortschrittContent"></div>
 </div>
 
+<!-- ===== GESAMTFORTSCHRITT NEW (Phase-1-basiert) ===== -->
+<div class="page" id="page-gesamtfortschritt-new">
+  <div class="card" style="border-left-color:var(--rc-accent2);margin-bottom:1rem">
+    <h3 style="margin:0">Gesamtfortschritt NEW &middot; Phase-1-basiert <span class="planning-yr-range">2026&ndash;2029</span></h3>
+    <p style="color:var(--rc-muted);font-size:.8rem;margin-bottom:.75rem">
+      Zeitstrahl auf Basis der Planung NEW (p1Year-Meilensteine). Zeigt Umsatz, Headcount und Zertifizierung.
+    </p>
+    <div class="fortschritt-toolbar">
+      <div class="fortschritt-toolbar-actions">
+        <button type="button" class="btn btn-outline btn-sm" id="btnGesamtfortschrittNewReload">Aktualisieren</button>
+      </div>
+    </div>
+  </div>
+  <div id="gesamtfortschrittNewContent"></div>
+</div>
+
 <!-- ===== FORTSCHRITT (IST vs. SOLL) ===== -->
 <div class="page" id="page-fortschritt">
   <div class="card" style="border-left-color:var(--rc-accent2);margin-bottom:1rem">
@@ -610,7 +627,7 @@
       </div>
     </div>
     <p style="color:var(--rc-muted);font-size:.8rem;margin-bottom:.75rem">
-      Vergleicht Phase 1 (Status Aufnahme) mit der Backcasting-Planung (Phase 2) je Unit und Jahr.
+      Vergleicht Phase 1 (Status Aufnahme) mit der Backcasting-Planung (Phase 2) je Unit und Jahr. Im Filter <em>Alle Jahre</em> werden alle Planjahre zusammen angezeigt.
     </p>
     <div class="fortschritt-toolbar">
       <div>
@@ -630,7 +647,7 @@
   <div class="card" style="border-left-color:var(--rc-accent2);margin-bottom:1rem">
     <h3 style="margin:0">Fortschritt NEW &middot; Phase-1-basiert</h3>
     <p style="color:var(--rc-muted);font-size:.8rem;margin-bottom:.75rem">
-      IST/SOLL-Vergleich auf Basis der Phase-1-Unterkategorien (Planung NEW).
+      IST/SOLL-Vergleich auf Basis der Phase-1-Unterkategorien (Planung NEW). Im Filter <em>Alle Jahre</em> werden alle Planjahre zusammen angezeigt.
     </p>
     <div class="fortschritt-toolbar">
       <div>

@@ -884,12 +884,17 @@
 .p1-acc--open>.p1-acc__body{display:block}
 
 .p1-ms{background:#fff;border:1px solid var(--rc-border);border-radius:var(--rc-radius);margin-bottom:.4rem;overflow:hidden}
-.p1-ms__head{display:flex;align-items:center;gap:.4rem;padding:.35rem .6rem;background:#f1f5f9}
+.p1-ms__head{display:flex;align-items:center;gap:.4rem;padding:.35rem .6rem;background:#f1f5f9;cursor:pointer;user-select:none}
+.p1-ms__head:hover{background:#e8eef4}
+.p1-ms__chev{width:.55rem;height:.55rem;border-right:2px solid var(--rc-muted);border-bottom:2px solid var(--rc-muted);transform:rotate(-45deg);transition:transform .15s;flex-shrink:0;margin-left:.1rem}
+.p1-ms--open>.p1-ms__head .p1-ms__chev{transform:rotate(45deg);margin-top:-.15rem}
 .p1-ms__title{flex:1;font-size:.78rem;font-weight:600;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.p1-ms__title--empty{color:var(--rc-muted);font-weight:500;font-style:italic}
 .p1-ms__actions{flex-shrink:0}
 .p1-ms__actions button{background:none;border:none;cursor:pointer;color:var(--rc-muted);font-size:.7rem;padding:.1rem .25rem}
 .p1-ms__actions button:hover{color:var(--rc-red)}
 .p1-ms__body{padding:.5rem .6rem}
+.p1-ms__body.closed{display:none}
 .p1-ms__field{margin-bottom:.4rem}
 .p1-ms__field label{display:block;font-size:.7rem;font-weight:600;color:var(--rc-muted);margin-bottom:.15rem;text-transform:uppercase;letter-spacing:.03em}
 .p1-ms__field textarea,.p1-ms__field input,.p1-ms__field select{width:100%;padding:.3rem .45rem;font-size:.78rem;border:1px solid var(--rc-border);border-radius:var(--rc-radius);background:#fff}

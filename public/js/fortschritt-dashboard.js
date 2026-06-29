@@ -3,6 +3,7 @@
  */
 
 let fortschrittYear = new Date().getFullYear();
+let fortschrittYearAll = false;
 let fortschrittSnapshot = null;
 let fortschrittInitDone = false;
 let gesamtfortschrittInitDone = false;
@@ -121,15 +122,35 @@ const FORTSCHRITT_TIPS = {
   meilensteine: `<strong>Plan-Meilensteine</strong>
     <p>Meilensteine aus dem Backcasting-Plan für das gewählte Jahr (Workstream × Jahr).</p>
     <p>Tags zeigen strukturierte Zielwerte (<em>ziel_umsatz_teur</em>, <em>ziel_headcount</em>). Der Text ist ein Auszug aus Ergebnis/KPIs des Meilensteins – maximal acht Einträge.</p>`,
-  zeitstrahl: `<strong>Zeitstrahl 2026–2029</strong>
-    <p>Zeigt den Planverlauf aller drei Kern-KPIs über die Jahre 2026 bis 2029.</p>
-    <ul>
-      <li><b>SOLL (durchgezogene Linie)</b> – jährliche Zielwerte aus Backcasting-Meilensteinen</li>
-      <li><b>IST (gestrichelte Linie)</b> – projizierter Verlauf vom Ist-Stand 2026 linear zum Soll-Ziel 2029</li>
-      <li>Bei <b>Alle Units</b> werden alle Standard-Units farblich überlagert; die Legende zeigt Linienart und Unit-Farben getrennt</li>
-    </ul>
-    <p>Ausführliche Feldzuordnung Phase&nbsp;1 ↔ Backcasting: Register <em>Erläuterung Berechnung</em>.</p>`,
 };
+
+function ftPlanningYears() {
+  return window._rcPlanningYears || [2026, 2027, 2028, 2029];
+}
+
+function ftZeitstrahlTip(years, mode) {
+  const y0 = years[0];
+  const yN = years[years.length - 1];
+  const yr = y0 + "\u2013" + yN;
+  if (mode === "p1") {
+    return `<strong>Zeitstrahl ${yr} \u00b7 Planung NEW</strong>
+      <p>Zeigt den Planverlauf der drei Kern-KPIs \u00fcber die Jahre ${y0} bis ${yN} auf Basis der Planung NEW.</p>
+      <ul>
+        <li><b>SOLL (durchgezogene Linie)</b> \u2013 j\u00e4hrliche Zielwerte aus <em>p1Year</em>-Meilensteinen (Portfolio, Organisation, Skills)</li>
+        <li><b>IST (gestrichelte Linie)</b> \u2013 projizierter Verlauf vom Ist-Stand ${y0} linear zum Soll-Ziel ${yN}</li>
+        <li>Bei <b>Alle Units</b> werden alle Standard-Units farblich \u00fcberlagert; die Legende zeigt Linienart und Unit-Farben getrennt</li>
+      </ul>
+      <p>Meilensteine stammen aus dem Register <em>Planung NEW</em> (Backcasting Phase&nbsp;2), nicht aus der klassischen Workstream-Planung.</p>`;
+  }
+  return `<strong>Zeitstrahl ${yr}</strong>
+    <p>Zeigt den Planverlauf aller drei Kern-KPIs \u00fcber die Jahre ${y0} bis ${yN}.</p>
+    <ul>
+      <li><b>SOLL (durchgezogene Linie)</b> \u2013 j\u00e4hrliche Zielwerte aus Backcasting-Meilensteinen</li>
+      <li><b>IST (gestrichelte Linie)</b> \u2013 projizierter Verlauf vom Ist-Stand ${y0} linear zum Soll-Ziel ${yN}</li>
+      <li>Bei <b>Alle Units</b> werden alle Standard-Units farblich \u00fcberlagert; die Legende zeigt Linienart und Unit-Farben getrennt</li>
+    </ul>
+    <p>Ausf\u00fchrliche Feldzuordnung Phase&nbsp;1 \u2194 Backcasting: Register <em>Erl\u00e4uterung Berechnung</em>.</p>`;
+}
 
 const FORTSCHRITT_FIELD_MAPPINGS = [
   {
@@ -511,16 +532,20 @@ function ftTimelineLineSwatch(kind, color = "#334155") {
   </svg>`;
 }
 
-function renderFortschrittTimelineStyleLegend(color = "#334155", extraClass = "") {
+function renderFortschrittTimelineStyleLegend(color = "#334155", extraClass = "", opts = {}) {
+  const years = ftPlanningYears();
+  const y0 = years[0];
+  const yN = years.slice(-1)[0];
+  const sollLabel = opts.mode === "p1" ? "Planung NEW (p1Year)" : "Plan-Meilensteine";
   const cls = extraClass ? `fortschritt-timeline-style ${extraClass}` : "fortschritt-timeline-style";
   return `<div class="${cls}">
     <span class="fortschritt-timeline-legend-item ft-tl-legend-item--soll">
       ${ftTimelineLineSwatch("soll", color)}
-      <span><strong>SOLL</strong> · Plan-Meilensteine <span class="ft-tl-legend-hint">(durchgezogen)</span></span>
+      <span><strong>SOLL</strong> \u00b7 ${sollLabel} <span class="ft-tl-legend-hint">(durchgezogen)</span></span>
     </span>
     <span class="fortschritt-timeline-legend-item ft-tl-legend-item--ist">
       ${ftTimelineLineSwatch("ist", color)}
-      <span><strong>IST</strong> \u00b7 projiziert ${(window._rcPlanningYears||[2026,2029])[0]}\u2192${(window._rcPlanningYears||[2026,2029]).slice(-1)[0]} <span class="ft-tl-legend-hint">(gestrichelt)</span></span>
+      <span><strong>IST</strong> \u00b7 projiziert ${y0}\u2192${yN} <span class="ft-tl-legend-hint">(gestrichelt)</span></span>
     </span>
   </div>`;
 }
@@ -650,8 +675,9 @@ function renderFortschrittAllUnitsLegend(timelineData) {
   return `<div class="fortschritt-timeline-legend fortschritt-timeline-legend--global"><span class="ft-tl-legend-units-label">Units:</span>${items}</div>`;
 }
 
-function renderFortschrittTimeline(timelineData, allUnits) {
-  const years = timelineData?.years || (window._rcPlanningYears || [2026, 2027, 2028, 2029]);
+function renderFortschrittTimeline(timelineData, allUnits, opts = {}) {
+  const isP1 = opts.mode === "p1";
+  const years = timelineData?.years || ftPlanningYears();
   const kpiKeys = ["umsatz", "headcount", "zertifizierung"];
   const kpiLabels = {
     umsatz: "Umsatz (TEUR)",
@@ -675,15 +701,20 @@ function renderFortschrittTimeline(timelineData, allUnits) {
     .join("");
 
   const yr = years[0] + "\u2013" + years[years.length - 1];
+  const y0 = years[0];
+  const yN = years[years.length - 1];
+  const sollSource = isP1 ? "Planung NEW (p1Year-Meilensteine)" : "Plan-Meilensteinen";
   const subtitle = allUnits
-    ? "Alle Standard-Units \u00b7 SOLL aus Plan-Meilensteinen, IST linear " + years[0] + "\u2192" + years[years.length - 1]
-    : `Unit: ${esc(timelineData.unit || fortschrittUnit())} \u00b7 SOLL aus Plan-Meilensteinen, IST linear ${years[0]}\u2192${years[years.length - 1]}`;
+    ? "Alle Standard-Units \u00b7 SOLL aus " + sollSource + ", IST linear " + y0 + "\u2192" + yN
+    : `Unit: ${esc(timelineData.unit || fortschrittUnit())} \u00b7 SOLL aus ${sollSource}, IST linear ${y0}\u2192${yN}`;
   const legendColor = allUnits ? "#334155" : FORTSCHRITT_UNIT_COLORS[0];
+  const title = isP1 ? "Zeitstrahl \u00b7 Planung NEW " + yr : "Zeitstrahl \u00b7 Unit-Planung " + yr;
+  const tip = ftZeitstrahlTip(years, isP1 ? "p1" : "classic");
 
   return `<div class="card fortschritt-timeline-card">
-    ${fortschrittSectionHeader("Zeitstrahl \u00b7 Unit-Planung " + yr, "Zeitstrahl \u2013 Klicken f\u00fcr Erkl\u00e4rung", FORTSCHRITT_TIPS.zeitstrahl)}
+    ${fortschrittSectionHeader(title, "Zeitstrahl \u2013 Klicken f\u00fcr Erkl\u00e4rung", tip)}
     <p class="fortschritt-hint">${subtitle}</p>
-    ${renderFortschrittTimelineStyleLegend(legendColor, "fortschritt-timeline-style--global")}
+    ${renderFortschrittTimelineStyleLegend(legendColor, "fortschritt-timeline-style--global", opts)}
     ${allUnits ? renderFortschrittAllUnitsLegend(timelineData) : ""}
     <div class="fortschritt-timeline-grid">${charts}</div>
   </div>`;
@@ -1303,6 +1334,83 @@ async function loadDemoUnitsSequential(demoUnits) {
   return { results, progress };
 }
 
+function fortschrittYearLabel() {
+  if (fortschrittYearAll) {
+    const years = window._rcPlanningYears || [2026, 2027, 2028, 2029];
+    return "Alle (" + years[0] + "\u2013" + years[years.length - 1] + ")";
+  }
+  return String(fortschrittYear);
+}
+
+function readFortschrittYearSelect() {
+  const yearEl = document.getElementById("fortschrittYear");
+  if (!yearEl) return;
+  fortschrittYearAll = yearEl.value === "all";
+  if (!fortschrittYearAll) {
+    fortschrittYear = parseInt(yearEl.value, 10) || fortschrittYear;
+  }
+}
+
+function renderFortschrittYearBlock(year, plan, comparison) {
+  const kpiCount = comparison?.kpis?.length || 0;
+  const msCount = plan?.milestoneCount || 0;
+  return `<details class="ft-year-section" open>
+    <summary class="ft-year-section__head"><strong>Jahr ${year}</strong>
+      <span class="ft-year-section__meta">${kpiCount} KPIs · ${msCount} Meilensteine</span>
+    </summary>
+    <div class="ft-year-section__body">
+      <div class="card">
+        ${fortschrittSectionHeader("IST vs. SOLL – Kennzahlen", "Kennzahlen – Klicken für Erklärung", FORTSCHRITT_TIPS.kennzahlen)}
+        ${renderFortschrittKpiCards(comparison)}
+      </div>
+      <div class="card">
+        ${fortschrittSectionHeader("Skill-Lücken (IST vs. Plan)", "Skill-Lücken – Klicken für Erklärung", FORTSCHRITT_TIPS.skillGaps)}
+        ${renderFortschrittSkillGaps(comparison?.skillGaps)}
+      </div>
+      <div class="card">
+        ${fortschrittSectionHeader(`Plan-Meilensteine ${year}`, "Plan-Meilensteine – Klicken für Erklärung", FORTSCHRITT_TIPS.meilensteine)}
+        ${renderFortschrittMilestones(plan?.milestones)}
+      </div>
+    </div>
+  </details>`;
+}
+
+function renderFortschrittSnapshotAllYears(data, unit) {
+  const p1 = data.phase1 || {};
+  const stichtag = p1.stichtag ? `Stichtag: ${p1.stichtag}` : "Kein Stichtag";
+  const planTitle = data.planMeta?.bereich ? data.planMeta.bereich : "Kein Plan";
+  const demoTag = data.demo?.active
+    ? ' · <span style="color:#b7791f;font-weight:600">Demo-Daten aktiv</span>'
+    : "";
+  const byYear = data.byYear || [];
+  const yearBlocks = byYear.map((row) => renderFortschrittYearBlock(row.year, row.plan, row.comparison)).join("");
+
+  return `
+    <div class="fortschritt-meta card">
+      ${fortschrittSectionHeader("Kontext & Datenstand", "Kontext – Klicken für Erklärung", FORTSCHRITT_TIPS.kontext)}
+      <div><strong>Unit:</strong> ${esc(unit)} · <strong>Jahr:</strong> ${esc(fortschrittYearLabel())}</div>
+      <div class="fortschritt-meta-sub">${esc(stichtag)} · Plan: ${esc(planTitle)} · ${data.totalMilestones || 0} Meilensteine gesamt${demoTag}</div>
+    </div>
+
+    <div class="fortschritt-two-col">
+      <div class="card">
+        ${fortschrittSectionHeader("Portfolio-Umsatzmix (IST)", "Portfolio-Umsatzmix – Klicken für Erklärung", FORTSCHRITT_TIPS.portfolio)}
+        <p class="fortschritt-hint">Gesamt: ${formatUmsatzTeur(p1.portfolio?.totalTeur || 0)} · ${p1.portfolio?.count || 0} Positionen</p>
+        ${renderFortschrittPortfolioBars(p1.portfolio?.mix, p1.portfolio?.totalTeur)}
+      </div>
+      <div class="card">
+        ${fortschrittSectionHeader("Organisation & Skills (IST)", "Organisation & Skills – Klicken für Erklärung", FORTSCHRITT_TIPS.orgSkills)}
+        <ul class="fortschritt-facts">
+          <li>Headcount: <b>${p1.organisation?.headcount ?? "–"}</b></li>
+          <li>Mitarbeiter Skill-Matrix: <b>${p1.skills?.employeeCount ?? 0}</b></li>
+          <li>Zertifizierungsquote: <b>${p1.skills?.zertifiziertQuote != null ? p1.skills.zertifiziertQuote + "%" : "–"}</b></li>
+        </ul>
+      </div>
+    </div>
+
+    ${yearBlocks || '<div class="card"><p class="fortschritt-empty">Keine Plan-Daten für die gewählten Jahre vorhanden.</p></div>'}`;
+}
+
 function renderFortschrittSnapshotDetails(data, unit) {
   const p1 = data.phase1 || {};
   const plan = data.plan || {};
@@ -1315,7 +1423,7 @@ function renderFortschrittSnapshotDetails(data, unit) {
   return `
     <div class="fortschritt-meta card">
       ${fortschrittSectionHeader("Kontext & Datenstand", "Kontext – Klicken für Erklärung", FORTSCHRITT_TIPS.kontext)}
-      <div><strong>Unit:</strong> ${esc(unit)} · <strong>Jahr:</strong> ${fortschrittYear}</div>
+      <div><strong>Unit:</strong> ${esc(unit)} · <strong>Jahr:</strong> ${esc(fortschrittYearLabel())}</div>
       <div class="fortschritt-meta-sub">${esc(stichtag)} · Plan: ${esc(planTitle)} · ${plan.milestoneCount || 0} Meilensteine${demoTag}</div>
     </div>
 
@@ -1380,8 +1488,7 @@ async function loadGesamtfortschrittDashboard() {
 
 async function loadFortschrittDashboard() {
   const unit = fortschrittUnit();
-  const yearEl = document.getElementById("fortschrittYear");
-  if (yearEl) fortschrittYear = parseInt(yearEl.value, 10) || fortschrittYear;
+  readFortschrittYearSelect();
 
   const root = document.getElementById("fortschrittContent");
   if (!root) return;
@@ -1400,11 +1507,14 @@ async function loadFortschrittDashboard() {
   root.innerHTML = '<div class="card"><p class="fortschritt-empty">Lade Vergleichsdaten…</p></div>';
 
   try {
+    const yearQuery = fortschrittYearAll ? "all" : String(fortschrittYear);
     const data = await api(
-      `/api/dashboard/snapshot?unit=${encodeURIComponent(unit)}&year=${fortschrittYear}`
+      `/api/dashboard/snapshot?unit=${encodeURIComponent(unit)}&year=${encodeURIComponent(yearQuery)}`
     );
     fortschrittSnapshot = data;
-    root.innerHTML = renderFortschrittSnapshotDetails(data, unit);
+    root.innerHTML = data.allYears
+      ? renderFortschrittSnapshotAllYears(data, unit)
+      : renderFortschrittSnapshotDetails(data, unit);
     initFortschrittTipPopovers();
   } catch (error) {
     root.innerHTML = `<div class="card"><p class="fortschritt-empty" style="color:var(--rc-red)">${esc(error.message || "Laden fehlgeschlagen")}</p></div>`;
@@ -1558,26 +1668,42 @@ function renderGesamtfortschrittDashboard() {
 
 async function populateFortschrittYearSelect() {
   const sel = document.getElementById("fortschrittYear");
-  if (!sel || sel.children.length) return;
+  if (!sel) return;
+  const prev = sel.value;
   try {
     const cfg = typeof loadPlanningYears === "function"
       ? await loadPlanningYears()
       : await fetch("/api/config/planning-years", { credentials: "include" }).then(r => r.json());
     const years = cfg?.years || [2026, 2027, 2028, 2029];
     window._rcPlanningYears = years;
-    const cur = new Date().getFullYear();
+    sel.innerHTML = "";
+    const allOpt = document.createElement("option");
+    allOpt.value = "all";
+    allOpt.textContent = "Alle Jahre (" + years[0] + "\u2013" + years[years.length - 1] + ")";
+    sel.appendChild(allOpt);
     years.forEach(y => {
       const o = document.createElement("option");
       o.value = y; o.textContent = y;
-      if (y === cur || (!years.includes(cur) && y === years[0])) o.selected = true;
       sel.appendChild(o);
     });
-    fortschrittYear = parseInt(sel.value, 10) || years[0];
+    if (prev && [...sel.options].some((o) => o.value === prev)) {
+      sel.value = prev;
+    } else {
+      const cur = new Date().getFullYear();
+      sel.value = years.includes(cur) ? String(cur) : String(years[0]);
+    }
+    readFortschrittYearSelect();
   } catch (_e) {
-    [2026, 2027, 2028, 2029].forEach(y => {
-      const o = document.createElement("option");
-      o.value = y; o.textContent = y; sel.appendChild(o);
-    });
+    if (!sel.children.length) {
+      const allOpt = document.createElement("option");
+      allOpt.value = "all";
+      allOpt.textContent = "Alle Jahre";
+      sel.appendChild(allOpt);
+      [2026, 2027, 2028, 2029].forEach(y => {
+        const o = document.createElement("option");
+        o.value = y; o.textContent = y; sel.appendChild(o);
+      });
+    }
   }
 }
 
