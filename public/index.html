@@ -99,6 +99,7 @@
   <div class="tabs-nav-main" id="tabsNavPhase3" style="display:none">
     <div class="tab active" data-page="gesamtfortschritt">📈 Gesamtfortschritt</div>
     <div class="tab" data-page="fortschritt">📊 Detailfortschritt</div>
+    <div class="tab" data-page="fortschritt-new">📊 Fortschritt NEW</div>
     <div class="tab" data-page="fortschritt-erlaeuterung">📘 Erläuterung Berechnung</div>
   </div>
   </div>
@@ -622,6 +623,26 @@
     </div>
   </div>
   <div id="fortschrittContent"></div>
+</div>
+
+<!-- ===== FORTSCHRITT NEW (Phase-1-basiert) ===== -->
+<div class="page" id="page-fortschritt-new">
+  <div class="card" style="border-left-color:var(--rc-accent2);margin-bottom:1rem">
+    <h3 style="margin:0">Fortschritt NEW &middot; Phase-1-basiert</h3>
+    <p style="color:var(--rc-muted);font-size:.8rem;margin-bottom:.75rem">
+      IST/SOLL-Vergleich auf Basis der Phase-1-Unterkategorien (Planung NEW).
+    </p>
+    <div class="fortschritt-toolbar">
+      <div>
+        <label>Jahr (Plan)</label>
+        <select id="fortschrittNewYear"></select>
+      </div>
+      <div class="fortschritt-toolbar-actions">
+        <button type="button" class="btn btn-outline btn-sm" id="btnFortschrittNewReload">Aktualisieren</button>
+      </div>
+    </div>
+  </div>
+  <div id="fortschrittNewContent"></div>
 </div>
 
 <!-- ===== ERLÄUTERUNG BERECHNUNG ===== -->
@@ -1348,6 +1369,7 @@
 <script src="/js/view-unit-persist.js"></script>
 <script src="/js/presence.js"></script>
 <script src="/js/fortschritt-dashboard.js?v=20260626a"></script>
+<script src="/js/fortschritt-new.js?v=20260629a" defer></script>
 <script src="/backcasting/js/guidelines.js?v=20260626a"></script>
 <script src="/js/roles-permissions-doc.js"></script>
 <script src="/js/app.js"></script>

@@ -335,6 +335,131 @@ function buildDashboardTimeline(entries, planPayload, years = DEFAULT_TIMELINE_Y
   };
 }
 
+function aggregateP1PlanForYear(planPayload, year) {
+  const measures = planPayload?.measures || {};
+  const byAreaSub = {};
+  Object.values(measures).forEach((list) => {
+    (list || []).forEach((m) => {
+      if (m && m.kind === "p1Year" && Number(m.jahr) === Number(year)) {
+        const key = m.area + "||" + m.subcategory;
+        if (!byAreaSub[key]) byAreaSub[key] = { area: m.area, subcategory: m.subcategory, milestones: [] };
+        byAreaSub[key].milestones.push(m);
+      }
+    });
+  });
+  return byAreaSub;
+}
+
+function buildP1Comparison(phase1, p1Plan) {
+  const portfolio = [];
+  const gliederungen = [];
+  const rollen = [];
+  const skills = [];
+
+  Object.values(p1Plan).forEach((entry) => {
+    const { area, subcategory, milestones } = entry;
+    if (area === "portfolio") {
+      const istTeur = phase1.portfolio.byCategory[subcategory] ?? 0;
+      let sollTeur = 0;
+      let hasSoll = false;
+      milestones.forEach((m) => {
+        const v = parseTeur(m.ziel_umsatz_teur);
+        if (v != null) { sollTeur += v; hasSoll = true; }
+      });
+      if (!hasSoll) return;
+      const delta = istTeur - sollTeur;
+      const deltaPct = sollTeur > 0 ? (delta / sollTeur) * 100 : null;
+      portfolio.push({
+        subcategory,
+        label: PORTFOLIO_CATEGORY_LABELS[subcategory] || subcategory,
+        istTeur, sollTeur,
+        delta: Math.round(delta * 10) / 10,
+        deltaPct: deltaPct != null ? Math.round(deltaPct * 10) / 10 : null,
+        status: statusFromDelta(deltaPct, true),
+        milestones,
+      });
+    } else if (area === "gliederungen") {
+      const hcRow = phase1.organisation.headcountByBereich.find((b) => b.bereich === subcategory);
+      const teurRow = phase1.organisation.umsatzByBereich.find((b) => b.bereich === subcategory);
+      const istHc = hcRow?.headcount ?? 0;
+      const istTeur = teurRow?.teur ?? 0;
+      let sollHc = 0, sollTeur = 0, hasHc = false, hasTeur = false;
+      milestones.forEach((m) => {
+        const hc = parseTeur(m.ziel_headcount);
+        if (hc != null) { sollHc = Math.max(sollHc, hc); hasHc = true; }
+        const t = parseTeur(m.ziel_umsatz_teur);
+        if (t != null) { sollTeur += t; hasTeur = true; }
+      });
+      const hcDeltaPct = hasHc && sollHc > 0 ? ((istHc - sollHc) / sollHc) * 100 : null;
+      const teurDeltaPct = hasTeur && sollTeur > 0 ? ((istTeur - sollTeur) / sollTeur) * 100 : null;
+      const worst = [hcDeltaPct, teurDeltaPct].filter((v) => v != null);
+      const worstPct = worst.length ? Math.min(...worst) : null;
+      gliederungen.push({
+        subcategory,
+        istHc, sollHc: hasHc ? sollHc : null,
+        istTeur, sollTeur: hasTeur ? sollTeur : null,
+        status: statusFromDelta(worstPct, true),
+        milestones,
+      });
+    } else if (area === "rollen") {
+      const istAnzahl = 0;
+      let sollAnzahl = 0, hasSoll = false;
+      milestones.forEach((m) => {
+        const v = parseTeur(m.ziel_anzahl);
+        if (v != null) { sollAnzahl = Math.max(sollAnzahl, v); hasSoll = true; }
+      });
+      if (!hasSoll) return;
+      const deltaPct = sollAnzahl > 0 ? ((istAnzahl - sollAnzahl) / sollAnzahl) * 100 : null;
+      rollen.push({
+        subcategory,
+        istAnzahl, sollAnzahl,
+        status: statusFromDelta(deltaPct, true),
+        milestones,
+      });
+    } else if (area === "skills") {
+      const row = phase1.skills.avgSkillByCategory.find((s) => s.category === subcategory);
+      const istAvg = row?.avgLevel ?? null;
+      let sollMin = null, sollAnteil = null;
+      milestones.forEach((m) => {
+        if (m.ziel_skill_level_min != null) {
+          const v = Number(m.ziel_skill_level_min);
+          if (Number.isFinite(v)) sollMin = sollMin == null ? v : Math.max(sollMin, v);
+        }
+        if (m.ziel_anteil_prozent != null) {
+          const v = Number(m.ziel_anteil_prozent);
+          if (Number.isFinite(v)) sollAnteil = sollAnteil == null ? v : Math.max(sollAnteil, v);
+        }
+      });
+      const gap = istAvg != null && sollMin != null ? istAvg - sollMin : null;
+      skills.push({
+        subcategory,
+        istAvg, sollMin, sollAnteil, gap,
+        status: gap == null ? "neutral" : gap >= 0 ? "ok" : gap >= -0.5 ? "warn" : "risk",
+        milestones,
+      });
+    }
+  });
+
+  const all = [...portfolio, ...gliederungen, ...rollen, ...skills];
+  const summary = { totalComparisons: all.length, ok: 0, warn: 0, risk: 0, neutral: 0 };
+  all.forEach((item) => { summary[item.status] = (summary[item.status] || 0) + 1; });
+
+  return { portfolio, gliederungen, rollen, skills, summary };
+}
+
+function buildP1DashboardSnapshot(entries, planPayload, year) {
+  const phase1 = aggregatePhase1Entries(entries);
+  const p1Plan = aggregateP1PlanForYear(planPayload, year);
+  const comparison = buildP1Comparison(phase1, p1Plan);
+  return {
+    year: Number(year),
+    phase1,
+    p1Plan: comparison,
+    summary: comparison.summary,
+    planMeta: planPayload?.meta || null,
+  };
+}
+
 function countAllPlanMilestones(planPayload) {
   const measures = planPayload?.measures || {};
   let count = 0;
@@ -366,6 +491,8 @@ module.exports = {
   buildDashboardTimeline,
   aggregatePhase1Entries,
   aggregatePlanForYear,
+  aggregateP1PlanForYear,
+  buildP1DashboardSnapshot,
   countAllPlanMilestones,
   buildDemoEvaluationSummary,
   DEFAULT_TIMELINE_YEARS,

@@ -1491,6 +1491,9 @@ function refreshSuperAdminViews() {
   if (document.getElementById("page-fortschritt")?.classList.contains("active")) {
     renderFortschrittDashboard();
   }
+  if (document.getElementById("page-fortschritt-new")?.classList.contains("active") && typeof initFortschrittNew === "function") {
+    initFortschrittNew();
+  }
   if (isDemoDatenViewActive()) {
     renderDemoDatenPage();
   }
@@ -1515,6 +1518,9 @@ function setSuperAdminViewUnit(unit) {
   }
   if (document.getElementById("page-fortschritt")?.classList.contains("active")) {
     renderFortschrittDashboard();
+  }
+  if (document.getElementById("page-fortschritt-new")?.classList.contains("active") && typeof initFortschrittNew === "function") {
+    initFortschrittNew();
   }
   if (isDemoDatenViewActive()) {
     renderDemoDatenPage();
@@ -1637,7 +1643,7 @@ function getActiveAppPage() {
 }
 
 const PHASE1_TAB_PAGES = ["portfolio", "organisation", "skills", "overview", "export"];
-const PHASE3_TAB_PAGES = ["gesamtfortschritt", "fortschritt", "fortschritt-erlaeuterung"];
+const PHASE3_TAB_PAGES = ["gesamtfortschritt", "fortschritt", "fortschritt-new", "fortschritt-erlaeuterung"];
 const ADMIN_SUBTAB_MODES = ["users", "skills", "roles", "leitplanken", "permissions", "org", "demo", "settings"];
 
 function resolvePresenceContext() {
@@ -3017,6 +3023,7 @@ document.querySelectorAll("#tabs .tab").forEach((t) => {
   if (p === "admin") initAdminPage();
   if (p === "gesamtfortschritt") renderGesamtfortschrittDashboard();
   if (p === "fortschritt") renderFortschrittDashboard();
+  if (p === "fortschritt-new" && typeof initFortschrittNew === "function") initFortschrittNew();
   if (p === "fortschritt-erlaeuterung") renderFortschrittErlaeuterungPage();
   if (p === "portfolio") {
     renderPortfolio();
@@ -3056,10 +3063,12 @@ function updateAppModuleNavActive(page) {
     } else if (onPhase3) {
       if (page === "gesamtfortschritt") {
         subtitleEl.textContent = "Zeitstrahl " + planningYearRange() + " \u00b7 Umsatz, Headcount & Zertifizierung";
+      } else if (page === "fortschritt-new") {
+        subtitleEl.textContent = "Phase-1-basierter Fortschritt \u00b7 IST vs. SOLL (Planung NEW)";
       } else if (page === "fortschritt-erlaeuterung") {
         subtitleEl.textContent = "Methodik & Feldzuordnung Phase 1 ↔ Phase 2";
       } else {
-        subtitleEl.textContent = "Detailfortschritt · IST vs. SOLL je Unit und Jahr";
+        subtitleEl.textContent = "Detailfortschritt \u00b7 IST vs. SOLL je Unit und Jahr";
       }
     } else if (page === "admin") {
       subtitleEl.textContent = "Benutzer, Kataloge, Leitplanken und Organigramm";
@@ -4885,6 +4894,9 @@ function switchSuperAdminViewForEntry(entry) {
   }
   if (document.getElementById("page-fortschritt")?.classList.contains("active")) {
     renderFortschrittDashboard();
+  }
+  if (document.getElementById("page-fortschritt-new")?.classList.contains("active") && typeof initFortschrittNew === "function") {
+    initFortschrittNew();
   }
   if (isDemoDatenViewActive()) {
     renderDemoDatenPage();

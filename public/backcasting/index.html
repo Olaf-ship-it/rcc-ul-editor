@@ -51,9 +51,10 @@
   <div class="tabs" id="bcTabs">
     <div class="tabs-nav-main">
     <div class="tab active" data-tab="planung">① Planung</div>
-    <div class="tab" data-tab="review">② Review</div>
-    <div class="tab" data-tab="leitplanken">③ Leitplanken</div>
-    <div class="tab" data-tab="export">④ Export</div>
+    <div class="tab" data-tab="planung-new">② Planung NEW</div>
+    <div class="tab" data-tab="review">③ Review</div>
+    <div class="tab" data-tab="leitplanken">④ Leitplanken</div>
+    <div class="tab" data-tab="export">⑤ Export</div>
   </div>
   </div>
 </div>
@@ -79,6 +80,15 @@
       <p class="bc-muted">Bitte oben einen Workstream wählen.</p>
     </div>
   </div>
+</div>
+
+<!-- PLANUNG NEW -->
+<div class="page" id="page-planung-new">
+  <div class="unit-save-notice" id="bcUnitSaveNoticeNew" style="display:none" role="status">
+    <strong>Speichern nicht m&ouml;glich:</strong> Oben ist <em>Alle Units</em> aktiv.
+    Bitte im <strong>Filter</strong> eine konkrete Unit w&auml;hlen, dann planen und speichern.
+  </div>
+  <div id="planungNewContent"></div>
 </div>
 
 <!-- REVIEW -->
@@ -273,6 +283,7 @@
 <script src="/js/presence.js" defer></script>
 <script src="/backcasting/shell.js" defer></script>
 <script src="/backcasting/js/guidelines.js" defer></script>
+<script src="/backcasting/js/planning-new.js" defer></script>
 <script src="/backcasting/js/app.js" defer></script>
 </body>
 </html>

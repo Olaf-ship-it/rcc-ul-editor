@@ -13,7 +13,7 @@ const {
   buildDemoDataForUnit,
   buildDemoStatusSummary,
 } = require("./server/demo-data");
-const { buildDashboardSnapshot, buildDashboardTimeline, DEFAULT_TIMELINE_YEARS } = require("./server/dashboard-service");
+const { buildDashboardSnapshot, buildDashboardTimeline, buildP1DashboardSnapshot, DEFAULT_TIMELINE_YEARS } = require("./server/dashboard-service");
 const {
   ensureGuidelinesSchema,
   seedGuidelinesIfEmpty,
@@ -3285,6 +3285,24 @@ app.get("/api/dashboard/snapshot", auth, async (req, res) => {
   });
 });
 
+app.get("/api/dashboard/p1-snapshot", auth, async (req, res) => {
+  if (!canAccessFortschritt(req.user)) {
+    return res.status(403).json({ error: "Kein Zugriff auf Phase 3 \u00b7 Fortschritt." });
+  }
+  const resolved = resolveDashboardUnit(req, req.query.unit);
+  if (resolved.error) return res.status(403).json({ error: resolved.error });
+  const unit = resolved.unit;
+  if (!unit) return res.status(400).json({ error: "Unit fehlt." });
+  if (!(await canAccessUnit(req, unit))) {
+    return res.status(403).json({ error: "Kein Zugriff auf diese Unit." });
+  }
+  const year = parseInt(req.query.year, 10) || new Date().getFullYear();
+  const entries = await fetchEntriesForUnit(unit);
+  const planRow = await fetchBackcastingPlanForUnit(unit);
+  const snapshot = buildP1DashboardSnapshot(entries, planRow || { measures: {}, meta: {} }, year);
+  return res.json({ unit, ...snapshot });
+});
+
 app.get("/api/dashboard/timeline", auth, async (req, res) => {
   if (!canAccessFortschritt(req.user)) {
     return res.status(403).json({ error: "Kein Zugriff auf Phase 3 · Fortschritt." });
@@ -3710,6 +3728,71 @@ app.put("/api/admin/guidelines", auth, requireAdmin, async (req, res) => {
   } catch (error) {
     console.error("PUT /api/admin/guidelines", error);
     return res.status(500).json({ error: "Speichern fehlgeschlagen." });
+  }
+});
+
+app.get("/api/backcasting/phase1-summary", auth, async (req, res) => {
+  if (!canAccessBackcasting(req.user)) {
+    return res.status(403).json({ error: "Kein Zugriff auf Backcasting." });
+  }
+  const resolved = resolveDashboardUnit(req, req.query.unit);
+  if (resolved.error) return res.status(403).json({ error: resolved.error });
+  const unit = resolved.unit;
+  if (!unit) return res.status(400).json({ error: "Unit fehlt." });
+  if (!(await canAccessUnit(req, unit))) {
+    return res.status(403).json({ error: "Kein Zugriff auf diese Unit." });
+  }
+  try {
+    const entries = await fetchEntriesForUnit(unit);
+    const portfolioEntries = entries.filter((e) => e.type === "portfolio" || (!e.type && e.category));
+    const orgEntry = entries.find((e) => e.type === "organisation");
+    const skillEntries = entries.filter((e) => e.type === "skill" || (e.skills && e.nachname));
+
+    const catLabels = { produkte: "Produkte", services: "Services", loesungen: "L\u00f6sungen", partnergeschaeft: "Partnergesch\u00e4ft", projektgeschaeft: "Projektgesch\u00e4ft" };
+    const portfolioByCat = {};
+    portfolioEntries.forEach((p) => {
+      const cat = p.category || "sonstiges";
+      if (!portfolioByCat[cat]) portfolioByCat[cat] = { subcategory: cat, label: catLabels[cat] || cat, count: 0, umsatz_teur: 0 };
+      portfolioByCat[cat].count++;
+      portfolioByCat[cat].umsatz_teur += Number(p.jahresumsatz_teur) || 0;
+    });
+    Object.keys(catLabels).forEach((k) => {
+      if (!portfolioByCat[k]) portfolioByCat[k] = { subcategory: k, label: catLabels[k], count: 0, umsatz_teur: 0 };
+    });
+
+    const gliederungen = (orgEntry?.gliederungen || []).filter((g) => g.bereich).map((g) => ({
+      subcategory: g.bereich, headcount: Number(g.headcount) || 0, umsatz_teur: Number(g.umsatz_teur) || 0,
+    }));
+    const rollen = (orgEntry?.rollen || []).filter((r) => r.rolle).map((r) => ({
+      subcategory: r.rolle, anzahl: Number(r.anzahl) || 0,
+    }));
+
+    const skillAgg = {};
+    skillEntries.forEach((emp) => {
+      (emp.skills || []).forEach((s) => {
+        const cat = s.kategorie || "Sonstiges";
+        if (!skillAgg[cat]) skillAgg[cat] = { sum: 0, count: 0, employees: new Set() };
+        const lvl = Number(s.level);
+        if (Number.isFinite(lvl)) { skillAgg[cat].sum += lvl; skillAgg[cat].count++; }
+        skillAgg[cat].employees.add(emp.id || emp.email);
+      });
+    });
+    const skillsSummary = Object.entries(skillAgg).map(([cat, v]) => ({
+      subcategory: cat, avgLevel: v.count ? Math.round((v.sum / v.count) * 10) / 10 : 0, employeeCount: v.employees.size,
+    }));
+
+    const zertTotal = skillEntries.length;
+    const zertJa = skillEntries.filter((e) => String(e.zertifiziert || "").toLowerCase() === "ja").length;
+
+    return res.json({
+      portfolio: Object.values(portfolioByCat),
+      gliederungen,
+      rollen,
+      skills: skillsSummary,
+      zertifiziertQuote: zertTotal ? Math.round((zertJa / zertTotal) * 1000) / 10 : null,
+    });
+  } catch (error) {
+    return res.status(500).json({ error: "Phase-1-Zusammenfassung konnte nicht geladen werden." });
   }
 });
 

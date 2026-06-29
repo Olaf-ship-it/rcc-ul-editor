@@ -184,11 +184,14 @@ async function setBcViewUnit(unit){
   if(isBcViewAll()){
     plan = { meta:{}, measures:{} };
     initSelectors();
+    if(typeof initPlanungNew==='function') initPlanungNew();
     return;
   }
   await loadPlanFromApi();
   await syncPlanMetaFromContext();
   initSelectors();
+  const activeTab = document.querySelector('#bcTabs .tab.active');
+  if(activeTab && activeTab.dataset.tab==='planung-new' && typeof initPlanungNew==='function') initPlanungNew();
 }
 
 function uid(){return 'm'+Date.now().toString(36)+Math.random().toString(36).slice(2,7)}
@@ -1023,6 +1026,7 @@ document.querySelectorAll('#bcTabs .tab').forEach(b=>b.onclick=()=>{
   document.querySelectorAll('.page').forEach(x=>x.classList.remove('active'));
   b.classList.add('active');document.getElementById('page-'+b.dataset.tab).classList.add('active');
   if(b.dataset.tab==='review')renderReview();
+  if(b.dataset.tab==='planung-new' && typeof initPlanungNew==='function') initPlanungNew();
 });
 
 /* boot */
