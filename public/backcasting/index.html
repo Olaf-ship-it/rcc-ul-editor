@@ -121,14 +121,15 @@
       <div class="bc-stat-tooltip" role="dialog" aria-label="Erklärung Vollständige Meilensteine">
         <button type="button" class="bc-stat-tip-close" aria-label="Schließen">×</button>
         <strong>2) Vollständige Meilensteine</strong>
-        <p>Ein Meilenstein gilt als vollständig, wenn diese 3 Kernfelder gefüllt sind:</p>
+        <p>Ein Meilenstein gilt als vollständig, wenn diese 4 Kernfelder gefüllt sind:</p>
         <ul>
-          <li>Ergebnis / Artefakt</li>
+          <li>Bezeichnung</li>
+          <li>Beschreibung</li>
           <li>Messbare KPIs</li>
           <li>Verantwortlich</li>
         </ul>
-        <p><b>Berechnung:</b><br>Vollständig = (Meilensteine mit Ergebnis + KPI + Verantwortlich) ÷ (alle Meilensteine) × 100</p>
-        <p><b>Beispiel 100 %:</b> Jeder Meilenstein hat mindestens diese drei Kernangaben gepflegt.</p>
+        <p><b>Berechnung:</b><br>Vollständig = (Meilensteine mit Bezeichnung + Beschreibung + KPI + Verantwortlich) ÷ (alle Meilensteine) × 100</p>
+        <p><b>Beispiel 100 %:</b> Jeder Meilenstein hat mindestens diese vier Kernangaben gepflegt.</p>
       </div>
     </div>
     <div class="stat-card bc-has-tip" tabindex="0" role="button" aria-expanded="false" data-stat-tip="risk" aria-label="Risikoquote – Klicken für Erklärung">
@@ -176,27 +177,28 @@
             <button type="button" class="bc-stat-tip-close" aria-label="Schließen">×</button>
             <strong>Qualität je Workstream – Berechnungslogik</strong>
             <p>Die Kennzahl ist eine <b>Vollständigkeitsmessung</b> über alle Meilensteine eines Workstreams (über alle Jahre).</p>
-            <p><b>1) Felder in die Qualität (6/6)</b></p>
+            <p><b>1) Felder in die Qualität (7/7)</b></p>
             <p>Pro Meilenstein werden geprüft:</p>
             <ul>
-              <li>Ergebnis / Artefakt (<em>ergebnis</em>)</li>
+              <li>Bezeichnung (<em>bezeichnung</em>)</li>
+              <li>Beschreibung (<em>ergebnis</em>)</li>
               <li>Messbare KPIs (<em>kpis</em>)</li>
               <li>Voraussetzungen (<em>voraussetzungen</em>)</li>
               <li>Abhängigkeiten (<em>abhaengigkeiten</em>)</li>
               <li>Risiken / Blocker (<em>risiken</em>)</li>
               <li>Verantwortlich (<em>verantwortlich</em>)</li>
             </ul>
-            <p>Feld gefüllt (nicht leer) → 1 Punkt · Feld leer → 0 Punkte → Score pro Meilenstein: 0 bis 6.</p>
+            <p>Feld gefüllt (nicht leer) → 1 Punkt · Feld leer → 0 Punkte → Score pro Meilenstein: 0 bis 7.</p>
             <p><b>2) Berechnung pro Workstream (%)</b></p>
             <ul>
               <li>Alle Meilensteine des Workstreams sammeln (alle Jahre)</li>
-              <li>Pro Meilenstein: Anzahl gefüllter Felder (0–6) zählen</li>
-              <li>Summe ÷ (Anzahl Meilensteine × 6), in Prozent</li>
+              <li>Pro Meilenstein: Anzahl gefüllter Felder (0–7) zählen</li>
+              <li>Summe ÷ (Anzahl Meilensteine × 7), in Prozent</li>
             </ul>
-            <p><b>Formel:</b><br>Qualität(WS) = Σ gefüllte Felder aller Meilensteine ÷ (Anzahl Meilensteine × 6) × 100</p>
+            <p><b>Formel:</b><br>Qualität(WS) = Σ gefüllte Felder aller Meilensteine ÷ (Anzahl Meilensteine × 7) × 100</p>
             <p><b>3) Interpretation</b></p>
             <ul>
-              <li><b>100 %:</b> Alle 6 Felder bei allen Meilensteinen gepflegt</li>
+              <li><b>100 %:</b> Alle 7 Felder bei allen Meilensteinen gepflegt</li>
               <li><b>mittel:</b> Einträge vorhanden, z. B. Voraussetzungen/Abhängigkeiten/Risiken oft leer</li>
               <li><b>niedrig:</b> Viele Meilensteine nur grob erfasst</li>
             </ul>
@@ -276,10 +278,42 @@
     </div>
   </div>
 </div>
+<div class="bc-modal-overlay" id="p1RenameModal" style="display:none" role="dialog" aria-modal="true" aria-labelledby="p1RenameModalTitle">
+  <div class="bc-modal-box p1-add-modal-box">
+    <div class="bc-flex-between bc-modal-head">
+      <h3 id="p1RenameModalTitle" style="margin:0">Bezeichnung ändern</h3>
+      <button type="button" class="bc-ms-icon-btn" onclick="closeP1RenameModal()" aria-label="Schließen" title="Schließen">✕</button>
+    </div>
+    <div class="bc-modal-body">
+      <p class="bc-muted p1-rename-modal__hint" id="p1RenameModalHint"></p>
+      <label for="p1RenameInput">Bezeichnung</label>
+      <input type="text" id="p1RenameInput" class="p1-add-modal__input" autocomplete="off">
+    </div>
+    <div class="btn-group bc-modal-actions">
+      <button type="button" class="btn btn-outline" onclick="closeP1RenameModal()">Abbrechen</button>
+      <button type="button" class="btn btn-primary" onclick="confirmP1RenameTrack()">Speichern</button>
+    </div>
+  </div>
+</div>
+<div class="bc-modal-overlay" id="p1AddItemModal" style="display:none" role="dialog" aria-modal="true" aria-labelledby="p1AddItemModalTitle">
+  <div class="bc-modal-box p1-add-modal-box">
+    <div class="bc-flex-between bc-modal-head">
+      <h3 id="p1AddItemModalTitle" style="margin:0">Item anlegen</h3>
+      <button type="button" class="bc-ms-icon-btn" onclick="closeP1AddItemModal()" aria-label="Schließen" title="Schließen">✕</button>
+    </div>
+    <div id="p1AddItemModalBody" class="bc-modal-body"></div>
+    <div class="btn-group bc-modal-actions">
+      <button type="button" class="btn btn-outline" onclick="closeP1AddItemModal()">Abbrechen</button>
+      <button type="button" class="btn btn-primary" onclick="confirmP1AddItem()">Anlegen</button>
+    </div>
+  </div>
+</div>
 <div class="toast" id="toast"></div>
 
 <script src="/js/view-unit-persist.js" defer></script>
 <script src="/js/harmonization-data.js" defer></script>
+<script src="/js/skill-ref-data.js" defer></script>
+<script src="/js/organisation-ref-data.js" defer></script>
 <script src="/js/presence.js" defer></script>
 <script src="/backcasting/shell.js" defer></script>
 <script src="/backcasting/js/guidelines.js" defer></script>

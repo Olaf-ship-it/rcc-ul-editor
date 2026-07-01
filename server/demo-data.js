@@ -267,13 +267,19 @@ function buildOrganisationEntry(unit, profile) {
     erfassungsjahr: 2026,
     hatTechnologischeGliederung: "ja",
     gliederungen: profile.gliederungen.map((g) => ({
+      id: demoId(unit, `org-gli-${slugifyUnit(g.bereich)}`),
       bereich: g.bereich,
       beschreibung: `Demo-Gliederung ${unit}`,
       headcount: g.headcount,
       umsatz_teur: g.umsatz_teur,
       umsatz: formatTeur(g.umsatz_teur),
     })),
-    rollen: profile.rollen.map((r) => ({ rolle: r.rolle, anzahl: r.anzahl, bemerkung: "" })),
+    rollen: profile.rollen.map((r) => ({
+      id: demoId(unit, `org-rol-${slugifyUnit(r.rolle)}`),
+      rolle: r.rolle,
+      anzahl: r.anzahl,
+      bemerkung: "",
+    })),
   };
 }
 
@@ -291,7 +297,9 @@ function buildSkillEntries(unit, profile) {
     positions: ["Mitarbeiter"],
     zertifikate: emp.zert === "ja" ? "SAP Zertifizierung (Demo)" : "",
     zertifiziert: emp.zert,
-    skills: emp.skills.map(([kategorie, level]) => ({
+    skills: emp.skills.map(([kategorie, level], idx) => ({
+      id: demoId(unit, `skill-row-${emp.slug}-${idx}`),
+      skillItemId: demoId(unit, `skill-item-${slugifyUnit(kategorie)}`),
       kategorie,
       technologie: kategorie,
       level,

@@ -2,6 +2,13 @@
  * IST/SOLL-Aggregation für Management-Dashboard
  */
 
+const {
+  buildSkillItemsFromRegistry,
+  employeeDisplayName,
+  employeeSkillSummary,
+  ensureOrgRowIds,
+} = require("./entity-ids");
+
 const PORTFOLIO_CATEGORY_LABELS = {
   produkte: "Produkte",
   services: "Services",
@@ -44,9 +51,10 @@ function pickOrganisationEntry(entries) {
   );
 }
 
-function aggregatePhase1Entries(entries) {
+function aggregatePhase1Entries(entries, registry) {
   const portfolio = entries.filter((e) => e.type === "portfolio" || (!e.type && e.category));
-  const organisation = pickOrganisationEntry(entries);
+  const organisationRaw = pickOrganisationEntry(entries);
+  const organisation = organisationRaw ? ensureOrgRowIds(organisationRaw) : null;
   const skills = entries.filter((e) => e.type === "skill" || (e.skills && e.nachname));
 
   const byCategory = {};
@@ -69,19 +77,23 @@ function aggregatePhase1Entries(entries) {
   const headcountByBereich = [];
   const umsatzByBereich = [];
   const rollenByRolle = [];
+  const gliederungItems = [];
+  const rollenItems = [];
   if (organisation) {
     (organisation.gliederungen || []).forEach((g) => {
       const hc = Number(g.headcount) || 0;
       const teur = parseTeur(g.umsatz_teur) ?? 0;
       headcount += hc;
       if (g.bereich) {
-        headcountByBereich.push({ bereich: g.bereich, headcount: hc });
-        umsatzByBereich.push({ bereich: g.bereich, teur });
+        headcountByBereich.push({ id: g.id, bereich: g.bereich, headcount: hc });
+        umsatzByBereich.push({ id: g.id, bereich: g.bereich, teur });
+        gliederungItems.push({ id: g.id, subcategory: g.bereich, headcount: hc, umsatz_teur: teur });
       }
     });
     (organisation.rollen || []).forEach((r) => {
       if (!r.rolle) return;
-      rollenByRolle.push({ rolle: r.rolle, anzahl: Number(r.anzahl) || 0 });
+      rollenByRolle.push({ id: r.id, rolle: r.rolle, anzahl: Number(r.anzahl) || 0 });
+      rollenItems.push({ id: r.id, subcategory: r.rolle, anzahl: Number(r.anzahl) || 0 });
     });
     if (!headcount && rollenByRolle.length) {
       headcount = rollenByRolle.reduce((s, r) => s + r.anzahl, 0);
@@ -108,16 +120,89 @@ function aggregatePhase1Entries(entries) {
   const zertTotal = skills.length;
   const zertJa = skills.filter((e) => String(e.zertifiziert || "").toLowerCase() === "ja").length;
 
+  const portfolioItems = portfolio
+    .filter((p) => p.bezeichnung || p.id)
+    .map((p) => ({
+      id: p.id,
+      category: p.category || "sonstiges",
+      bezeichnung: String(p.bezeichnung || "").trim() || "–",
+      umsatz_teur: parseTeur(p.jahresumsatz_teur) ?? 0,
+      ampel: p.ampel || "",
+    }));
+
+  const reg = registry || { items: [] };
+  let skillItems = buildSkillItemsFromRegistry(reg, skills);
+  if (!skillItems.length) {
+    const skillItemAgg = {};
+    skills.forEach((emp) => {
+      const empKey = String(emp.personalnummer || emp.id || emp.email || "").trim();
+      (emp.skills || []).forEach((s) => {
+        const cat = s.kategorie || "Sonstiges";
+        const tech = String(s.technologie || "").trim();
+        if (!tech) return;
+        const aggKey = s.skillItemId || `${cat}\0${tech}`;
+        if (!skillItemAgg[aggKey]) {
+          skillItemAgg[aggKey] = {
+            skillItemId: s.skillItemId || null,
+            category: cat,
+            technologie: tech,
+            sum: 0,
+            count: 0,
+            employees: new Set(),
+          };
+        }
+        const lvl = Number(s.level);
+        if (Number.isFinite(lvl)) {
+          skillItemAgg[aggKey].sum += lvl;
+          skillItemAgg[aggKey].count++;
+        }
+        if (empKey) skillItemAgg[aggKey].employees.add(empKey);
+      });
+    });
+    skillItems = Object.values(skillItemAgg).map((v) => ({
+      skillItemId: v.skillItemId,
+      category: v.category,
+      technologie: v.technologie,
+      avgLevel: v.count ? Math.round((v.sum / v.count) * 10) / 10 : 0,
+      employeeCount: v.employees.size,
+      assessmentCount: v.count,
+    }));
+  }
+
+  const employees = skills
+    .filter((e) => e.id && (e.nachname || e.vorname || e.name))
+    .map((e) => {
+      const { skillCount, avgLevel } = employeeSkillSummary(e);
+      return {
+        skillEntryId: e.id,
+        personalnummer: String(e.personalnummer || "").trim() || null,
+        name: employeeDisplayName(e),
+        skillCount,
+        avgLevel,
+        zertifiziert: e.zertifiziert || "",
+      };
+    });
+
   return {
     stichtag: organisation?.stichtag || null,
     erfassungsjahr: organisation?.erfassungsjahr || null,
-    portfolio: { byCategory, totalTeur: portfolioTotalTeur, mix, count: portfolio.length },
-    organisation: { headcount, headcountByBereich, umsatzByBereich, rollenByRolle, rollenCount: organisation?.rollen?.length || 0 },
+    portfolio: { byCategory, totalTeur: portfolioTotalTeur, mix, count: portfolio.length, items: portfolioItems },
+    organisation: {
+      headcount,
+      headcountByBereich,
+      umsatzByBereich,
+      rollenByRolle,
+      rollenCount: organisation?.rollen?.length || 0,
+      gliederungItems,
+      rollenItems,
+    },
     skills: {
       employeeCount: skills.length,
       zertifiziertQuote: zertTotal ? Math.round((zertJa / zertTotal) * 1000) / 10 : null,
       zertifiziert: zertJa,
       avgSkillByCategory,
+      items: skillItems,
+      employees,
     },
   };
 }
@@ -289,6 +374,69 @@ function buildLinearIstSeries(years, istStart, sollEnd) {
   });
 }
 
+function buildLinearIstSeriesForSlotCount(slotCount, istStart, sollEnd) {
+  if (istStart == null || sollEnd == null || !slotCount) {
+    return Array(slotCount).fill(null);
+  }
+  const span = slotCount - 1 || 1;
+  return Array.from({ length: slotCount }, (_, i) => {
+    const t = i / span;
+    const value = istStart + (sollEnd - istStart) * t;
+    return Math.round(value * 10) / 10;
+  });
+}
+
+function parseP1Quarter(zielQuartal) {
+  const q = String(zielQuartal || "").trim().toUpperCase();
+  if (q === "Q1") return 1;
+  if (q === "Q2") return 2;
+  if (q === "Q3") return 3;
+  if (q === "Q4") return 4;
+  return null;
+}
+
+function buildQuarterTimelineSlots(years) {
+  const slots = [];
+  (years || []).forEach((year) => {
+    for (let quarter = 1; quarter <= 4; quarter += 1) {
+      slots.push({
+        year: Number(year),
+        quarter,
+        key: `${year}-Q${quarter}`,
+        label: `Q${quarter}`,
+      });
+    }
+  });
+  return slots;
+}
+
+function aggregateP1PortfolioSollByQuarter(planPayload, years, filterFn) {
+  const quarters = buildQuarterTimelineSlots(years);
+  const sums = quarters.map(() => 0);
+  const hasValue = quarters.map(() => false);
+  let milestoneCount = 0;
+
+  Object.values(planPayload?.measures || {}).forEach((list) => {
+    (list || []).forEach((m) => {
+      if (!m || m.kind !== "p1Year" || m.area !== "portfolio") return;
+      if (!filterFn(m)) return;
+      milestoneCount += 1;
+      const v = parseTeur(m.ziel_umsatz_teur);
+      if (v == null) return;
+      const year = Number(m.jahr);
+      let quarter = parseP1Quarter(m.ziel_quartal);
+      if (quarter == null) quarter = 4;
+      const idx = quarters.findIndex((s) => s.year === year && s.quarter === quarter);
+      if (idx < 0) return;
+      sums[idx] += v;
+      hasValue[idx] = true;
+    });
+  });
+
+  const sollByQuarter = sums.map((v, i) => (hasValue[i] ? Math.round(v * 10) / 10 : null));
+  return { quarters, sollByQuarter, milestoneCount };
+}
+
 function buildKpiTimelineSeries(years, phase1, planByYear, kpiDef) {
   const soll = years.map((y) => {
     const planYear = planByYear[y];
@@ -358,14 +506,78 @@ function buildDashboardTimeline(entries, planPayload, years = DEFAULT_TIMELINE_Y
   };
 }
 
+function p1EntityIdFromPlanEntry(entry) {
+  if (!entry) return null;
+  if (entry.entityRef && entry.entityRef.id) return String(entry.entityRef.id);
+  if (entry.area === "portfolio" && entry.phase1Id) return String(entry.phase1Id);
+  if (entry.itemId) return String(entry.itemId);
+  if (entry.skillItemId) return String(entry.skillItemId);
+  if (entry.skillEntryId) return String(entry.skillEntryId);
+  if (entry.orgItemId) return String(entry.orgItemId);
+  return null;
+}
+
+function p1PlanEntryKey(m) {
+  if (!m || !m.area) return "";
+  const entityId = p1EntityIdFromPlanEntry(m);
+  if (entityId) return `${m.area}||${entityId}`;
+  if (m.area === "portfolio" && m.phase1Id) return `${m.area}||${m.phase1Id}`;
+  if (m.area === "portfolio") {
+    return `${m.area}||${m.category || ""}||${m.subcategory || ""}`;
+  }
+  return `${m.area}||${m.subcategory || ""}`;
+}
+
+function collectPortfolioMilestonesAllYears(planPayload, item) {
+  const targetKey = p1PlanEntryKey({
+    area: "portfolio",
+    category: item.category,
+    subcategory: item.subcategory,
+    entityRef: item.entityRef,
+    phase1Id: item.phase1Id,
+    itemId: item.itemId,
+  });
+  const milestones = [];
+  Object.values(planPayload?.measures || {}).forEach((list) => {
+    (list || []).forEach((m) => {
+      if (m && m.kind === "p1Year" && m.area === "portfolio" && p1PlanEntryKey(m) === targetKey) {
+        milestones.push(m);
+      }
+    });
+  });
+  return milestones;
+}
+
+function enrichPortfolioAllYearMilestones(planPayload, comparison) {
+  if (!comparison || !planPayload) return comparison;
+  comparison.portfolio = (comparison.portfolio || []).map((item) => ({
+    ...item,
+    allYearMilestones: collectPortfolioMilestonesAllYears(planPayload, item),
+  }));
+  return comparison;
+}
+
 function aggregateP1PlanForYear(planPayload, year) {
   const measures = planPayload?.measures || {};
   const byAreaSub = {};
   Object.values(measures).forEach((list) => {
     (list || []).forEach((m) => {
       if (m && m.kind === "p1Year" && Number(m.jahr) === Number(year)) {
-        const key = m.area + "||" + m.subcategory;
-        if (!byAreaSub[key]) byAreaSub[key] = { area: m.area, subcategory: m.subcategory, milestones: [] };
+        const key = p1PlanEntryKey(m);
+        if (!byAreaSub[key]) {
+          byAreaSub[key] = {
+            area: m.area,
+            category: m.category || null,
+            subcategory: m.subcategory,
+            entityRef: m.entityRef || null,
+            phase1Id: m.phase1Id || null,
+            itemId: m.itemId || null,
+            skillItemId: m.skillItemId || null,
+            skillEntryId: m.skillEntryId || null,
+            orgItemId: m.orgItemId || null,
+            milestones: [],
+          };
+        }
         byAreaSub[key].milestones.push(m);
       }
     });
@@ -373,16 +585,123 @@ function aggregateP1PlanForYear(planPayload, year) {
   return byAreaSub;
 }
 
+function resolvePortfolioLabel(phase1, entry) {
+  const items = phase1.portfolio?.items || [];
+  const id = entry.phase1Id || (entry.entityRef?.kind === "portfolio" ? entry.entityRef.id : null);
+  if (id) {
+    const row = items.find((p) => p.id === id);
+    if (row) return row.bezeichnung;
+  }
+  return entry.subcategory || "–";
+}
+
+function resolveSkillLabel(phase1, entry) {
+  const items = phase1.skills?.items || [];
+  const skillItemId = entry.skillItemId || (entry.entityRef?.kind === "skillItem" ? entry.entityRef.id : null);
+  if (skillItemId) {
+    const row = items.find((s) => s.skillItemId === skillItemId);
+    if (row) return row.technologie;
+  }
+  return entry.subcategory || "–";
+}
+
+function resolveOrgLabel(phase1, entry, kind) {
+  const orgItemId = entry.orgItemId || (entry.entityRef?.id) || null;
+  const items = kind === "gliederungen"
+    ? phase1.organisation?.gliederungItems || []
+    : phase1.organisation?.rollenItems || [];
+  if (orgItemId) {
+    const row = items.find((i) => i.id === orgItemId);
+    if (row) return row.subcategory;
+  }
+  return entry.subcategory || "–";
+}
+
+function findPortfolioIstTeur(phase1, entry) {
+  const items = phase1.portfolio?.items || [];
+  const entityId = p1EntityIdFromPlanEntry(entry);
+  if (entityId) {
+    const byId = items.find((p) => p.id === entityId);
+    if (byId) return byId.umsatz_teur ?? 0;
+  }
+  if (entry.category) {
+    const byName = items.find(
+      (p) => p.category === entry.category && p.bezeichnung === entry.subcategory
+    );
+    if (byName) return byName.umsatz_teur ?? 0;
+  }
+  if (entry.subcategory && phase1.portfolio?.byCategory) {
+    return phase1.portfolio.byCategory[entry.subcategory] ?? 0;
+  }
+  return 0;
+}
+
+function findSkillIst(phase1, entry) {
+  const items = phase1.skills?.items || [];
+  const skillItemId = entry.skillItemId || (entry.entityRef?.kind === "skillItem" ? entry.entityRef.id : null);
+  if (skillItemId) {
+    const row = items.find((s) => s.skillItemId === skillItemId);
+    if (row) return { istAvg: row.avgLevel ?? null, employeeCount: row.employeeCount ?? 0 };
+  }
+  if (entry.category && entry.subcategory) {
+    const row = items.find(
+      (s) => s.category === entry.category && s.technologie === entry.subcategory
+    );
+    if (row) return { istAvg: row.avgLevel ?? null, employeeCount: row.employeeCount ?? 0 };
+  }
+  const catRow = phase1.skills?.avgSkillByCategory?.find((s) => s.category === entry.subcategory);
+  return { istAvg: catRow?.avgLevel ?? null, employeeCount: catRow?.count ?? 0 };
+}
+
+function findEmployeeIst(phase1, entry) {
+  const employees = phase1.skills?.employees || [];
+  const skillEntryId = entry.skillEntryId || (entry.entityRef?.kind === "employee" ? entry.entityRef.id : null);
+  if (skillEntryId) {
+    const row = employees.find((e) => e.skillEntryId === skillEntryId);
+    if (row) {
+      return {
+        istAvg: row.avgLevel ?? null,
+        skillCount: row.skillCount ?? 0,
+        zertifiziert: row.zertifiziert || "",
+        name: row.name || entry.subcategory,
+      };
+    }
+  }
+  return { istAvg: null, skillCount: 0, zertifiziert: "", name: entry.subcategory || "–" };
+}
+
+function findGliederungIst(phase1, entry) {
+  const label = resolveOrgLabel(phase1, entry, "gliederungen");
+  const orgItemId = entry.orgItemId || entry.entityRef?.id;
+  const hcRows = phase1.organisation?.headcountByBereich || [];
+  const teurRows = phase1.organisation?.umsatzByBereich || [];
+  let hcRow = orgItemId ? hcRows.find((b) => b.id === orgItemId) : null;
+  let teurRow = orgItemId ? teurRows.find((b) => b.id === orgItemId) : null;
+  if (!hcRow) hcRow = hcRows.find((b) => b.bereich === label || b.bereich === entry.subcategory);
+  if (!teurRow) teurRow = teurRows.find((b) => b.bereich === label || b.bereich === entry.subcategory);
+  return { istHc: hcRow?.headcount ?? 0, istTeur: teurRow?.teur ?? 0, label };
+}
+
+function findRolleIst(phase1, entry) {
+  const label = resolveOrgLabel(phase1, entry, "rollen");
+  const orgItemId = entry.orgItemId || entry.entityRef?.id;
+  const rows = phase1.organisation?.rollenByRolle || [];
+  let rolleRow = orgItemId ? rows.find((r) => r.id === orgItemId) : null;
+  if (!rolleRow) rolleRow = rows.find((r) => r.rolle === label || r.rolle === entry.subcategory);
+  return { istAnzahl: rolleRow?.anzahl ?? 0, label };
+}
+
 function buildP1Comparison(phase1, p1Plan) {
   const portfolio = [];
   const gliederungen = [];
   const rollen = [];
-  const skills = [];
+  const mitarbeiter = [];
 
   Object.values(p1Plan).forEach((entry) => {
-    const { area, subcategory, milestones } = entry;
+    const { area, category, subcategory, milestones } = entry;
     if (area === "portfolio") {
-      const istTeur = phase1.portfolio.byCategory[subcategory] ?? 0;
+      const label = resolvePortfolioLabel(phase1, entry);
+      const istTeur = findPortfolioIstTeur(phase1, entry);
       let sollTeur = 0;
       let hasSoll = false;
       milestones.forEach((m) => {
@@ -393,8 +712,13 @@ function buildP1Comparison(phase1, p1Plan) {
       const delta = hasSoll ? istTeur - sollTeur : null;
       const deltaPct = hasSoll && sollTeur > 0 ? (delta / sollTeur) * 100 : null;
       portfolio.push({
+        category,
         subcategory,
-        label: PORTFOLIO_CATEGORY_LABELS[subcategory] || subcategory,
+        label,
+        categoryLabel: category ? (PORTFOLIO_CATEGORY_LABELS[category] || category) : null,
+        entityRef: entry.entityRef || null,
+        phase1Id: entry.phase1Id || null,
+        itemId: entry.itemId || null,
         istTeur, sollTeur: hasSoll ? sollTeur : null,
         delta: delta != null ? Math.round(delta * 10) / 10 : null,
         deltaPct: deltaPct != null ? Math.round(deltaPct * 10) / 10 : null,
@@ -402,10 +726,7 @@ function buildP1Comparison(phase1, p1Plan) {
         milestones,
       });
     } else if (area === "gliederungen") {
-      const hcRow = phase1.organisation.headcountByBereich.find((b) => b.bereich === subcategory);
-      const teurRow = phase1.organisation.umsatzByBereich.find((b) => b.bereich === subcategory);
-      const istHc = hcRow?.headcount ?? 0;
-      const istTeur = teurRow?.teur ?? 0;
+      const { istHc, istTeur, label } = findGliederungIst(phase1, entry);
       let sollHc = 0, sollTeur = 0, hasHc = false, hasTeur = false;
       milestones.forEach((m) => {
         const hc = parseTeur(m.ziel_headcount);
@@ -419,14 +740,15 @@ function buildP1Comparison(phase1, p1Plan) {
       const worstPct = worst.length ? Math.min(...worst) : null;
       gliederungen.push({
         subcategory,
+        label,
+        entityRef: entry.entityRef || null,
         istHc, sollHc: hasHc ? sollHc : null,
         istTeur, sollTeur: hasTeur ? sollTeur : null,
         status: statusFromDelta(worstPct, true),
         milestones,
       });
     } else if (area === "rollen") {
-      const rolleRow = phase1.organisation.rollenByRolle.find((r) => r.rolle === subcategory);
-      const istAnzahl = rolleRow?.anzahl ?? 0;
+      const { istAnzahl, label } = findRolleIst(phase1, entry);
       let sollAnzahl = 0, hasSoll = false;
       milestones.forEach((m) => {
         const v = parseTeur(m.ziel_anzahl);
@@ -436,45 +758,131 @@ function buildP1Comparison(phase1, p1Plan) {
       const deltaPct = hasSoll && sollAnzahl > 0 ? ((istAnzahl - sollAnzahl) / sollAnzahl) * 100 : null;
       rollen.push({
         subcategory,
+        label,
+        entityRef: entry.entityRef || null,
         istAnzahl, sollAnzahl: hasSoll ? sollAnzahl : null,
         status: hasSoll ? statusFromDelta(deltaPct, true) : "neutral",
         milestones,
       });
-    } else if (area === "skills") {
-      const row = phase1.skills.avgSkillByCategory.find((s) => s.category === subcategory);
-      const istAvg = row?.avgLevel ?? null;
-      let sollMin = null, sollAnteil = null;
+    } else if (area === "mitarbeiter") {
+      const ist = findEmployeeIst(phase1, entry);
+      let sollMin = null;
       milestones.forEach((m) => {
         if (m.ziel_skill_level_min != null) {
           const v = Number(m.ziel_skill_level_min);
           if (Number.isFinite(v)) sollMin = sollMin == null ? v : Math.max(sollMin, v);
         }
-        if (m.ziel_anteil_prozent != null) {
-          const v = Number(m.ziel_anteil_prozent);
-          if (Number.isFinite(v)) sollAnteil = sollAnteil == null ? v : Math.max(sollAnteil, v);
-        }
       });
-      const gap = istAvg != null && sollMin != null ? istAvg - sollMin : null;
-      skills.push({
+      const gap = ist.istAvg != null && sollMin != null ? ist.istAvg - sollMin : null;
+      mitarbeiter.push({
         subcategory,
-        istAvg, sollMin, sollAnteil, gap,
+        label: ist.name || subcategory,
+        entityRef: entry.entityRef || null,
+        istAvg: ist.istAvg,
+        skillCount: ist.skillCount,
+        zertifiziert: ist.zertifiziert,
+        sollMin,
+        gap,
         status: gap == null ? "neutral" : gap >= 0 ? "ok" : gap >= -0.5 ? "warn" : "risk",
         milestones,
       });
     }
   });
 
-  const all = [...portfolio, ...gliederungen, ...rollen, ...skills];
-  const summary = { totalComparisons: all.length, milestoneCount: countP1Milestones({ portfolio, gliederungen, rollen, skills }), ok: 0, warn: 0, risk: 0, neutral: 0 };
+  const all = [...portfolio, ...gliederungen, ...rollen, ...mitarbeiter];
+  const summary = {
+    totalComparisons: all.length,
+    milestoneCount: countP1Milestones({ portfolio, gliederungen, rollen, mitarbeiter }),
+    ok: 0, warn: 0, risk: 0, neutral: 0,
+  };
   all.forEach((item) => { summary[item.status] = (summary[item.status] || 0) + 1; });
 
-  return { portfolio, gliederungen, rollen, skills, summary };
+  return { portfolio, gliederungen, rollen, mitarbeiter, summary };
 }
 
-function buildP1DashboardSnapshot(entries, planPayload, year) {
-  const phase1 = aggregatePhase1Entries(entries);
+function aggregateP1PortfolioCategorySollForYear(planPayload, year, categoryKey) {
+  const measures = planPayload?.measures || {};
+  let sum = 0;
+  let has = false;
+  let milestoneCount = 0;
+  Object.values(measures).forEach((list) => {
+    (list || []).forEach((m) => {
+      if (!m || m.kind !== "p1Year" || Number(m.jahr) !== Number(year)) return;
+      if (m.area !== "portfolio") return;
+      if ((m.category || "") !== categoryKey) return;
+      milestoneCount += 1;
+      const v = parseTeur(m.ziel_umsatz_teur);
+      if (v != null) {
+        sum += v;
+        has = true;
+      }
+    });
+  });
+  return { soll: has ? sum : null, milestoneCount };
+}
+
+function buildP1PortfolioCategoryTimelines(planPayload, phase1, years = DEFAULT_TIMELINE_YEARS) {
+  const timelines = {};
+  Object.keys(PORTFOLIO_CATEGORY_LABELS).forEach((categoryKey) => {
+    const yearly = years.map((y) => aggregateP1PortfolioCategorySollForYear(planPayload, y, categoryKey));
+    const soll = yearly.map((row) => row.soll);
+    const quarterAgg = aggregateP1PortfolioSollByQuarter(
+      planPayload,
+      years,
+      (m) => (m.category || "") === categoryKey
+    );
+    const milestoneCount = quarterAgg.milestoneCount;
+    const istStart = phase1.portfolio?.byCategory?.[categoryKey] ?? 0;
+    let lastSoll = null;
+    for (let i = quarterAgg.sollByQuarter.length - 1; i >= 0; i -= 1) {
+      if (quarterAgg.sollByQuarter[i] != null) {
+        lastSoll = quarterAgg.sollByQuarter[i];
+        break;
+      }
+    }
+    if (lastSoll == null) {
+      for (let i = soll.length - 1; i >= 0; i -= 1) {
+        if (soll[i] != null) {
+          lastSoll = soll[i];
+          break;
+        }
+      }
+    }
+    const hasQuarterSoll = quarterAgg.sollByQuarter.some((v) => v != null);
+    const hasSoll = soll.some((v) => v != null) || hasQuarterSoll;
+    const ist = hasSoll && istStart != null && lastSoll != null
+      ? buildLinearIstSeries(years, istStart, lastSoll)
+      : years.map(() => null);
+    const istByQuarter = hasSoll && istStart != null && lastSoll != null
+      ? buildLinearIstSeriesForSlotCount(quarterAgg.quarters.length, istStart, lastSoll)
+      : quarterAgg.quarters.map(() => null);
+    timelines[categoryKey] = {
+      key: categoryKey,
+      label: PORTFOLIO_CATEGORY_LABELS[categoryKey] || categoryKey,
+      years: [...years],
+      soll,
+      ist,
+      istStart,
+      milestoneCount,
+      hasData: milestoneCount > 0 || hasQuarterSoll,
+      quarters: quarterAgg.quarters,
+      sollByQuarter: quarterAgg.sollByQuarter,
+      istByQuarter,
+      unit: "TEUR",
+      yAxisLabel: "Umsatz (TEUR)",
+      xAxisLabel: "Zeit",
+    };
+  });
+  return timelines;
+}
+
+function buildP1DashboardSnapshot(entries, planPayload, year, registry, timelineYears = DEFAULT_TIMELINE_YEARS) {
+  const phase1 = aggregatePhase1Entries(entries, registry);
   const p1Plan = aggregateP1PlanForYear(planPayload, year);
-  const comparison = buildP1Comparison(phase1, p1Plan);
+  const comparison = enrichPortfolioAllYearMilestones(
+    planPayload,
+    buildP1Comparison(phase1, p1Plan)
+  );
   const p1Ist = {
     portfolio: Object.entries(phase1.portfolio.byCategory).map(([cat, teur]) => ({
       subcategory: cat,
@@ -494,11 +902,13 @@ function buildP1DashboardSnapshot(entries, planPayload, year) {
   };
   return {
     year: Number(year),
+    years: [...timelineYears],
     phase1,
     p1Ist,
     p1Plan: comparison,
     summary: comparison.summary,
     planMeta: planPayload?.meta || null,
+    portfolioCategoryTimelines: buildP1PortfolioCategoryTimelines(planPayload, phase1, timelineYears),
   };
 }
 
@@ -519,7 +929,7 @@ function mergeP1Summaries(byYear) {
 
 function countP1Milestones(comparison) {
   let count = 0;
-  ["portfolio", "gliederungen", "rollen", "skills"].forEach((key) => {
+  ["portfolio", "gliederungen", "rollen", "mitarbeiter"].forEach((key) => {
     (comparison[key] || []).forEach((item) => {
       count += (item.milestones || []).length;
     });
@@ -527,8 +937,8 @@ function countP1Milestones(comparison) {
   return count;
 }
 
-function buildP1DashboardSnapshotAllYears(entries, planPayload, years) {
-  const phase1 = aggregatePhase1Entries(entries);
+function buildP1DashboardSnapshotAllYears(entries, planPayload, years, registry) {
+  const phase1 = aggregatePhase1Entries(entries, registry);
   const p1Ist = {
     portfolio: Object.entries(phase1.portfolio.byCategory).map(([cat, teur]) => ({
       subcategory: cat,
@@ -548,7 +958,10 @@ function buildP1DashboardSnapshotAllYears(entries, planPayload, years) {
   };
   const byYear = years.map((year) => {
     const p1Plan = aggregateP1PlanForYear(planPayload, year);
-    const comparison = buildP1Comparison(phase1, p1Plan);
+    const comparison = enrichPortfolioAllYearMilestones(
+      planPayload,
+      buildP1Comparison(phase1, p1Plan)
+    );
     return { year: Number(year), p1Plan: comparison, summary: comparison.summary };
   });
   return {
@@ -559,6 +972,7 @@ function buildP1DashboardSnapshotAllYears(entries, planPayload, years) {
     byYear,
     summary: mergeP1Summaries(byYear),
     planMeta: planPayload?.meta || null,
+    portfolioCategoryTimelines: buildP1PortfolioCategoryTimelines(planPayload, phase1, years),
   };
 }
 
@@ -592,8 +1006,8 @@ function aggregateP1PlanKpisForYear(planPayload, year) {
   };
 }
 
-function buildP1DashboardTimeline(entries, planPayload, years = DEFAULT_TIMELINE_YEARS) {
-  const phase1 = aggregatePhase1Entries(entries);
+function buildP1DashboardTimeline(entries, planPayload, years = DEFAULT_TIMELINE_YEARS, registry) {
+  const phase1 = aggregatePhase1Entries(entries, registry);
   const planByYear = {};
   years.forEach((y) => {
     planByYear[y] = aggregateP1PlanKpisForYear(planPayload, y);
@@ -649,6 +1063,7 @@ module.exports = {
   aggregateP1PlanForYear,
   buildP1DashboardSnapshot,
   buildP1DashboardSnapshotAllYears,
+  buildP1PortfolioCategoryTimelines,
   countAllPlanMilestones,
   buildDemoEvaluationSummary,
   DEFAULT_TIMELINE_YEARS,

@@ -1649,7 +1649,7 @@ function getActiveAppPage() {
 }
 
 const PHASE1_TAB_PAGES = ["portfolio", "organisation", "skills", "overview", "export"];
-const PHASE3_TAB_PAGES = ["gesamtfortschritt", "gesamtfortschritt-new", "fortschritt", "fortschritt-new", "fortschritt-erlaeuterung"];
+const PHASE3_TAB_PAGES = ["fortschritt-new", "gesamtfortschritt", "gesamtfortschritt-new", "fortschritt", "fortschritt-erlaeuterung"];
 const ADMIN_SUBTAB_MODES = ["users", "skills", "roles", "leitplanken", "permissions", "org", "demo", "settings"];
 
 function resolvePresenceContext() {
@@ -2994,8 +2994,8 @@ function bindAppModuleNavClicks() {
     if (!appMain || appMain.style.display === "none") return;
     if (isMitarbeiter || !canAccessPhase3Area()) return;
     e.preventDefault();
-    switchTab("gesamtfortschritt");
-    renderGesamtfortschrittDashboard();
+    switchTab("fortschritt-new");
+    if (typeof initFortschrittNew === "function") initFortschrittNew();
   });
   document.getElementById("launcherPhase1")?.addEventListener("click", (e) => {
     const appMain = document.getElementById("appMain");
@@ -3116,6 +3116,8 @@ function portfolioDomForCategory(category) {
       cancelBtn: "btnPfProdCancel",
       list: "pf_prod_list",
       empty: "pf_prod_empty",
+      tblWrap: "pf_prod_tbl_wrap",
+      formWrap: "pf_prod_form_wrap",
     };
   }
   if (category === "services") {
@@ -3131,6 +3133,8 @@ function portfolioDomForCategory(category) {
       cancelBtn: "btnPfSrvCancel",
       list: "pf_srv_list",
       empty: "pf_srv_empty",
+      tblWrap: "pf_srv_tbl_wrap",
+      formWrap: "pf_srv_form_wrap",
     };
   }
   if (category === "loesungen") {
@@ -3146,6 +3150,8 @@ function portfolioDomForCategory(category) {
       cancelBtn: "btnPfSolCancel",
       list: "pf_sol_list",
       empty: "pf_sol_empty",
+      tblWrap: "pf_sol_tbl_wrap",
+      formWrap: "pf_sol_form_wrap",
     };
   }
   if (category === "partnergeschaeft") {
@@ -3161,6 +3167,8 @@ function portfolioDomForCategory(category) {
       cancelBtn: "btnPfPgsCancel",
       list: "pf_pgs_list",
       empty: "pf_pgs_empty",
+      tblWrap: "pf_pgs_tbl_wrap",
+      formWrap: "pf_pgs_form_wrap",
     };
   }
   return {
@@ -3175,6 +3183,8 @@ function portfolioDomForCategory(category) {
     cancelBtn: "btnPfPjgCancel",
     list: "pf_pjg_list",
     empty: "pf_pjg_empty",
+    tblWrap: "pf_pjg_tbl_wrap",
+    formWrap: "pf_pjg_form_wrap",
   };
 }
 
@@ -3185,6 +3195,30 @@ const PORTFOLIO_CATEGORY_LABELS = {
   partnergeschaeft: "Partnergeschäft",
   projektgeschaeft: "Projektgeschäft",
 };
+
+const PORTFOLIO_CATEGORY_DEFINITIONS = {
+  produkte:
+    "Standardisierte, skalierbare Angebote und IP (z. B. Software, Plattformen, Acceleratoren), die mehrfach und unabhängig von Einzelprojekten verkauft werden können.",
+  services:
+    "Wiederkehrende oder laufende Dienstleistungen mit planbarem Umsatz (z. B. AMS, Managed Services, Support, Betrieb).",
+  loesungen:
+    "Branchen- oder use-case-spezifische Gesamtpakete aus Produkten, Services und Methodik – als durchgängiges Angebot für einen konkreten Kundenbedarf.",
+  partnergeschaeft:
+    "Umsätze aus Kooperationen mit Partnern (z. B. Reselling, Joint Go-to-Market, gemeinsame Angebote oder Partnerprojekte).",
+  projektgeschaeft:
+    "Einmalige, zeitlich befristete Projektleistungen und Implementierungen (z. B. Rollouts, Migrationen, Beratungsprojekte).",
+};
+
+function initPortfolioCategoryDefinitions() {
+  document.querySelectorAll("[data-portfolio-def]").forEach((el) => {
+    const key = el.getAttribute("data-portfolio-def");
+    const text = PORTFOLIO_CATEGORY_DEFINITIONS[key];
+    if (text) {
+      el.textContent = text;
+      el.hidden = false;
+    }
+  });
+}
 
 function portfolioModalDom() {
   return {
@@ -3259,6 +3293,12 @@ function openPortfolioEditModal(entry) {
   const form = document.getElementById("portfolioEditForm");
   if (!overlay || !form) return;
   if (categoryEl) categoryEl.value = category;
+  const defEl = document.getElementById("portfolioEdit_categoryDef");
+  if (defEl) {
+    const defText = PORTFOLIO_CATEGORY_DEFINITIONS[category] || "";
+    defEl.textContent = defText;
+    defEl.hidden = !defText;
+  }
   if (titleEl) {
     const label = PORTFOLIO_CATEGORY_LABELS[category] || "Eintrag";
     titleEl.textContent = `${label} bearbeiten`;
@@ -3308,10 +3348,23 @@ async function onSubmitPortfolioModal(event) {
   notifyFormSaveSuccess(form, "Portfolio gespeichert!");
 }
 
+function syncPortfolioCategoryLayout(category, itemCount) {
+  const dom = portfolioDomForCategory(category);
+  const hasItems = itemCount > 0;
+  const emptyEl = document.getElementById(dom.empty);
+  const tblWrap = document.getElementById(dom.tblWrap);
+  const formWrap = document.getElementById(dom.formWrap);
+  if (emptyEl) emptyEl.style.display = hasItems ? "none" : "block";
+  if (tblWrap) tblWrap.style.display = hasItems ? "" : "none";
+  if (formWrap) {
+    if (hasItems) formWrap.removeAttribute("open");
+    else formWrap.setAttribute("open", "");
+  }
+}
+
 function renderPortfolioCategory(category) {
   const dom = portfolioDomForCategory(category);
   const listEl = document.getElementById(dom.list);
-  const emptyEl = document.getElementById(dom.empty);
   if (!listEl) return;
 
   const items = load("portfolio")
@@ -3321,7 +3374,7 @@ function renderPortfolioCategory(category) {
       String(a.bezeichnung || "").localeCompare(String(b.bezeichnung || ""), "de")
     );
 
-  if (emptyEl) emptyEl.style.display = items.length ? "none" : "block";
+  syncPortfolioCategoryLayout(category, items.length);
 
   listEl.innerHTML = items
     .map((e) => {
@@ -3627,6 +3680,7 @@ function addOrgGliederungRow(data) {
   row.className = "skill-assessment-row org-gliederung-row";
   row.innerHTML = `
     ${orgRowRemoveButtonHtml("Bereich entfernen")}
+    <input type="hidden" class="org-gli-id" value="${escAttr(d.id || (typeof crypto !== "undefined" && crypto.randomUUID ? crypto.randomUUID() : ""))}">
     <div class="org-gli-header">
       <button type="button" class="org-gli-toggle" aria-expanded="true" aria-label="Bereich auf- oder zuklappen">
         <svg class="org-gli-chevron" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
@@ -3730,6 +3784,7 @@ function addOrgRolleRow(data) {
   row.className = "skill-assessment-row org-rolle-row";
   row.innerHTML = `
     ${orgRowRemoveButtonHtml("Rolle entfernen")}
+    <input type="hidden" class="org-rol-id" value="${escAttr(d.id || (typeof crypto !== "undefined" && crypto.randomUUID ? crypto.randomUUID() : ""))}">
     <div class="org-rol-header">
       <button type="button" class="org-rol-toggle" aria-expanded="true" aria-label="Rolle auf- oder zuklappen">
         <svg class="org-rol-chevron" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
@@ -3796,8 +3851,11 @@ function getOrganisationFormData() {
       const umsatzText = r.querySelector(".org-gli-umsatz")?.value.trim() || "";
       const umsatzTeur = readTeurInputValue(r.querySelector(".org-gli-umsatz-teur"));
       if (!bereich && !beschreibung && hcRaw === "" && umsatzTeur == null && !umsatzText) return;
+      const rowId = r.querySelector(".org-gli-id")?.value?.trim()
+        || (typeof crypto !== "undefined" && crypto.randomUUID ? crypto.randomUUID() : "");
       gliederungen.push(
         enrichOrgGliederungUmsatz({
+          id: rowId,
           bereich,
           beschreibung,
           headcount: hcRaw === "" ? null : parseInt(hcRaw, 10),
@@ -3813,7 +3871,10 @@ function getOrganisationFormData() {
     const anzahlRaw = r.querySelector(".org-rol-anzahl")?.value;
     const bemerkung = r.querySelector(".org-rol-bemerkung")?.value.trim() || "";
     if (!rolle && anzahlRaw === "" && !bemerkung) return;
+    const rowId = r.querySelector(".org-rol-id")?.value?.trim()
+      || (typeof crypto !== "undefined" && crypto.randomUUID ? crypto.randomUUID() : "");
     rollen.push({
+      id: rowId,
       rolle,
       anzahl: anzahlRaw === "" ? null : parseInt(anzahlRaw, 10),
       bemerkung,
@@ -4346,6 +4407,8 @@ function getSkillAssessmentData() {
     const data = readTechSkillPayloadFromRow(r);
     if (isTechSkillPayloadEmpty(data)) return;
     result.push({
+      id: data.id || (typeof crypto !== "undefined" && crypto.randomUUID ? crypto.randomUUID() : undefined),
+      skillItemId: data.skillItemId || undefined,
       kategorie: data.kategorie,
       kategorie_id: data.kategorie_id ?? null,
       technologie: data.technologie || "",
@@ -4940,10 +5003,15 @@ async function deleteEntry(type, id, opts = {}) {
     document.getElementById("skillSaveSuccess").style.display = "none";
     updateSkillDeleteButton();
   }
+  if (type === "portfolio" && String(document.getElementById("portfolioEdit_editId")?.value) === String(id)) {
+    closePortfolioEditModal();
+  }
   await refreshEntries();
+  if (type === "portfolio") renderPortfolio();
   if (type === "organisation") renderOrganisation();
   renderSkillEmployeeNav();
   renderOverview();
+  renderExportStats();
   toast("Gelöscht.", "#e74c3c");
 }
 
@@ -7693,6 +7761,7 @@ document.getElementById("btnPfSrvCancel")?.addEventListener("click", () => cance
 document.getElementById("btnPfSolCancel")?.addEventListener("click", () => cancelPortfolioEdit("loesungen"));
 document.getElementById("btnPfPgsCancel")?.addEventListener("click", () => cancelPortfolioEdit("partnergeschaeft"));
 document.getElementById("btnPfPjgCancel")?.addEventListener("click", () => cancelPortfolioEdit("projektgeschaeft"));
+initPortfolioCategoryDefinitions();
 
 document.getElementById("organisationForm")?.addEventListener("submit", onSubmitOrganisation);
 document.getElementById("org_hat_gliederung")?.addEventListener("change", () => {

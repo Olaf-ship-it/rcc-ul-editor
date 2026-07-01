@@ -26,6 +26,19 @@ const {
   listOnlineUsers,
   removePresence,
 } = require("./server/presence-service");
+const {
+  SKILL_REGISTRY_TYPE,
+  ensureOrgRowIds,
+  enrichSkillEntryWithRegistry,
+  backfillOrganisationEntryIds,
+  backfillAllSkillRegistries,
+  backfillSkillRegistryForUnit,
+  fetchSkillRegistryEntry,
+  buildSkillItemsFromRegistry,
+  employeeDisplayName,
+  employeeSkillSummary,
+  employeeSkillRows,
+} = require("./server/entity-ids");
 const { execSync } = require("child_process");
 
 const SERVER_STARTED_AT = new Date().toISOString();
@@ -1033,6 +1046,8 @@ async function ensureEntriesSchema() {
 }
 
 const ENTRY_TYPES = ["skill", "portfolio", "organisation"];
+const INTERNAL_ENTRY_TYPES = [SKILL_REGISTRY_TYPE];
+const ALL_ENTRY_TYPES = [...ENTRY_TYPES, ...INTERNAL_ENTRY_TYPES];
 const LEGACY_ENTRY_TYPES = ["status", "team"];
 
 async function purgeLegacyEntryTypes() {
@@ -1046,7 +1061,7 @@ async function purgeLegacyEntryTypes() {
 }
 
 async function ensureEntriesTypeConstraint() {
-  const allowed = ENTRY_TYPES.map((t) => `'${t}'`).join(", ");
+  const allowed = ALL_ENTRY_TYPES.map((t) => `'${t}'`).join(", ");
   await pool.query(`
     ALTER TABLE entries
     DROP CONSTRAINT IF EXISTS entries_type_check
@@ -1106,21 +1121,109 @@ function resolveDashboardUnit(req, requestedUnit) {
 }
 
 async function fetchEntriesForUnit(unit) {
+  const trimmed = String(unit || "").trim();
+  if (!trimmed) return [];
   const result = await pool.query(
     `SELECT id, type, unit, payload, is_demo, updated_at
      FROM entries
-     WHERE unit = $1 AND type = ANY($2::text[])
+     WHERE type = ANY($2::text[])
+       AND (
+         unit = $1
+         OR (
+           type = 'skill'
+           AND TRIM(COALESCE(payload->>'unit', '')) = $1
+         )
+         OR (
+           type = 'skill'
+           AND id IN (
+             SELECT skill_entry_id
+             FROM users
+             WHERE skill_entry_id IS NOT NULL
+               AND $1 = ANY(COALESCE(units, ARRAY[]::text[]))
+           )
+         )
+       )
      ORDER BY updated_at DESC`,
-    [unit, ENTRY_TYPES]
+    [trimmed, ENTRY_TYPES]
   );
-  return result.rows.map((row) => ({
-    ...(row.payload || {}),
+  return result.rows.map(mapEntryRow);
+}
+
+function mapEntryRow(row) {
+  const payload = row.payload && typeof row.payload === "object" ? row.payload : {};
+  const payloadUnit = String(payload.unit || "").trim();
+  return {
+    ...payload,
     id: row.id,
     type: row.type,
-    unit: row.unit,
+    unit: String(row.unit || "").trim() || payloadUnit,
     is_demo: row.is_demo,
     updatedAt: row.updated_at,
-  }));
+  };
+}
+
+async function loadSkillEntryUnitMaps() {
+  const usersResult = await pool.query(
+    `SELECT LOWER(TRIM(email)) AS email, skill_entry_id, units, personalnummer
+     FROM users`
+  );
+  const bySkillId = new Map();
+  const byEmail = new Map();
+  const byPersonalnummer = new Map();
+  usersResult.rows.forEach((row) => {
+    const units = normalizeUnits(row.units);
+    if (row.skill_entry_id) bySkillId.set(String(row.skill_entry_id), units);
+    if (row.email) byEmail.set(row.email, units);
+    const pn = String(row.personalnummer || "").trim();
+    if (pn) byPersonalnummer.set(pn, units);
+  });
+  return { bySkillId, byEmail, byPersonalnummer };
+}
+
+function skillEntryBelongsToUnit(entry, unit, unitMaps) {
+  const trimmed = String(unit || "").trim();
+  if (!trimmed || !entry) return false;
+  const entryUnit = String(entry.unit || "").trim();
+  if (entryUnit === trimmed) return true;
+  const linked = unitMaps.bySkillId.get(String(entry.id));
+  if (linked && linked.includes(trimmed)) return true;
+  const email = String(entry.email || "").trim().toLowerCase();
+  if (email) {
+    const emailUnits = unitMaps.byEmail.get(email);
+    if (emailUnits && emailUnits.includes(trimmed)) return true;
+  }
+  const pn = String(entry.personalnummer || "").trim();
+  if (pn) {
+    const pnUnits = unitMaps.byPersonalnummer.get(pn);
+    if (pnUnits && pnUnits.includes(trimmed)) return true;
+  }
+  return false;
+}
+
+async function fetchSkillEntriesForUnitScope(unit) {
+  const trimmed = String(unit || "").trim();
+  if (!trimmed) return [];
+  const unitMaps = await loadSkillEntryUnitMaps();
+  const result = await pool.query(
+    `SELECT id, type, unit, payload, is_demo, updated_at
+     FROM entries
+     WHERE type = 'skill'
+     ORDER BY updated_at DESC`
+  );
+  return result.rows.map(mapEntryRow).filter((entry) => skillEntryBelongsToUnit(entry, trimmed, unitMaps));
+}
+
+async function fetchPhase1EntriesForUnit(unit) {
+  const base = await fetchEntriesForUnit(unit);
+  const skills = await fetchSkillEntriesForUnitScope(unit);
+  const byId = new Map();
+  base.filter((e) => e.type !== "skill").forEach((e) => {
+    if (e?.id) byId.set(e.id, e);
+  });
+  skills.forEach((e) => {
+    if (e?.id) byId.set(e.id, e);
+  });
+  return [...byId.values()];
 }
 
 function backcastingPlanHasMeasures(payload) {
@@ -2541,6 +2644,8 @@ async function initDb() {
   await ensureAppConfigSchema();
   await backfillSkillEntryPositionIds();
   await backfillSkillEntryCategoryIds();
+  await backfillOrganisationEntryIds(pool);
+  await backfillAllSkillRegistries(pool);
 
   const { rows } = await pool.query("SELECT COUNT(*)::int as count FROM users");
   if (rows[0].count > 0) return;
@@ -3103,8 +3208,12 @@ async function normalizeEntryForSave(type, entry, reqUser) {
   const ws =
     type === "portfolio" || type === "organisation" ? "" : workstream;
   let normalizedEntry = { ...entry, unit, workstream: ws, type };
+  if (type === "organisation") {
+    normalizedEntry = ensureOrgRowIds(normalizedEntry);
+  }
   if (type === "skill") {
     normalizedEntry = await normalizeSkillEntryPayload(normalizedEntry);
+    normalizedEntry = await enrichSkillEntryWithRegistry(pool, unit, normalizedEntry);
   }
   return {
     entry: normalizedEntry,
@@ -3273,7 +3382,7 @@ app.get("/api/dashboard/snapshot", auth, async (req, res) => {
     return res.status(403).json({ error: "Kein Zugriff auf diese Unit." });
   }
   const yearParam = req.query.year;
-  const entries = await fetchEntriesForUnit(unit);
+  const entries = await fetchPhase1EntriesForUnit(unit);
   const planRow = await fetchBackcastingPlanForUnit(unit);
   const planPayload = planRow || { measures: {}, meta: {} };
 
@@ -3312,18 +3421,20 @@ app.get("/api/dashboard/p1-snapshot", auth, async (req, res) => {
     return res.status(403).json({ error: "Kein Zugriff auf diese Unit." });
   }
   const yearParam = req.query.year;
-  const entries = await fetchEntriesForUnit(unit);
+  const entries = await fetchPhase1EntriesForUnit(unit);
+  const registry = await fetchSkillRegistryEntry(pool, unit);
   const planRow = await fetchBackcastingPlanForUnit(unit);
   const planPayload = planRow || { measures: {}, meta: {} };
 
   if (yearParam === "all") {
     const planningConfig = await getPlanningYears();
-    const snapshot = buildP1DashboardSnapshotAllYears(entries, planPayload, planningConfig.years);
+    const snapshot = buildP1DashboardSnapshotAllYears(entries, planPayload, planningConfig.years, registry);
     return res.json({ unit, ...snapshot });
   }
 
   const year = parseInt(yearParam, 10) || new Date().getFullYear();
-  const snapshot = buildP1DashboardSnapshot(entries, planPayload, year);
+  const planningConfig = await getPlanningYears();
+  const snapshot = buildP1DashboardSnapshot(entries, planPayload, year, registry, planningConfig.years);
   return res.json({ unit, ...snapshot });
 });
 
@@ -3341,9 +3452,10 @@ app.get("/api/dashboard/p1-timeline", auth, async (req, res) => {
     const units = [];
     for (const demoUnit of DEMO_UNITS) {
       if (!(await canAccessUnit(req, demoUnit))) continue;
-      const entries = await fetchEntriesForUnit(demoUnit);
+      const entries = await fetchPhase1EntriesForUnit(demoUnit);
+      const registry = await fetchSkillRegistryEntry(pool, demoUnit);
       const planRow = await fetchBackcastingPlanForUnit(demoUnit);
-      const timeline = buildP1DashboardTimeline(entries, planRow || { measures: {}, meta: {} }, years);
+      const timeline = buildP1DashboardTimeline(entries, planRow || { measures: {}, meta: {} }, years, registry);
       units.push({ unit: demoUnit, ...timeline });
     }
     return res.json({ all: true, years, units, totalUnits: DEMO_UNITS.length });
@@ -3356,9 +3468,10 @@ app.get("/api/dashboard/p1-timeline", auth, async (req, res) => {
   if (!(await canAccessUnit(req, unit))) {
     return res.status(403).json({ error: "Kein Zugriff auf diese Unit." });
   }
-  const entries = await fetchEntriesForUnit(unit);
+  const entries = await fetchPhase1EntriesForUnit(unit);
+  const registry = await fetchSkillRegistryEntry(pool, unit);
   const planRow = await fetchBackcastingPlanForUnit(unit);
-  const timeline = buildP1DashboardTimeline(entries, planRow || { measures: {}, meta: {} }, years);
+  const timeline = buildP1DashboardTimeline(entries, planRow || { measures: {}, meta: {} }, years, registry);
   return res.json({ unit, ...timeline });
 });
 
@@ -3377,7 +3490,7 @@ app.get("/api/dashboard/timeline", auth, async (req, res) => {
     const units = [];
     for (const demoUnit of DEMO_UNITS) {
       if (!(await canAccessUnit(req, demoUnit))) continue;
-      const entries = await fetchEntriesForUnit(demoUnit);
+      const entries = await fetchPhase1EntriesForUnit(demoUnit);
       const planRow = await fetchBackcastingPlanForUnit(demoUnit);
       const timeline = buildDashboardTimeline(entries, planRow || { measures: {}, meta: {} }, years);
       units.push({ unit: demoUnit, ...timeline });
@@ -3397,7 +3510,7 @@ app.get("/api/dashboard/timeline", auth, async (req, res) => {
   if (!(await canAccessUnit(req, unit))) {
     return res.status(403).json({ error: "Kein Zugriff auf diese Unit." });
   }
-  const entries = await fetchEntriesForUnit(unit);
+  const entries = await fetchPhase1EntriesForUnit(unit);
   const planRow = await fetchBackcastingPlanForUnit(unit);
   const timeline = buildDashboardTimeline(entries, planRow || { measures: {}, meta: {} }, years);
   return res.json({
@@ -3802,10 +3915,16 @@ app.get("/api/backcasting/phase1-summary", auth, async (req, res) => {
     return res.status(403).json({ error: "Kein Zugriff auf diese Unit." });
   }
   try {
-    const entries = await fetchEntriesForUnit(unit);
-    const portfolioEntries = entries.filter((e) => e.type === "portfolio" || (!e.type && e.category));
-    const orgEntry = entries.find((e) => e.type === "organisation");
-    const skillEntries = entries.filter((e) => e.type === "skill" || (e.skills && e.nachname));
+    const entries = await fetchPhase1EntriesForUnit(unit);
+    const withPersonalnummer = await attachPersonalnummerToSkillEntries(entries);
+    const enrichedEntries = await enrichSkillEntries(withPersonalnummer);
+    const portfolioEntries = enrichedEntries.filter((e) => e.type === "portfolio" || (!e.type && e.category));
+    const orgEntry = enrichedEntries.find((e) => e.type === "organisation");
+    const skillEntries = enrichedEntries.filter(
+      (e) =>
+        e.type === "skill" ||
+        ((e.skills || e.softSkills) && (e.nachname || e.vorname || e.name || e.personalnummer))
+    );
 
     const catLabels = { produkte: "Produkte", services: "Services", loesungen: "L\u00f6sungen", partnergeschaeft: "Partnergesch\u00e4ft", projektgeschaeft: "Projektgesch\u00e4ft" };
     const portfolioByCat = {};
@@ -3819,39 +3938,114 @@ app.get("/api/backcasting/phase1-summary", auth, async (req, res) => {
       if (!portfolioByCat[k]) portfolioByCat[k] = { subcategory: k, label: catLabels[k], count: 0, umsatz_teur: 0 };
     });
 
-    const gliederungen = (orgEntry?.gliederungen || []).filter((g) => g.bereich).map((g) => ({
-      subcategory: g.bereich, headcount: Number(g.headcount) || 0, umsatz_teur: Number(g.umsatz_teur) || 0,
+    const orgPayload = orgEntry ? ensureOrgRowIds(orgEntry) : null;
+    const gliederungen = (orgPayload?.gliederungen || []).filter((g) => g.bereich).map((g) => ({
+      id: g.id,
+      subcategory: g.bereich,
+      headcount: Number(g.headcount) || 0,
+      umsatz_teur: Number(g.umsatz_teur) || 0,
     }));
-    const rollen = (orgEntry?.rollen || []).filter((r) => r.rolle).map((r) => ({
-      subcategory: r.rolle, anzahl: Number(r.anzahl) || 0,
+    const rollen = (orgPayload?.rollen || []).filter((r) => r.rolle).map((r) => ({
+      id: r.id,
+      subcategory: r.rolle,
+      anzahl: Number(r.anzahl) || 0,
     }));
 
     const skillAgg = {};
     skillEntries.forEach((emp) => {
+      const empKey = String(emp.personalnummer || emp.id || emp.email || "").trim();
       (emp.skills || []).forEach((s) => {
         const cat = s.kategorie || "Sonstiges";
         if (!skillAgg[cat]) skillAgg[cat] = { sum: 0, count: 0, employees: new Set() };
         const lvl = Number(s.level);
         if (Number.isFinite(lvl)) { skillAgg[cat].sum += lvl; skillAgg[cat].count++; }
-        skillAgg[cat].employees.add(emp.id || emp.email);
+        if (empKey) skillAgg[cat].employees.add(empKey);
       });
     });
     const skillsSummary = Object.entries(skillAgg).map(([cat, v]) => ({
       subcategory: cat, avgLevel: v.count ? Math.round((v.sum / v.count) * 10) / 10 : 0, employeeCount: v.employees.size,
     }));
 
+    const portfolioItems = portfolioEntries
+      .filter((p) => p.bezeichnung || p.id)
+      .map((p) => ({
+        id: p.id,
+        category: p.category || "sonstiges",
+        bezeichnung: String(p.bezeichnung || "").trim() || "–",
+        umsatz_teur: Number(p.jahresumsatz_teur) || 0,
+        ampel: p.ampel || "",
+      }))
+      .sort((a, b) => String(a.bezeichnung).localeCompare(String(b.bezeichnung), "de"));
+
+    const registry = await fetchSkillRegistryEntry(pool, unit);
+    const skillItems = buildSkillItemsFromRegistry(registry, skillEntries)
+      .sort((a, b) => String(a.technologie).localeCompare(String(b.technologie), "de"));
+
+    const employees = skillEntries
+      .filter((e) => e.id && (e.nachname || e.vorname || e.name || e.personalnummer))
+      .map((e) => {
+        const { skillCount, avgLevel } = employeeSkillSummary(e);
+        const { skills, softSkills } = employeeSkillRows(e);
+        return {
+          skillEntryId: e.id,
+          personalnummer: String(e.personalnummer || "").trim() || null,
+          name: employeeDisplayName(e),
+          vorname: e.vorname || "",
+          nachname: e.nachname || "",
+          skillCount,
+          avgLevel,
+          zertifiziert: e.zertifiziert || "",
+          skills,
+          softSkills,
+        };
+      })
+      .sort((a, b) => String(a.name).localeCompare(String(b.name), "de"));
+
     const zertTotal = skillEntries.length;
     const zertJa = skillEntries.filter((e) => String(e.zertifiziert || "").toLowerCase() === "ja").length;
 
     return res.json({
       portfolio: Object.values(portfolioByCat),
+      portfolioItems,
       gliederungen,
       rollen,
       skills: skillsSummary,
+      skillItems,
+      employees,
       zertifiziertQuote: zertTotal ? Math.round((zertJa / zertTotal) * 1000) / 10 : null,
     });
   } catch (error) {
     return res.status(500).json({ error: "Phase-1-Zusammenfassung konnte nicht geladen werden." });
+  }
+});
+
+app.post("/api/backcasting/migrate-entity-ids", auth, async (req, res) => {
+  if (!canAccessBackcasting(req.user)) {
+    return res.status(403).json({ error: "Kein Zugriff auf Backcasting." });
+  }
+  const resolved = resolveDashboardUnit(req, req.query.unit);
+  if (resolved.error) return res.status(403).json({ error: resolved.error });
+  const unit = resolved.unit;
+  if (!unit) return res.status(400).json({ error: "Unit fehlt." });
+  if (!(await canAccessUnit(req, unit))) {
+    return res.status(403).json({ error: "Kein Zugriff auf diese Unit." });
+  }
+  try {
+    await backfillOrganisationEntryIds(pool);
+    const skillRows = await pool.query(
+      `SELECT id, payload FROM entries WHERE type = 'skill' AND unit = $1`,
+      [unit]
+    );
+    const skillEntries = skillRows.rows.map((r) => ({
+      ...(r.payload || {}),
+      id: r.id,
+      type: "skill",
+      unit,
+    }));
+    await backfillSkillRegistryForUnit(pool, unit, skillEntries);
+    return res.json({ ok: true, unit });
+  } catch (error) {
+    return res.status(500).json({ error: "Entity-ID-Migration fehlgeschlagen." });
   }
 });
 

@@ -97,10 +97,10 @@
     <div class="tab" data-page="export">📤 Export</div>
   </div>
   <div class="tabs-nav-main" id="tabsNavPhase3" style="display:none">
-    <div class="tab active" data-page="gesamtfortschritt">📈 Gesamtfortschritt</div>
+    <div class="tab active" data-page="fortschritt-new">📊 Fortschritt NEW</div>
+    <div class="tab" data-page="gesamtfortschritt">📈 Gesamtfortschritt</div>
     <div class="tab" data-page="gesamtfortschritt-new">📈 Gesamtfortschritt NEW</div>
     <div class="tab" data-page="fortschritt">📊 Detailfortschritt</div>
-    <div class="tab" data-page="fortschritt-new">📊 Fortschritt NEW</div>
     <div class="tab" data-page="fortschritt-erlaeuterung">📘 Erläuterung Berechnung</div>
   </div>
   </div>
@@ -136,38 +136,49 @@
       <span>Produkte</span>
     </summary>
     <div class="admin-collapsible__body">
-    <form id="portfolioProdukteForm" autocomplete="off">
-      <input type="hidden" id="pf_prod_editId" value="">
-      <label>Bezeichnung *</label>
-      <input type="text" id="pf_prod_bezeichnung" required placeholder="z.B. AMS Copilot">
-      <label>Beschreibung / Erlaeuterung *</label>
-      <textarea id="pf_prod_beschreibung" required placeholder="Kurzbeschreibung, Nutzen, Status..." style="min-height:70px"></textarea>
-      <label>Hinweis</label>
-      <textarea id="pf_prod_hinweis" placeholder="Ergaenzende Hinweise, offene Punkte..." style="min-height:45px"></textarea>
-      <label>Jaehrlicher Umsatz (TEUR)</label>
-      <input type="number" id="pf_prod_jahresumsatz_teur" min="0" step="1" placeholder="z.B. 1200">
-      <label class="field-optional">Umsatz-Hinweis (optional)</label>
-      <input type="text" id="pf_prod_jahresumsatz" placeholder="z.B. Erlaeuterung oder Legacy-Angabe">
-      <label>Ampel *</label>
-      <select id="pf_prod_ampel" required>
-        <option value="">– waehlen –</option>
-        <option value="green">🟩 Etabliert / funktioniert</option>
-        <option value="orange">🟧 Begonnen / teilweise</option>
-        <option value="blue">🟦 In Planung</option>
-        <option value="red">🟥 Fehlt / kritisch</option>
-      </select>
-      <div class="btn-group">
-        <button type="submit" class="btn btn-primary">💾 Speichern</button>
-        <button type="button" class="btn btn-outline" id="btnPfProdCancel" style="display:none">Abbrechen</button>
+    <p class="portfolio-category-def" data-portfolio-def="produkte" hidden></p>
+    <div class="portfolio-list-block" id="pf_prod_list_block">
+      <div class="tbl-wrap" id="pf_prod_tbl_wrap">
+        <table class="entries">
+          <thead><tr><th>Bezeichnung</th><th>Ampel</th><th>Umsatz (TEUR)</th><th>Beschreibung</th><th>Hinweis</th><th>Aktionen</th></tr></thead>
+          <tbody id="pf_prod_list"></tbody>
+        </table>
       </div>
-    </form>
-    <div class="tbl-wrap" style="margin-top:.75rem">
-      <table class="entries">
-        <thead><tr><th>Bezeichnung</th><th>Ampel</th><th>Umsatz (TEUR)</th><th>Beschreibung</th><th>Hinweis</th><th>Aktionen</th></tr></thead>
-        <tbody id="pf_prod_list"></tbody>
-      </table>
+      <p id="pf_prod_empty" style="text-align:center;color:var(--rc-muted);padding:1.1rem;display:none">Noch keine Produkte erfasst.</p>
     </div>
-    <p id="pf_prod_empty" style="text-align:center;color:var(--rc-muted);padding:1.1rem;display:none">Noch keine Produkte erfasst.</p>
+    <details class="portfolio-form-collapse" id="pf_prod_form_wrap">
+      <summary class="portfolio-form-collapse__summary">
+        <span class="admin-collapsible__chevron" aria-hidden="true">›</span>
+        <span>Neues Produkt erfassen</span>
+      </summary>
+      <div class="portfolio-form-collapse__body">
+        <form id="portfolioProdukteForm" autocomplete="off">
+          <input type="hidden" id="pf_prod_editId" value="">
+          <label>Bezeichnung *</label>
+          <input type="text" id="pf_prod_bezeichnung" required placeholder="z.B. AMS Copilot">
+          <label>Beschreibung / Erlaeuterung *</label>
+          <textarea id="pf_prod_beschreibung" required placeholder="Kurzbeschreibung, Nutzen, Status..." style="min-height:70px"></textarea>
+          <label>Hinweis</label>
+          <textarea id="pf_prod_hinweis" placeholder="Ergaenzende Hinweise, offene Punkte..." style="min-height:45px"></textarea>
+          <label>Jaehrlicher Umsatz (TEUR)</label>
+          <input type="number" id="pf_prod_jahresumsatz_teur" min="0" step="1" placeholder="z.B. 1200">
+          <label class="field-optional">Umsatz-Hinweis (optional)</label>
+          <input type="text" id="pf_prod_jahresumsatz" placeholder="z.B. Erlaeuterung oder Legacy-Angabe">
+          <label>Ampel *</label>
+          <select id="pf_prod_ampel" required>
+            <option value="">– waehlen –</option>
+            <option value="green">🟩 Etabliert / funktioniert</option>
+            <option value="orange">🟧 Begonnen / teilweise</option>
+            <option value="blue">🟦 In Planung</option>
+            <option value="red">🟥 Fehlt / kritisch</option>
+          </select>
+          <div class="btn-group">
+            <button type="submit" class="btn btn-primary">💾 Speichern</button>
+            <button type="button" class="btn btn-outline" id="btnPfProdCancel" style="display:none">Abbrechen</button>
+          </div>
+        </form>
+      </div>
+    </details>
     </div>
   </details>
 
@@ -177,38 +188,49 @@
       <span>Services</span>
     </summary>
     <div class="admin-collapsible__body">
-    <form id="portfolioServicesForm" autocomplete="off">
-      <input type="hidden" id="pf_srv_editId" value="">
-      <label>Bezeichnung *</label>
-      <input type="text" id="pf_srv_bezeichnung" required placeholder="z.B. Managed AMS Betrieb">
-      <label>Beschreibung / Erlaeuterung *</label>
-      <textarea id="pf_srv_beschreibung" required placeholder="Kurzbeschreibung, Nutzen, Status..." style="min-height:70px"></textarea>
-      <label>Hinweis</label>
-      <textarea id="pf_srv_hinweis" placeholder="Ergaenzende Hinweise, offene Punkte..." style="min-height:45px"></textarea>
-      <label>Jaehrlicher Umsatz (TEUR)</label>
-      <input type="number" id="pf_srv_jahresumsatz_teur" min="0" step="1" placeholder="z.B. 1200">
-      <label class="field-optional">Umsatz-Hinweis (optional)</label>
-      <input type="text" id="pf_srv_jahresumsatz" placeholder="z.B. Erlaeuterung oder Legacy-Angabe">
-      <label>Ampel *</label>
-      <select id="pf_srv_ampel" required>
-        <option value="">– waehlen –</option>
-        <option value="green">🟩 Etabliert / funktioniert</option>
-        <option value="orange">🟧 Begonnen / teilweise</option>
-        <option value="blue">🟦 In Planung</option>
-        <option value="red">🟥 Fehlt / kritisch</option>
-      </select>
-      <div class="btn-group">
-        <button type="submit" class="btn btn-primary">💾 Speichern</button>
-        <button type="button" class="btn btn-outline" id="btnPfSrvCancel" style="display:none">Abbrechen</button>
+    <p class="portfolio-category-def" data-portfolio-def="services" hidden></p>
+    <div class="portfolio-list-block" id="pf_srv_list_block">
+      <div class="tbl-wrap" id="pf_srv_tbl_wrap">
+        <table class="entries">
+          <thead><tr><th>Bezeichnung</th><th>Ampel</th><th>Umsatz (TEUR)</th><th>Beschreibung</th><th>Hinweis</th><th>Aktionen</th></tr></thead>
+          <tbody id="pf_srv_list"></tbody>
+        </table>
       </div>
-    </form>
-    <div class="tbl-wrap" style="margin-top:.75rem">
-      <table class="entries">
-        <thead><tr><th>Bezeichnung</th><th>Ampel</th><th>Umsatz (TEUR)</th><th>Beschreibung</th><th>Hinweis</th><th>Aktionen</th></tr></thead>
-        <tbody id="pf_srv_list"></tbody>
-      </table>
+      <p id="pf_srv_empty" style="text-align:center;color:var(--rc-muted);padding:1.1rem;display:none">Noch keine Services erfasst.</p>
     </div>
-    <p id="pf_srv_empty" style="text-align:center;color:var(--rc-muted);padding:1.1rem;display:none">Noch keine Services erfasst.</p>
+    <details class="portfolio-form-collapse" id="pf_srv_form_wrap">
+      <summary class="portfolio-form-collapse__summary">
+        <span class="admin-collapsible__chevron" aria-hidden="true">›</span>
+        <span>Neuen Service erfassen</span>
+      </summary>
+      <div class="portfolio-form-collapse__body">
+        <form id="portfolioServicesForm" autocomplete="off">
+          <input type="hidden" id="pf_srv_editId" value="">
+          <label>Bezeichnung *</label>
+          <input type="text" id="pf_srv_bezeichnung" required placeholder="z.B. Managed AMS Betrieb">
+          <label>Beschreibung / Erlaeuterung *</label>
+          <textarea id="pf_srv_beschreibung" required placeholder="Kurzbeschreibung, Nutzen, Status..." style="min-height:70px"></textarea>
+          <label>Hinweis</label>
+          <textarea id="pf_srv_hinweis" placeholder="Ergaenzende Hinweise, offene Punkte..." style="min-height:45px"></textarea>
+          <label>Jaehrlicher Umsatz (TEUR)</label>
+          <input type="number" id="pf_srv_jahresumsatz_teur" min="0" step="1" placeholder="z.B. 1200">
+          <label class="field-optional">Umsatz-Hinweis (optional)</label>
+          <input type="text" id="pf_srv_jahresumsatz" placeholder="z.B. Erlaeuterung oder Legacy-Angabe">
+          <label>Ampel *</label>
+          <select id="pf_srv_ampel" required>
+            <option value="">– waehlen –</option>
+            <option value="green">🟩 Etabliert / funktioniert</option>
+            <option value="orange">🟧 Begonnen / teilweise</option>
+            <option value="blue">🟦 In Planung</option>
+            <option value="red">🟥 Fehlt / kritisch</option>
+          </select>
+          <div class="btn-group">
+            <button type="submit" class="btn btn-primary">💾 Speichern</button>
+            <button type="button" class="btn btn-outline" id="btnPfSrvCancel" style="display:none">Abbrechen</button>
+          </div>
+        </form>
+      </div>
+    </details>
     </div>
   </details>
 
@@ -218,38 +240,49 @@
       <span>Loesungen</span>
     </summary>
     <div class="admin-collapsible__body">
-    <form id="portfolioLoesungenForm" autocomplete="off">
-      <input type="hidden" id="pf_sol_editId" value="">
-      <label>Bezeichnung *</label>
-      <input type="text" id="pf_sol_bezeichnung" required placeholder="z.B. Retail KI Accelerator">
-      <label>Beschreibung / Erlaeuterung *</label>
-      <textarea id="pf_sol_beschreibung" required placeholder="Kurzbeschreibung, Nutzen, Status..." style="min-height:70px"></textarea>
-      <label>Hinweis</label>
-      <textarea id="pf_sol_hinweis" placeholder="Ergaenzende Hinweise, offene Punkte..." style="min-height:45px"></textarea>
-      <label>Jaehrlicher Umsatz (TEUR)</label>
-      <input type="number" id="pf_sol_jahresumsatz_teur" min="0" step="1" placeholder="z.B. 1200">
-      <label class="field-optional">Umsatz-Hinweis (optional)</label>
-      <input type="text" id="pf_sol_jahresumsatz" placeholder="z.B. Erlaeuterung oder Legacy-Angabe">
-      <label>Ampel *</label>
-      <select id="pf_sol_ampel" required>
-        <option value="">– waehlen –</option>
-        <option value="green">🟩 Etabliert / funktioniert</option>
-        <option value="orange">🟧 Begonnen / teilweise</option>
-        <option value="blue">🟦 In Planung</option>
-        <option value="red">🟥 Fehlt / kritisch</option>
-      </select>
-      <div class="btn-group">
-        <button type="submit" class="btn btn-primary">💾 Speichern</button>
-        <button type="button" class="btn btn-outline" id="btnPfSolCancel" style="display:none">Abbrechen</button>
+    <p class="portfolio-category-def" data-portfolio-def="loesungen" hidden></p>
+    <div class="portfolio-list-block" id="pf_sol_list_block">
+      <div class="tbl-wrap" id="pf_sol_tbl_wrap">
+        <table class="entries">
+          <thead><tr><th>Bezeichnung</th><th>Ampel</th><th>Umsatz (TEUR)</th><th>Beschreibung</th><th>Hinweis</th><th>Aktionen</th></tr></thead>
+          <tbody id="pf_sol_list"></tbody>
+        </table>
       </div>
-    </form>
-    <div class="tbl-wrap" style="margin-top:.75rem">
-      <table class="entries">
-        <thead><tr><th>Bezeichnung</th><th>Ampel</th><th>Umsatz (TEUR)</th><th>Beschreibung</th><th>Hinweis</th><th>Aktionen</th></tr></thead>
-        <tbody id="pf_sol_list"></tbody>
-      </table>
+      <p id="pf_sol_empty" style="text-align:center;color:var(--rc-muted);padding:1.1rem;display:none">Noch keine Loesungen erfasst.</p>
     </div>
-    <p id="pf_sol_empty" style="text-align:center;color:var(--rc-muted);padding:1.1rem;display:none">Noch keine Loesungen erfasst.</p>
+    <details class="portfolio-form-collapse" id="pf_sol_form_wrap">
+      <summary class="portfolio-form-collapse__summary">
+        <span class="admin-collapsible__chevron" aria-hidden="true">›</span>
+        <span>Neue Loesung erfassen</span>
+      </summary>
+      <div class="portfolio-form-collapse__body">
+        <form id="portfolioLoesungenForm" autocomplete="off">
+          <input type="hidden" id="pf_sol_editId" value="">
+          <label>Bezeichnung *</label>
+          <input type="text" id="pf_sol_bezeichnung" required placeholder="z.B. Retail KI Accelerator">
+          <label>Beschreibung / Erlaeuterung *</label>
+          <textarea id="pf_sol_beschreibung" required placeholder="Kurzbeschreibung, Nutzen, Status..." style="min-height:70px"></textarea>
+          <label>Hinweis</label>
+          <textarea id="pf_sol_hinweis" placeholder="Ergaenzende Hinweise, offene Punkte..." style="min-height:45px"></textarea>
+          <label>Jaehrlicher Umsatz (TEUR)</label>
+          <input type="number" id="pf_sol_jahresumsatz_teur" min="0" step="1" placeholder="z.B. 1200">
+          <label class="field-optional">Umsatz-Hinweis (optional)</label>
+          <input type="text" id="pf_sol_jahresumsatz" placeholder="z.B. Erlaeuterung oder Legacy-Angabe">
+          <label>Ampel *</label>
+          <select id="pf_sol_ampel" required>
+            <option value="">– waehlen –</option>
+            <option value="green">🟩 Etabliert / funktioniert</option>
+            <option value="orange">🟧 Begonnen / teilweise</option>
+            <option value="blue">🟦 In Planung</option>
+            <option value="red">🟥 Fehlt / kritisch</option>
+          </select>
+          <div class="btn-group">
+            <button type="submit" class="btn btn-primary">💾 Speichern</button>
+            <button type="button" class="btn btn-outline" id="btnPfSolCancel" style="display:none">Abbrechen</button>
+          </div>
+        </form>
+      </div>
+    </details>
     </div>
   </details>
 
@@ -259,38 +292,49 @@
       <span>Partnergeschaeft</span>
     </summary>
     <div class="admin-collapsible__body">
-    <form id="portfolioPartnergeschaeftForm" autocomplete="off">
-      <input type="hidden" id="pf_pgs_editId" value="">
-      <label>Bezeichnung *</label>
-      <input type="text" id="pf_pgs_bezeichnung" required placeholder="z.B. Strategische Partnerschaft XYZ">
-      <label>Beschreibung / Erlaeuterung *</label>
-      <textarea id="pf_pgs_beschreibung" required placeholder="Kurzbeschreibung, Nutzen, Status..." style="min-height:70px"></textarea>
-      <label>Hinweis</label>
-      <textarea id="pf_pgs_hinweis" placeholder="Ergaenzende Hinweise, offene Punkte..." style="min-height:45px"></textarea>
-      <label>Jaehrlicher Umsatz (TEUR)</label>
-      <input type="number" id="pf_pgs_jahresumsatz_teur" min="0" step="1" placeholder="z.B. 1200">
-      <label class="field-optional">Umsatz-Hinweis (optional)</label>
-      <input type="text" id="pf_pgs_jahresumsatz" placeholder="z.B. Erlaeuterung oder Legacy-Angabe">
-      <label>Ampel *</label>
-      <select id="pf_pgs_ampel" required>
-        <option value="">– waehlen –</option>
-        <option value="green">🟩 Etabliert / funktioniert</option>
-        <option value="orange">🟧 Begonnen / teilweise</option>
-        <option value="blue">🟦 In Planung</option>
-        <option value="red">🟥 Fehlt / kritisch</option>
-      </select>
-      <div class="btn-group">
-        <button type="submit" class="btn btn-primary">💾 Speichern</button>
-        <button type="button" class="btn btn-outline" id="btnPfPgsCancel" style="display:none">Abbrechen</button>
+    <p class="portfolio-category-def" data-portfolio-def="partnergeschaeft" hidden></p>
+    <div class="portfolio-list-block" id="pf_pgs_list_block">
+      <div class="tbl-wrap" id="pf_pgs_tbl_wrap">
+        <table class="entries">
+          <thead><tr><th>Bezeichnung</th><th>Ampel</th><th>Umsatz (TEUR)</th><th>Beschreibung</th><th>Hinweis</th><th>Aktionen</th></tr></thead>
+          <tbody id="pf_pgs_list"></tbody>
+        </table>
       </div>
-    </form>
-    <div class="tbl-wrap" style="margin-top:.75rem">
-      <table class="entries">
-        <thead><tr><th>Bezeichnung</th><th>Ampel</th><th>Umsatz (TEUR)</th><th>Beschreibung</th><th>Hinweis</th><th>Aktionen</th></tr></thead>
-        <tbody id="pf_pgs_list"></tbody>
-      </table>
+      <p id="pf_pgs_empty" style="text-align:center;color:var(--rc-muted);padding:1.1rem;display:none">Noch kein Partnergeschaeft erfasst.</p>
     </div>
-    <p id="pf_pgs_empty" style="text-align:center;color:var(--rc-muted);padding:1.1rem;display:none">Noch kein Partnergeschaeft erfasst.</p>
+    <details class="portfolio-form-collapse" id="pf_pgs_form_wrap">
+      <summary class="portfolio-form-collapse__summary">
+        <span class="admin-collapsible__chevron" aria-hidden="true">›</span>
+        <span>Neues Partnergeschaeft erfassen</span>
+      </summary>
+      <div class="portfolio-form-collapse__body">
+        <form id="portfolioPartnergeschaeftForm" autocomplete="off">
+          <input type="hidden" id="pf_pgs_editId" value="">
+          <label>Bezeichnung *</label>
+          <input type="text" id="pf_pgs_bezeichnung" required placeholder="z.B. Strategische Partnerschaft XYZ">
+          <label>Beschreibung / Erlaeuterung *</label>
+          <textarea id="pf_pgs_beschreibung" required placeholder="Kurzbeschreibung, Nutzen, Status..." style="min-height:70px"></textarea>
+          <label>Hinweis</label>
+          <textarea id="pf_pgs_hinweis" placeholder="Ergaenzende Hinweise, offene Punkte..." style="min-height:45px"></textarea>
+          <label>Jaehrlicher Umsatz (TEUR)</label>
+          <input type="number" id="pf_pgs_jahresumsatz_teur" min="0" step="1" placeholder="z.B. 1200">
+          <label class="field-optional">Umsatz-Hinweis (optional)</label>
+          <input type="text" id="pf_pgs_jahresumsatz" placeholder="z.B. Erlaeuterung oder Legacy-Angabe">
+          <label>Ampel *</label>
+          <select id="pf_pgs_ampel" required>
+            <option value="">– waehlen –</option>
+            <option value="green">🟩 Etabliert / funktioniert</option>
+            <option value="orange">🟧 Begonnen / teilweise</option>
+            <option value="blue">🟦 In Planung</option>
+            <option value="red">🟥 Fehlt / kritisch</option>
+          </select>
+          <div class="btn-group">
+            <button type="submit" class="btn btn-primary">💾 Speichern</button>
+            <button type="button" class="btn btn-outline" id="btnPfPgsCancel" style="display:none">Abbrechen</button>
+          </div>
+        </form>
+      </div>
+    </details>
     </div>
   </details>
 
@@ -300,38 +344,49 @@
       <span>Projektgeschaeft</span>
     </summary>
     <div class="admin-collapsible__body">
-    <form id="portfolioProjektgeschaeftForm" autocomplete="off">
-      <input type="hidden" id="pf_pjg_editId" value="">
-      <label>Bezeichnung *</label>
-      <input type="text" id="pf_pjg_bezeichnung" required placeholder="z.B. SAP S/4HANA Rollout">
-      <label>Beschreibung / Erlaeuterung *</label>
-      <textarea id="pf_pjg_beschreibung" required placeholder="Kurzbeschreibung, Nutzen, Status..." style="min-height:70px"></textarea>
-      <label>Hinweis</label>
-      <textarea id="pf_pjg_hinweis" placeholder="Ergaenzende Hinweise, offene Punkte..." style="min-height:45px"></textarea>
-      <label>Jaehrlicher Umsatz (TEUR)</label>
-      <input type="number" id="pf_pjg_jahresumsatz_teur" min="0" step="1" placeholder="z.B. 1200">
-      <label class="field-optional">Umsatz-Hinweis (optional)</label>
-      <input type="text" id="pf_pjg_jahresumsatz" placeholder="z.B. Erlaeuterung oder Legacy-Angabe">
-      <label>Ampel *</label>
-      <select id="pf_pjg_ampel" required>
-        <option value="">– waehlen –</option>
-        <option value="green">🟩 Etabliert / funktioniert</option>
-        <option value="orange">🟧 Begonnen / teilweise</option>
-        <option value="blue">🟦 In Planung</option>
-        <option value="red">🟥 Fehlt / kritisch</option>
-      </select>
-      <div class="btn-group">
-        <button type="submit" class="btn btn-primary">💾 Speichern</button>
-        <button type="button" class="btn btn-outline" id="btnPfPjgCancel" style="display:none">Abbrechen</button>
+    <p class="portfolio-category-def" data-portfolio-def="projektgeschaeft" hidden></p>
+    <div class="portfolio-list-block" id="pf_pjg_list_block">
+      <div class="tbl-wrap" id="pf_pjg_tbl_wrap">
+        <table class="entries">
+          <thead><tr><th>Bezeichnung</th><th>Ampel</th><th>Umsatz (TEUR)</th><th>Beschreibung</th><th>Hinweis</th><th>Aktionen</th></tr></thead>
+          <tbody id="pf_pjg_list"></tbody>
+        </table>
       </div>
-    </form>
-    <div class="tbl-wrap" style="margin-top:.75rem">
-      <table class="entries">
-        <thead><tr><th>Bezeichnung</th><th>Ampel</th><th>Umsatz (TEUR)</th><th>Beschreibung</th><th>Hinweis</th><th>Aktionen</th></tr></thead>
-        <tbody id="pf_pjg_list"></tbody>
-      </table>
+      <p id="pf_pjg_empty" style="text-align:center;color:var(--rc-muted);padding:1.1rem;display:none">Noch kein Projektgeschaeft erfasst.</p>
     </div>
-    <p id="pf_pjg_empty" style="text-align:center;color:var(--rc-muted);padding:1.1rem;display:none">Noch kein Projektgeschaeft erfasst.</p>
+    <details class="portfolio-form-collapse" id="pf_pjg_form_wrap">
+      <summary class="portfolio-form-collapse__summary">
+        <span class="admin-collapsible__chevron" aria-hidden="true">›</span>
+        <span>Neues Projektgeschaeft erfassen</span>
+      </summary>
+      <div class="portfolio-form-collapse__body">
+        <form id="portfolioProjektgeschaeftForm" autocomplete="off">
+          <input type="hidden" id="pf_pjg_editId" value="">
+          <label>Bezeichnung *</label>
+          <input type="text" id="pf_pjg_bezeichnung" required placeholder="z.B. SAP S/4HANA Rollout">
+          <label>Beschreibung / Erlaeuterung *</label>
+          <textarea id="pf_pjg_beschreibung" required placeholder="Kurzbeschreibung, Nutzen, Status..." style="min-height:70px"></textarea>
+          <label>Hinweis</label>
+          <textarea id="pf_pjg_hinweis" placeholder="Ergaenzende Hinweise, offene Punkte..." style="min-height:45px"></textarea>
+          <label>Jaehrlicher Umsatz (TEUR)</label>
+          <input type="number" id="pf_pjg_jahresumsatz_teur" min="0" step="1" placeholder="z.B. 1200">
+          <label class="field-optional">Umsatz-Hinweis (optional)</label>
+          <input type="text" id="pf_pjg_jahresumsatz" placeholder="z.B. Erlaeuterung oder Legacy-Angabe">
+          <label>Ampel *</label>
+          <select id="pf_pjg_ampel" required>
+            <option value="">– waehlen –</option>
+            <option value="green">🟩 Etabliert / funktioniert</option>
+            <option value="orange">🟧 Begonnen / teilweise</option>
+            <option value="blue">🟦 In Planung</option>
+            <option value="red">🟥 Fehlt / kritisch</option>
+          </select>
+          <div class="btn-group">
+            <button type="submit" class="btn btn-primary">💾 Speichern</button>
+            <button type="button" class="btn btn-outline" id="btnPfPjgCancel" style="display:none">Abbrechen</button>
+          </div>
+        </form>
+      </div>
+    </details>
     </div>
   </details>
     </div>
@@ -644,21 +699,6 @@
 
 <!-- ===== FORTSCHRITT NEW (Phase-1-basiert) ===== -->
 <div class="page" id="page-fortschritt-new">
-  <div class="card" style="border-left-color:var(--rc-accent2);margin-bottom:1rem">
-    <h3 style="margin:0">Fortschritt NEW &middot; Phase-1-basiert</h3>
-    <p style="color:var(--rc-muted);font-size:.8rem;margin-bottom:.75rem">
-      IST/SOLL-Vergleich auf Basis der Phase-1-Unterkategorien (Planung NEW). Im Filter <em>Alle Jahre</em> werden alle Planjahre zusammen angezeigt.
-    </p>
-    <div class="fortschritt-toolbar">
-      <div>
-        <label>Jahr (Plan)</label>
-        <select id="fortschrittNewYear"></select>
-      </div>
-      <div class="fortschritt-toolbar-actions">
-        <button type="button" class="btn btn-outline btn-sm" id="btnFortschrittNewReload">Aktualisieren</button>
-      </div>
-    </div>
-  </div>
   <div id="fortschrittNewContent"></div>
 </div>
 
@@ -1180,6 +1220,7 @@
     <form id="portfolioEditForm" autocomplete="off">
       <input type="hidden" id="portfolioEdit_editId" value="">
       <input type="hidden" id="portfolioEdit_category" value="">
+      <p id="portfolioEdit_categoryDef" class="portfolio-category-def" hidden></p>
       <label>Bezeichnung *</label>
       <input type="text" id="portfolioEdit_bezeichnung" required placeholder="z.B. AMS Copilot">
       <label>Beschreibung / Erlaeuterung *</label>

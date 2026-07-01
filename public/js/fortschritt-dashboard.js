@@ -3,7 +3,7 @@
  */
 
 let fortschrittYear = new Date().getFullYear();
-let fortschrittYearAll = false;
+let fortschrittYearAll = true;
 let fortschrittSnapshot = null;
 let fortschrittInitDone = false;
 let gesamtfortschrittInitDone = false;
@@ -498,6 +498,36 @@ function ftFormatTimelineTick(value, unit) {
   return String(Math.round(value));
 }
 
+function ftFormatTimelineTooltipValue(value, unit) {
+  if (value == null || !Number.isFinite(value)) return "–";
+  if (unit === "TEUR") return String(Math.round(value * 10) / 10);
+  if (unit === "%") return Math.round(value) + "%";
+  return String(Math.round(value));
+}
+
+function ftQuarterPointTooltip(slot, value, unit, kind) {
+  const year = slot?.year ?? "";
+  const quarter = slot?.label || (slot?.quarter ? "Q" + slot.quarter : "");
+  const kindLabel = kind === "ist" ? "IST" : "SOLL";
+  const val = ftFormatTimelineTooltipValue(value, unit);
+  return `${year} ${quarter} · ${kindLabel} ${val} ${unit}`.trim();
+}
+
+function ftQuarterChartDot(cx, cy, color, tooltip, kind) {
+  const x = Number(cx).toFixed(1);
+  const y = Number(cy).toFixed(1);
+  const dotCls = kind === "ist" ? "ft-tl-dot ft-tl-dot--ist" : "ft-tl-dot ft-tl-dot--soll";
+  const dot =
+    kind === "ist"
+      ? `<circle class="${dotCls}" cx="${x}" cy="${y}" r="2.5" fill="#fff" stroke="${color}" stroke-width="1.5" pointer-events="none"/>`
+      : `<circle class="${dotCls}" cx="${x}" cy="${y}" r="3" fill="${color}" pointer-events="none"/>`;
+  return `<g class="ft-tl-dot-group" role="presentation">
+    <title>${ftEscAttr(tooltip)}</title>
+    <circle class="ft-tl-dot-hit" cx="${x}" cy="${y}" r="9" fill="transparent"/>
+    ${dot}
+  </g>`;
+}
+
 function ftTimelineSeriesForKpi(timelineData, kpiKey, allUnits) {
   if (allUnits && timelineData?.units) {
     return timelineData.units
@@ -662,6 +692,160 @@ function renderFortschrittTimelineSvg(kpi, years, seriesList) {
   </svg>`;
 }
 
+function renderFortschrittQuarterChartSvg(meta, slots, seriesList) {
+  const quarters = slots || [];
+  const unit = meta?.unit || "TEUR";
+  const yAxisLabel = meta?.yAxisLabel || "Umsatz (TEUR)";
+  const xAxisLabel = meta?.xAxisLabel || "Zeit";
+  const slotCount = quarters.length;
+
+  const W = 960;
+  const H = 300;
+  const pad = { l: 58, r: 14, t: 16, b: 52 };
+
+  if (!slotCount) {
+    return '<p class="fortschritt-empty">Keine Plan-Daten für diese Kennzahl.</p>';
+  }
+
+  const allValues = [];
+  (seriesList || []).forEach((series) => {
+    (series.soll || []).forEach((v) => {
+      if (v != null && Number.isFinite(v)) allValues.push(v);
+    });
+    (series.ist || []).forEach((v) => {
+      if (v != null && Number.isFinite(v)) allValues.push(v);
+    });
+  });
+
+  const hasValues = allValues.length > 0;
+  let min = hasValues ? Math.min(...allValues) : 0;
+  let max = hasValues ? Math.max(...allValues) : 1;
+  if (!hasValues) {
+    min = 0;
+    max = 1;
+  } else if (min === max) {
+    min -= min * 0.1 || 1;
+    max += max * 0.1 || 1;
+  }
+  const range = max - min || 1;
+  const innerW = W - pad.l - pad.r;
+  const innerH = H - pad.t - pad.b;
+  const xAt = (index) => pad.l + (index / Math.max(slotCount - 1, 1)) * innerW;
+  const yAt = (value) => pad.t + (1 - (value - min) / range) * innerH;
+
+  const yTicks = [min, min + range / 2, max];
+  const gridLines = yTicks
+    .map((tick) => {
+      const y = yAt(tick).toFixed(1);
+      return `<line class="ft-tl-grid" x1="${pad.l}" y1="${y}" x2="${W - pad.r}" y2="${y}"/>`;
+    })
+    .join("");
+
+  const yLabels = yTicks
+    .map((tick) => {
+      const y = yAt(tick).toFixed(1);
+      return `<text class="ft-tl-axis-label" x="${pad.l - 8}" y="${y}" text-anchor="end" dominant-baseline="middle">${ftFormatTimelineTick(tick, unit)}</text>`;
+    })
+    .join("");
+
+  const yTitleX = 14;
+  const yTitleY = (pad.t + (H - pad.b)) / 2;
+  const yTitle = `<text class="ft-tl-axis-title" x="${yTitleX}" y="${yTitleY}" transform="rotate(-90 ${yTitleX} ${yTitleY})" text-anchor="middle">${ftEscAttr(yAxisLabel)}</text>`;
+
+  const xQuarterLabels = quarters
+    .map((slot, index) => {
+      const x = xAt(index).toFixed(1);
+      return `<text class="ft-tl-axis-label ft-tl-x-q-label" x="${x}" y="${H - pad.b + 14}" text-anchor="middle">${slot.label || "Q" + slot.quarter}</text>`;
+    })
+    .join("");
+
+  const yearsSeen = {};
+  const xYearLabels = quarters
+    .map((slot, index) => {
+      if (yearsSeen[slot.year]) return "";
+      yearsSeen[slot.year] = true;
+      const yearStart = quarters.findIndex((s) => s.year === slot.year);
+      const yearEnd = quarters.length - 1 - [...quarters].reverse().findIndex((s) => s.year === slot.year);
+      const x = ((xAt(yearStart) + xAt(yearEnd)) / 2).toFixed(1);
+      return `<text class="ft-tl-axis-label ft-tl-x-year-label" x="${x}" y="${H - 6}" text-anchor="middle">${slot.year}</text>`;
+    })
+    .join("");
+
+  const yearDividers = quarters
+    .map((slot, index) => {
+      if (index === 0 || quarters[index - 1].year === slot.year) return "";
+      const x = xAt(index).toFixed(1);
+      return `<line class="ft-tl-grid ft-tl-grid--year" x1="${x}" y1="${pad.t}" x2="${x}" y2="${H - pad.b}"/>`;
+    })
+    .join("");
+
+  const xTitle = `<text class="ft-tl-axis-title ft-tl-axis-title--x" x="${(pad.l + W - pad.r) / 2}" y="${H - 2}" text-anchor="middle">${ftEscAttr(xAxisLabel)}</text>`;
+
+  const paths = (seriesList || [])
+    .map((series) => {
+      const sollD = ftBuildTimelinePath(series.soll || [], quarters, xAt, yAt);
+      const istD = ftBuildTimelinePath(series.ist || [], quarters, xAt, yAt);
+      let html = "";
+      if (sollD) {
+        html += `<path class="ft-tl-line ft-tl-line--soll" stroke="${series.color}" d="${sollD}"/>`;
+      }
+      if (istD) {
+        html += `<path class="ft-tl-line ft-tl-line--ist" stroke="${series.color}" d="${istD}"/>`;
+      }
+      return html;
+    })
+    .join("");
+
+  const dots = (seriesList || [])
+    .flatMap((series) =>
+      quarters.map((slot, index) => {
+        const soll = (series.soll || [])[index];
+        const ist = (series.ist || [])[index];
+        let html = "";
+        if (soll != null && Number.isFinite(soll)) {
+          html += ftQuarterChartDot(
+            xAt(index),
+            yAt(soll),
+            series.color,
+            ftQuarterPointTooltip(slot, soll, unit, "soll"),
+            "soll"
+          );
+        }
+        if (ist != null && Number.isFinite(ist)) {
+          html += ftQuarterChartDot(
+            xAt(index),
+            yAt(ist),
+            series.color,
+            ftQuarterPointTooltip(slot, ist, unit, "ist"),
+            "ist"
+          );
+        }
+        return html;
+      })
+    )
+    .join("");
+
+  const emptyHint = hasValues
+    ? ""
+    : `<text class="ft-tl-empty-hint" x="${(pad.l + W - pad.r) / 2}" y="${(pad.t + H - pad.b) / 2}" text-anchor="middle">Noch keine Umsatzwerte (TEUR) erfasst</text>`;
+
+  const ariaLabel = meta?.label || yAxisLabel;
+  return `<svg class="ft-tl-svg ft-tl-svg--quarter" viewBox="0 0 ${W} ${H}" role="img" aria-label="${ftEscAttr(ariaLabel)}">
+    ${gridLines}
+    ${yearDividers}
+    <line class="ft-tl-axis" x1="${pad.l}" y1="${pad.t}" x2="${pad.l}" y2="${H - pad.b}"/>
+    <line class="ft-tl-axis" x1="${pad.l}" y1="${H - pad.b}" x2="${W - pad.r}" y2="${H - pad.b}"/>
+    ${yLabels}
+    ${yTitle}
+    ${xQuarterLabels}
+    ${xYearLabels}
+    ${xTitle}
+    ${paths}
+    ${dots}
+    ${emptyHint}
+  </svg>`;
+}
+
 function renderFortschrittAllUnitsLegend(timelineData) {
   const items = (timelineData?.units || [])
     .map((row, index) => {
@@ -820,7 +1004,7 @@ function renderFortschrittMilestones(milestones) {
         ${m.ziel_umsatz_teur != null ? `<span class="fortschritt-tag">${formatUmsatzTeur(m.ziel_umsatz_teur)}</span>` : ""}
         ${m.ziel_headcount != null ? `<span class="fortschritt-tag">${esc(String(m.ziel_headcount))} HC</span>` : ""}
       </div>
-      <div class="fortschritt-milestone-body">${esc((m.ergebnis || m.kpis || "–").slice(0, 120))}${(m.ergebnis || "").length > 120 ? "…" : ""}</div>
+      <div class="fortschritt-milestone-body">${esc((m.bezeichnung || m.ergebnis || m.kpis || "–").slice(0, 120))}${(m.bezeichnung || m.ergebnis || "").length > 120 ? "…" : ""}</div>
     </div>`
     )
     .join("");
@@ -1689,8 +1873,7 @@ async function populateFortschrittYearSelect() {
     if (prev && [...sel.options].some((o) => o.value === prev)) {
       sel.value = prev;
     } else {
-      const cur = new Date().getFullYear();
-      sel.value = years.includes(cur) ? String(cur) : String(years[0]);
+      sel.value = "all";
     }
     readFortschrittYearSelect();
   } catch (_e) {

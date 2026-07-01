@@ -5,6 +5,8 @@ const TYPES=["Produkt","Service","Lösung","Organisation","Skill","Sales","Partn
 const STATUSES=["Geplant","In Arbeit","Abgeschlossen","Blockiert"];
 const LS_PLAN = "rc_bc_plan";
 const LS_PLAN_MIGRATED = "rc_bc_plan_migrated";
+const LS_BC_TAB = "rc_bc_active_tab";
+const BC_TAB_IDS = ["planung", "planung-new", "review", "leitplanken", "export"];
 
 let plan = { meta: {}, measures: {} }, currentCat = null;
 let bcUserUnit = '';
@@ -15,6 +17,50 @@ let bcIsSuperAdmin = false;
 let bcIsAdmin = false;
 let bcMasterUnitsCache = [];
 let bcUnitSwitcherBound = false;
+
+function readPersistedBcTab() {
+  try {
+    const tab = sessionStorage.getItem(LS_BC_TAB) || "";
+    return BC_TAB_IDS.indexOf(tab) >= 0 ? tab : "planung";
+  } catch (_e) {
+    return "planung";
+  }
+}
+
+function writePersistedBcTab(tab) {
+  if (BC_TAB_IDS.indexOf(tab) < 0) return;
+  try {
+    sessionStorage.setItem(LS_BC_TAB, tab);
+  } catch (_e) {
+    /* ignore */
+  }
+}
+
+function runBcTabSideEffects(tabId) {
+  if (tabId === "review") renderReview();
+  if (tabId === "planung-new" && typeof initPlanungNew === "function") initPlanungNew();
+}
+
+function activateBcTab(tabId, options) {
+  const opts = options || {};
+  const tab = document.querySelector('#bcTabs .tab[data-tab="' + tabId + '"]');
+  const page = document.getElementById("page-" + tabId);
+  if (!tab || !page) return false;
+
+  document.querySelectorAll("#bcTabs .tab").forEach(function (x) { x.classList.remove("active"); });
+  document.querySelectorAll(".page").forEach(function (x) { x.classList.remove("active"); });
+  tab.classList.add("active");
+  page.classList.add("active");
+
+  if (!opts.skipPersist) writePersistedBcTab(tabId);
+  if (!opts.skipSideEffects) runBcTabSideEffects(tabId);
+  return true;
+}
+
+function refreshActiveBcTab() {
+  const tabId = document.querySelector("#bcTabs .tab.active")?.dataset.tab;
+  if (tabId) runBcTabSideEffects(tabId);
+}
 
 function escAttr(s){return (s==null?'':String(s)).replace(/&/g,'&amp;').replace(/"/g,'&quot;').replace(/</g,'&lt;');}
 
@@ -184,14 +230,13 @@ async function setBcViewUnit(unit){
   if(isBcViewAll()){
     plan = { meta:{}, measures:{} };
     initSelectors();
-    if(typeof initPlanungNew==='function') initPlanungNew();
+    refreshActiveBcTab();
     return;
   }
   await loadPlanFromApi();
   await syncPlanMetaFromContext();
   initSelectors();
-  const activeTab = document.querySelector('#bcTabs .tab.active');
-  if(activeTab && activeTab.dataset.tab==='planung-new' && typeof initPlanungNew==='function') initPlanungNew();
+  refreshActiveBcTab();
 }
 
 function uid(){return 'm'+Date.now().toString(36)+Math.random().toString(36).slice(2,7)}
@@ -238,7 +283,7 @@ async function savePlan(options = {}) {
   if (!requireBcSaveUnit()) return false;
   await syncPlanMetaFromContext();
   if (!allowIncomplete && findMilestonesMissingErgebnis().length) {
-    if (!silent) toast("Bitte bei allen Meilensteinen „Ergebnis / Artefakt“ ausfüllen.", "#e74c3c");
+    if (!silent) toast("Bitte bei allen Meilensteinen „Bezeichnung“ und „Beschreibung“ ausfüllen.", "#e74c3c");
     return false;
   }
   const unit = getBcSaveUnit();
@@ -274,15 +319,24 @@ async function saveMilestone(ws, yr, idx){
   const entry=entries[idx];
   if(!entry) return;
   const mid='ms_'+yr+'_'+idx;
-  const field=document.getElementById(mid+'_ergebnis');
-  if(!String(entry.ergebnis||'').trim()){
-    toast('„Ergebnis / Artefakt“ ist ein Pflichtfeld.', '#e74c3c');
+  const bezField=document.getElementById(mid+'_bezeichnung');
+  const descField=document.getElementById(mid+'_ergebnis');
+  if(!String(entry.bezeichnung||'').trim()){
+    toast('„Bezeichnung“ ist ein Pflichtfeld.', '#e74c3c');
     document.getElementById(mid)?.classList.remove('closed');
-    field?.classList.add('bc-input-invalid');
-    field?.focus();
+    bezField?.classList.add('bc-input-invalid');
+    bezField?.focus();
     return;
   }
-  field?.classList.remove('bc-input-invalid');
+  if(!String(entry.ergebnis||'').trim()){
+    toast('„Beschreibung“ ist ein Pflichtfeld.', '#e74c3c');
+    document.getElementById(mid)?.classList.remove('closed');
+    descField?.classList.add('bc-input-invalid');
+    descField?.focus();
+    return;
+  }
+  bezField?.classList.remove('bc-input-invalid');
+  descField?.classList.remove('bc-input-invalid');
   const ok = await savePlan();
   if(ok) toast('Gespeichert');
 }
@@ -544,8 +598,8 @@ function wsYearForm(ws, yr){
     const wsJs=esc(ws).replace(/'/g,"\\'");
     const mid = 'ms_'+yr+'_'+idx;
     const title=milestoneTitle(e);
-    const titleClass=(e.ergebnis||'').trim()?'ms-title':'ms-title ms-title--empty';
-    const isDraft=idx===0 && !(e.ergebnis||'').trim();
+    const titleClass=(e.bezeichnung||e.ergebnis||'').trim()?'ms-title':'ms-title ms-title--empty';
+    const isDraft=idx===0 && !(e.bezeichnung||'').trim() && !(e.ergebnis||'').trim();
     const wsArg="'"+esc(ws).replace(/'/g,"\\'")+"'";
 
     if(isDraft){
@@ -583,11 +637,13 @@ function wsYearForm(ws, yr){
 function renderMilestoneFormFields(ws, yr, idx, e, idPrefix, live){
   const wsJs=esc(ws).replace(/'/g,"\\'");
   const oc=(field)=>live?`onchange="updWs('${wsJs}',${yr},${idx},'${field}',this.value)"`:'';
-  const ergebnisLive=live?` oninput="updWs('${wsJs}',${yr},${idx},'ergebnis',this.value)"`:'';
+  const bezeichnungLive=live?` oninput="updWs('${wsJs}',${yr},${idx},'bezeichnung',this.value)"`:'';
   const fid=(name)=>idPrefix+'_'+name;
   return ''+
-    '<div class="field">'+tipRequired('1. Ergebnis / Artefakt (Was muss existieren?)','Beschreibe konkrete deliverables, die bis Jahresende existieren müssen (z. B. Offering, Playbook, Governance, Pilot, Asset, Board-Entscheidung). Name erscheint als Meilenstein-Titel.')+
-      '<textarea id="'+fid('ergebnis')+'" class="bc-ms-required" required'+ergebnisLive+' '+oc('ergebnis')+'>'+esc(e.ergebnis||'')+'</textarea></div>'+
+    '<div class="field">'+tipRequired('Bezeichnung','Kurze Überschrift des Meilensteins. Erscheint als Titel in der Liste.')+
+      '<input type="text" id="'+fid('bezeichnung')+'" class="bc-ms-required" required'+bezeichnungLive+' '+oc('bezeichnung')+' value="'+esc(e.bezeichnung||'')+'"></div>'+
+    '<div class="field">'+tipRequired('Beschreibung','Beschreibe konkret, was bis Jahresende erreicht sein soll (z. B. Offering, Playbook, Governance, Pilot, Asset, Board-Entscheidung).')+
+      '<textarea id="'+fid('ergebnis')+'" class="bc-ms-required" required '+oc('ergebnis')+'>'+esc(e.ergebnis||'')+'</textarea></div>'+
     '<div class="field">'+tip('2. Messbare KPIs (Woran messen wir Erfolg?)','Nenne messbare Kennzahlen für dieses Jahr (z. B. #Piloten, %Reuse, Recurring-Anteil, #Zertifizierungen, Marge).')+
       '<textarea id="'+fid('kpis')+'" '+oc('kpis')+'>'+esc(e.kpis||'')+'</textarea></div>'+
     '<div class="field">'+tip('3. Voraussetzungen (Was muss vorher passieren?)','Liste Voraussetzungen, die vorher erfüllt sein müssen (Budgetfreigabe, Rollenbesetzung, Trainings, Tooling, Entscheidungsgremien).')+
@@ -613,7 +669,7 @@ function openMilestoneEditModal(ws, yr, idx){
   if(titleEl) titleEl.textContent=milestoneTitle(e)+' · '+yr;
   body.innerHTML=renderMilestoneFormFields(ws, yr, idx, e, 'bcMilestoneEdit', false);
   overlay.style.display='flex';
-  document.getElementById('bcMilestoneEdit_ergebnis')?.focus();
+  document.getElementById('bcMilestoneEdit_bezeichnung')?.focus();
 }
 
 function closeMilestoneEditModal(){
@@ -631,6 +687,7 @@ function readMilestoneFormValues(idPrefix){
     return Number.isFinite(n)?n:null;
   };
   return {
+    bezeichnung: val('bezeichnung'),
     ergebnis: val('ergebnis'),
     kpis: val('kpis'),
     voraussetzungen: val('voraussetzungen'),
@@ -653,8 +710,14 @@ async function saveMilestoneEditModal(){
   const e=entries[idx];
   if(!e) return;
   const values=readMilestoneFormValues('bcMilestoneEdit');
+  if(!String(values.bezeichnung||'').trim()){
+    toast('„Bezeichnung“ ist ein Pflichtfeld.', '#e74c3c');
+    document.getElementById('bcMilestoneEdit_bezeichnung')?.classList.add('bc-input-invalid');
+    document.getElementById('bcMilestoneEdit_bezeichnung')?.focus();
+    return;
+  }
   if(!String(values.ergebnis||'').trim()){
-    toast('„Ergebnis / Artefakt“ ist ein Pflichtfeld.', '#e74c3c');
+    toast('„Beschreibung“ ist ein Pflichtfeld.', '#e74c3c');
     document.getElementById('bcMilestoneEdit_ergebnis')?.classList.add('bc-input-invalid');
     document.getElementById('bcMilestoneEdit_ergebnis')?.focus();
     return;
@@ -672,14 +735,14 @@ async function saveMilestoneEditModal(){
 function addWsEntry(ws, yr){
   const entries=getWsEntries(ws, yr);
   entries.unshift({id: uid(), kind:'wsYear', workstream: ws, jahr: yr,
-    ergebnis:'', kpis:'', voraussetzungen:'', abhaengigkeiten:'', risiken:'', verantwortlich:'',
+    bezeichnung:'', ergebnis:'', kpis:'', voraussetzungen:'', abhaengigkeiten:'', risiken:'', verantwortlich:'',
     ziel_umsatz_teur: null, ziel_headcount: null, ziel_quartal: '', ziel_skill_kategorie: '',
     ziel_skill_level_min: null, ziel_anteil_prozent: null
   });
   setWsEntries(ws, yr, entries);
   renderWsDetail(ws);
   renderCatList();
-  setTimeout(() => document.getElementById('ms_'+yr+'_0_ergebnis')?.focus(), 0);
+  setTimeout(() => document.getElementById('ms_'+yr+'_0_bezeichnung')?.focus(), 0);
 }
 
 function delWsEntry(ws, yr, idx){
@@ -698,13 +761,13 @@ function updWs(ws, yr, idx, field, val){
   e[field]=val;
   e.updatedAt=new Date().toISOString();
   setWsEntries(ws, yr, entries);
-  if(field==='ergebnis'){
+  if(field==='bezeichnung' || field==='ergebnis'){
     const mid='ms_'+yr+'_'+idx;
     const titleEl=document.getElementById(mid+'_title');
-    const fieldEl=document.getElementById(mid+'_ergebnis');
+    const fieldEl=document.getElementById(mid+'_'+(field==='bezeichnung'?'bezeichnung':'ergebnis'));
     if(titleEl){
       titleEl.textContent=milestoneTitle(e);
-      titleEl.classList.toggle('ms-title--empty', !String(val||'').trim());
+      titleEl.classList.toggle('ms-title--empty', !(String(e.bezeichnung||'').trim() || String(e.ergebnis||'').trim()));
     }
     if(fieldEl && String(val||'').trim()) fieldEl.classList.remove('bc-input-invalid');
   }
@@ -747,6 +810,10 @@ function tip(label,text){return '<label>'+esc(label)+' <span class="help" tabind
 function tipRequired(label,text){return '<label>'+esc(label)+' <span class="bc-required" aria-hidden="true">*</span> <span class="help" tabindex="0" data-tip="'+esc(text)+'">i</span></label>'}
 
 function milestoneTitle(entry) {
+  const bez = String(entry?.bezeichnung || "").trim();
+  if (bez) {
+    return bez.length <= 96 ? bez : bez.slice(0, 93) + "…";
+  }
   const text = String(entry?.ergebnis || "").trim();
   if (!text) return "Neuer Meilenstein";
   const firstLine = text.split("\n")[0].trim();
@@ -759,7 +826,7 @@ function findMilestonesMissingErgebnis() {
   Object.values(plan?.measures || {}).forEach((val) => {
     const arr = Array.isArray(val) ? val : val ? [val] : [];
     arr.forEach((entry, idx) => {
-      if (entry?.kind === "wsYear" && !String(entry.ergebnis || "").trim()) {
+      if (entry?.kind === "wsYear" && (!String(entry.bezeichnung || "").trim() || !String(entry.ergebnis || "").trim())) {
         missing.push({ entry, idx });
       }
     });
@@ -795,7 +862,7 @@ function ampelFor(ws,yr){
   if(!entries.length) return {c:'red', n:0};
 
   // "grün" wenn alle Einträge core-Felder haben, und keiner als Risiko/Blocker leer ist optional
-  const coreOk = entries.every(e => (e.ergebnis||'').trim() && (e.kpis||'').trim() && (e.verantwortlich||'').trim());
+  const coreOk = entries.every(e => (e.bezeichnung||'').trim() && (e.ergebnis||'').trim() && (e.kpis||'').trim() && (e.verantwortlich||'').trim());
   const hasAnyRisk = entries.some(e => (e.risiken||'').trim());
 
   if(coreOk && !hasAnyRisk) return {c:'green', n:entries.length};
@@ -825,7 +892,8 @@ function drill(ws,yr){
     entries.forEach((e)=>{
       h+='<div class="measure" style="margin-top:10px"><b>'+esc(milestoneTitle(e))+'</b></div>';
       const items=[
-        ['Ergebnis / Artefakt', e.ergebnis],
+        ['Bezeichnung', e.bezeichnung],
+        ['Beschreibung', e.ergebnis],
         ['Messbare KPIs', e.kpis],
         ['Voraussetzungen', e.voraussetzungen],
         ['Abhängigkeiten', e.abhaengigkeiten],
@@ -847,8 +915,8 @@ function reviewAllEntries(){
   return Object.values(plan.measures||{}).flat().filter(m=>m && m.kind==='wsYear');
 }
 function reviewEntries(ws, year){ return getWsEntries(ws, year); }
-function reviewCoreFilled(m){ return !!((m.ergebnis||'').trim() && (m.kpis||'').trim() && (m.verantwortlich||'').trim()); }
-function reviewExtendedCount(m){ return [m.ergebnis,m.kpis,m.voraussetzungen,m.abhaengigkeiten,m.risiken,m.verantwortlich].filter(v=>String(v||'').trim()).length; }
+function reviewCoreFilled(m){ return !!((m.bezeichnung||'').trim() && (m.ergebnis||'').trim() && (m.kpis||'').trim() && (m.verantwortlich||'').trim()); }
+function reviewExtendedCount(m){ return [m.bezeichnung,m.ergebnis,m.kpis,m.voraussetzungen,m.abhaengigkeiten,m.risiken,m.verantwortlich].filter(v=>String(v||'').trim()).length; }
 function reviewQualityState(items){
   if(!items.length) return {cls:'c-red', label:'leer', risk:false};
   const avg = items.reduce((a,m)=>a+reviewExtendedCount(m),0)/items.length;
@@ -886,7 +954,7 @@ function renderReview(){
       const avg = items.length ? Math.round(items.reduce((a,m)=>a+reviewExtendedCount(m),0)/items.length) : 0;
       h += '<td><div class="review-cellbox '+q.cls+'" onclick="selectReviewCell(\''+esc(ws).replace(/'/g,'')+'\','+year+')">'+
            '<div class="review-cell-top"><div class="review-count">'+items.length+'</div><div class="review-quality">'+q.label+'</div><div class="review-risk">'+(q.risk ? '⚠' : '')+'</div></div>'+
-           '<div class="review-cell-sub">Ø '+avg+'/6 Felder</div></div></td>';
+           '<div class="review-cell-sub">Ø '+avg+'/7 Felder</div></div></td>';
     });
     h+='</tr>';
   });
@@ -901,7 +969,7 @@ function renderReviewQualityBars(){
   let h='';
   workstreams().forEach(ws=>{
     const items = reviewAllEntries().filter(d=>d.workstream===ws);
-    const pct = items.length ? Math.round((items.reduce((a,m)=>a+reviewExtendedCount(m),0)/(items.length*6))*100) : 0;
+    const pct = items.length ? Math.round((items.reduce((a,m)=>a+reviewExtendedCount(m),0)/(items.length*7))*100) : 0;
     h += '<div class="review-bar-row"><div><b>'+esc(ws)+'</b></div><div class="review-bar-track"><div class="review-bar-fill" style="width:'+pct+'%"></div></div><div><b>'+pct+'%</b></div></div>';
   });
   box.innerHTML = h;
@@ -924,7 +992,7 @@ function renderReviewDrill(){
     const score = reviewExtendedCount(m);
     const cls = !reviewCoreFilled(m) ? 'red' : (String(m.risiken||'').trim() ? 'amber' : 'green');
     const label = !reviewCoreFilled(m) ? 'kritisch' : (String(m.risiken||'').trim() ? 'mit Risiko' : 'stabil');
-    return '<div class="review-mile"><div class="review-mile-head"><div><div class="review-mile-title">'+esc(milestoneTitle(m))+'</div><div class="bc-muted" style="margin-top:4px">Vollständigkeit '+score+'/6</div></div><span class="review-pill '+cls+'">'+label+'</span></div>'+
+    return '<div class="review-mile"><div class="review-mile-head"><div><div class="review-mile-title">'+esc(milestoneTitle(m))+'</div><div class="bc-muted" style="margin-top:4px">Vollständigkeit '+score+'/7</div></div><span class="review-pill '+cls+'">'+label+'</span></div>'+
       '<div class="review-mini-grid">'+
       '<div class="review-field"><div class="k">Messbare KPIs</div><div class="v">'+esc(m.kpis)+'</div></div>'+
       '<div class="review-field"><div class="k">Verantwortlich</div><div class="v">'+esc(m.verantwortlich)+'</div></div>'+
@@ -939,7 +1007,7 @@ function renderReviewRiskBoard(){
   const box = document.getElementById('reviewRiskBoard'); if(!box) return;
   const risks = reviewAllEntries().filter(d=>String(d.risiken||'').trim());
   box.innerHTML = risks.length ? risks.map(r=>
-    '<div class="review-risk-item"><div class="bc-flex-between"><b>'+esc(r.ergebnis)+'</b><span class="bc-muted">'+r.jahr+'</span></div><div class="bc-muted" style="margin:4px 0 8px">'+esc(r.workstream)+' · Verantwortlich: '+esc(r.verantwortlich)+'</div><div style="font-size:13px;white-space:pre-wrap">'+esc(r.risiken)+'</div></div>'
+    '<div class="review-risk-item"><div class="bc-flex-between"><b>'+esc(milestoneTitle(r))+'</b><span class="bc-muted">'+r.jahr+'</span></div><div class="bc-muted" style="margin:4px 0 8px">'+esc(r.workstream)+' · Verantwortlich: '+esc(r.verantwortlich)+'</div><div style="font-size:13px;white-space:pre-wrap">'+esc(r.risiken)+'</div></div>'
   ).join('') : '<div class="bc-muted">Keine Risiken / Blocker gepflegt.</div>';
 }
 
@@ -947,7 +1015,7 @@ function renderReviewRiskBoard(){
 function dl(name,content,type){const b=new Blob([content],{type});const u=URL.createObjectURL(b);const a=document.createElement('a');a.href=u;a.download=name;a.click();URL.revokeObjectURL(u)}
 function exportJson(){const slug=(plan.meta?.unit||plan.meta?.bereich||'plan').replace(/\s+/g,'_');dl('backcasting_plan_'+slug+'.json',JSON.stringify({meta:plan.meta,guidelines,measures:plan.measures},null,2),'application/json');toast('JSON exportiert')}
 function exportCsv(){
-  const cols=['workstream','jahr','planIndex','ergebnis','kpis','voraussetzungen','abhaengigkeiten','risiken','verantwortlich'];
+  const cols=['workstream','jahr','planIndex','bezeichnung','ergebnis','kpis','voraussetzungen','abhaengigkeiten','risiken','verantwortlich'];
   let rows=[cols.join(';')];
   Object.entries(plan.measures).forEach(([k,v])=>{
     if(!v) return;
@@ -1021,13 +1089,10 @@ function initBcTipPopovers() {
 initBcTipPopovers();
 
 /* ---------- tabs ---------- */
-document.querySelectorAll('#bcTabs .tab').forEach(b=>b.onclick=()=>{
-  document.querySelectorAll('#bcTabs .tab').forEach(x=>x.classList.remove('active'));
-  document.querySelectorAll('.page').forEach(x=>x.classList.remove('active'));
-  b.classList.add('active');document.getElementById('page-'+b.dataset.tab).classList.add('active');
-  if(b.dataset.tab==='review')renderReview();
-  if(b.dataset.tab==='planung-new' && typeof initPlanungNew==='function') initPlanungNew();
+document.querySelectorAll("#bcTabs .tab").forEach(function (b) {
+  b.onclick = function () { activateBcTab(b.dataset.tab); };
 });
+activateBcTab(readPersistedBcTab(), { skipPersist: true, skipSideEffects: true });
 
 /* boot */
 initPlanState();
@@ -1068,6 +1133,7 @@ async function bootBackcastingPlan(me) {
   initSelectors();
   const cs = document.getElementById("csvStatus");
   if (cs) cs.textContent = "✓ " + guidelines.length + " Leitplanken aktiv";
+  refreshActiveBcTab();
 }
 
 document.addEventListener('rc-backcasting-ready', (e)=>void bootBackcastingPlan(e.detail));
