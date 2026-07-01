@@ -6,6 +6,9 @@ const {
   buildSkillItemsFromRegistry,
   employeeDisplayName,
   employeeSkillSummary,
+  employeeSkillRows,
+  employeeSkillCategoryKey,
+  findEmployeeIstSkillLevel,
   ensureOrgRowIds,
 } = require("./entity-ids");
 
@@ -173,6 +176,7 @@ function aggregatePhase1Entries(entries, registry) {
     .filter((e) => e.id && (e.nachname || e.vorname || e.name))
     .map((e) => {
       const { skillCount, avgLevel } = employeeSkillSummary(e);
+      const { skills: techSkills, softSkills } = employeeSkillRows(e);
       return {
         skillEntryId: e.id,
         personalnummer: String(e.personalnummer || "").trim() || null,
@@ -180,6 +184,8 @@ function aggregatePhase1Entries(entries, registry) {
         skillCount,
         avgLevel,
         zertifiziert: e.zertifiziert || "",
+        skills: techSkills,
+        softSkills,
       };
     });
 
@@ -548,11 +554,33 @@ function collectPortfolioMilestonesAllYears(planPayload, item) {
   return milestones;
 }
 
+function collectMitarbeiterMilestonesAllYears(planPayload, item) {
+  const targetKey = p1PlanEntryKey({
+    area: "mitarbeiter",
+    subcategory: item.subcategory,
+    entityRef: item.entityRef,
+    skillEntryId: item.skillEntryId,
+  });
+  const milestones = [];
+  Object.values(planPayload?.measures || {}).forEach((list) => {
+    (list || []).forEach((m) => {
+      if (m && m.kind === "p1Year" && m.area === "mitarbeiter" && p1PlanEntryKey(m) === targetKey) {
+        milestones.push(m);
+      }
+    });
+  });
+  return milestones;
+}
+
 function enrichPortfolioAllYearMilestones(planPayload, comparison) {
   if (!comparison || !planPayload) return comparison;
   comparison.portfolio = (comparison.portfolio || []).map((item) => ({
     ...item,
     allYearMilestones: collectPortfolioMilestonesAllYears(planPayload, item),
+  }));
+  comparison.mitarbeiter = (comparison.mitarbeiter || []).map((item) => ({
+    ...item,
+    allYearMilestones: collectMitarbeiterMilestonesAllYears(planPayload, item),
   }));
   return comparison;
 }
@@ -670,6 +698,155 @@ function findEmployeeIst(phase1, entry) {
   return { istAvg: null, skillCount: 0, zertifiziert: "", name: entry.subcategory || "–" };
 }
 
+function statusFromSkillGap(gap) {
+  if (gap == null || !Number.isFinite(gap)) return "neutral";
+  if (gap >= 0) return "ok";
+  if (gap >= -0.5) return "warn";
+  return "risk";
+}
+
+function worstStatus(a, b) {
+  const rank = { risk: 3, warn: 2, ok: 1, neutral: 0 };
+  return (rank[a] || 0) >= (rank[b] || 0) ? a : b;
+}
+
+function findEmployeePhase1Row(phase1, entry) {
+  const employees = phase1.skills?.employees || [];
+  const skillEntryId = entry.skillEntryId || (entry.entityRef?.kind === "employee" ? entry.entityRef.id : null);
+  if (skillEntryId) {
+    const byId = employees.find((e) => e.skillEntryId === skillEntryId);
+    if (byId) return byId;
+  }
+  const label = String(entry.subcategory || entry.label || "").trim().toLowerCase();
+  if (!label) return null;
+  return employees.find((e) => String(e.name || "").trim().toLowerCase() === label) || null;
+}
+
+function buildEmployeeSkillComparisons(employeeRow, milestones) {
+  const comparisons = [];
+  const skillPlanMilestones = (milestones || []).filter(
+    (m) => m && (m.skillPlanKind === "tech" || m.skillPlanKind === "soft")
+  );
+  const legacyMilestones = (milestones || []).filter((m) => m && !m.skillPlanKind);
+
+  skillPlanMilestones.forEach((m) => {
+    const sollLevel = m.ziel_skill_level_min != null ? Number(m.ziel_skill_level_min) : null;
+    const istLevel = findEmployeeIstSkillLevel(employeeRow, m);
+    const gap = istLevel != null && sollLevel != null && Number.isFinite(sollLevel)
+      ? istLevel - sollLevel
+      : null;
+    comparisons.push({
+      skillKey: employeeSkillCategoryKey(m),
+      skillPlanKind: m.skillPlanKind,
+      kategorie: String(m.kategorie || "").trim(),
+      technologie: String(m.technologie || "").trim(),
+      kompetenz: String(m.kompetenz || "").trim(),
+      istLevel: istLevel != null ? istLevel : null,
+      sollLevel: Number.isFinite(sollLevel) ? sollLevel : null,
+      gap: gap != null ? Math.round(gap * 10) / 10 : null,
+      status: statusFromSkillGap(gap),
+      planYear: m.jahr != null ? Number(m.jahr) : null,
+      planQuarter: m.ziel_quartal || null,
+      milestoneId: m.id || null,
+    });
+  });
+
+  if (legacyMilestones.length) {
+    let sollMin = null;
+    legacyMilestones.forEach((m) => {
+      if (m.ziel_skill_level_min != null) {
+        const v = Number(m.ziel_skill_level_min);
+        if (Number.isFinite(v)) sollMin = sollMin == null ? v : Math.max(sollMin, v);
+      }
+    });
+    const istAvg = employeeRow?.avgLevel ?? null;
+    const gap = istAvg != null && sollMin != null ? istAvg - sollMin : null;
+    const first = legacyMilestones[0];
+    comparisons.push({
+      skillKey: "legacy:general",
+      skillPlanKind: null,
+      kategorie: "Allgemeines Ziel",
+      technologie: "",
+      kompetenz: "",
+      istLevel: istAvg,
+      sollLevel: sollMin,
+      gap: gap != null ? Math.round(gap * 10) / 10 : null,
+      status: statusFromSkillGap(gap),
+      planYear: first?.jahr != null ? Number(first.jahr) : null,
+      planQuarter: first?.ziel_quartal || null,
+      milestoneId: null,
+    });
+  }
+
+  return comparisons;
+}
+
+function buildEmployeeSkillHeatmap(mitarbeiterItems) {
+  const rows = [];
+  const columnMap = {};
+  const rowCellMaps = [];
+
+  (mitarbeiterItems || []).forEach((item) => {
+    const skillComparisons = (item.skillComparisons || []).filter(
+      (sc) => sc.skillKey && sc.skillKey !== "legacy:general" && sc.kategorie
+    );
+    if (!skillComparisons.length) return;
+
+    rows.push({
+      skillEntryId: item.skillEntryId || null,
+      label: item.label || item.subcategory || "–",
+    });
+    const cellMap = {};
+
+    skillComparisons.forEach((sc) => {
+      const catKey = sc.skillKey || employeeSkillCategoryKey(sc);
+      if (!columnMap[catKey]) {
+        columnMap[catKey] = {
+          key: catKey,
+          label: sc.kategorie || "–",
+          kind: sc.skillPlanKind === "soft" ? "soft" : "tech",
+        };
+      }
+      const existing = cellMap[catKey];
+      if (!existing) {
+        cellMap[catKey] = {
+          istLevel: sc.istLevel,
+          sollLevel: sc.sollLevel,
+          gap: sc.gap,
+          status: sc.status,
+        };
+        return;
+      }
+      if (sc.sollLevel != null && (existing.sollLevel == null || sc.sollLevel > existing.sollLevel)) {
+        existing.sollLevel = sc.sollLevel;
+      }
+      if (sc.gap != null && (existing.gap == null || sc.gap < existing.gap)) {
+        existing.istLevel = sc.istLevel;
+        existing.gap = sc.gap;
+        existing.status = sc.status;
+      }
+    });
+    rowCellMaps.push(cellMap);
+  });
+
+  const columns = Object.values(columnMap).sort((a, b) => {
+    const ka = String(a.label).localeCompare(String(b.label), "de");
+    if (ka !== 0) return ka;
+    return String(a.kind).localeCompare(String(b.kind));
+  });
+
+  const cells = rowCellMaps.map((cellMap) =>
+    columns.map((col) => cellMap[col.key] || null)
+  );
+
+  return {
+    rows,
+    columns,
+    cells,
+    hasData: rows.length > 0 && columns.length > 0,
+  };
+}
+
 function findGliederungIst(phase1, entry) {
   const label = resolveOrgLabel(phase1, entry, "gliederungen");
   const orgItemId = entry.orgItemId || entry.entityRef?.id;
@@ -754,7 +931,6 @@ function buildP1Comparison(phase1, p1Plan) {
         const v = parseTeur(m.ziel_anzahl);
         if (v != null) { sollAnzahl = Math.max(sollAnzahl, v); hasSoll = true; }
       });
-      if (!milestones.length) return;
       const deltaPct = hasSoll && sollAnzahl > 0 ? ((istAnzahl - sollAnzahl) / sollAnzahl) * 100 : null;
       rollen.push({
         subcategory,
@@ -765,34 +941,55 @@ function buildP1Comparison(phase1, p1Plan) {
         milestones,
       });
     } else if (area === "mitarbeiter") {
+      const employeeRow = findEmployeePhase1Row(phase1, entry);
       const ist = findEmployeeIst(phase1, entry);
+      const skillComparisons = buildEmployeeSkillComparisons(employeeRow, milestones);
+      const skillEntryId = entry.skillEntryId
+        || (entry.entityRef?.kind === "employee" ? entry.entityRef.id : null);
+
+      let status = "neutral";
+      let criticalGapCount = 0;
       let sollMin = null;
-      milestones.forEach((m) => {
-        if (m.ziel_skill_level_min != null) {
-          const v = Number(m.ziel_skill_level_min);
-          if (Number.isFinite(v)) sollMin = sollMin == null ? v : Math.max(sollMin, v);
+      skillComparisons.forEach((sc) => {
+        status = worstStatus(status, sc.status || "neutral");
+        if (sc.status === "risk" || sc.status === "warn") criticalGapCount += 1;
+        if (sc.sollLevel != null) {
+          sollMin = sollMin == null ? sc.sollLevel : Math.max(sollMin, sc.sollLevel);
         }
       });
       const gap = ist.istAvg != null && sollMin != null ? ist.istAvg - sollMin : null;
+      if (!skillComparisons.length) {
+        status = gap == null ? "neutral" : statusFromSkillGap(gap);
+      }
+
       mitarbeiter.push({
         subcategory,
         label: ist.name || subcategory,
+        skillEntryId,
         entityRef: entry.entityRef || null,
         istAvg: ist.istAvg,
         skillCount: ist.skillCount,
         zertifiziert: ist.zertifiziert,
         sollMin,
-        gap,
-        status: gap == null ? "neutral" : gap >= 0 ? "ok" : gap >= -0.5 ? "warn" : "risk",
+        gap: gap != null ? Math.round(gap * 10) / 10 : null,
+        status,
+        criticalGapCount,
+        plannedSkillCount: skillComparisons.length,
+        skillComparisons,
         milestones,
       });
     }
   });
 
   const all = [...portfolio, ...gliederungen, ...rollen, ...mitarbeiter];
+  let skillComparisonCount = 0;
+  mitarbeiter.forEach((m) => {
+    skillComparisonCount += (m.skillComparisons || []).length;
+  });
   const summary = {
     totalComparisons: all.length,
     milestoneCount: countP1Milestones({ portfolio, gliederungen, rollen, mitarbeiter }),
+    skillComparisonCount,
     ok: 0, warn: 0, risk: 0, neutral: 0,
   };
   all.forEach((item) => { summary[item.status] = (summary[item.status] || 0) + 1; });
@@ -876,6 +1073,190 @@ function buildP1PortfolioCategoryTimelines(planPayload, phase1, years = DEFAULT_
   return timelines;
 }
 
+const ORG_SECTION_META = {
+  gliederungen: {
+    label: "Organisatorische Gliederung",
+    unit: "HC",
+    yAxisLabel: "Headcount (SOLL)",
+    xAxisLabel: "Jahr",
+  },
+  gliederungenUmsatz: {
+    label: "Organisatorische Gliederung",
+    unit: "TEUR",
+    yAxisLabel: "Umsatz (TEUR)",
+    xAxisLabel: "Jahr",
+  },
+  rollen: {
+    label: "Rollen",
+    unit: "MA",
+    yAxisLabel: "Personen (SOLL)",
+    xAxisLabel: "Jahr",
+  },
+};
+
+const ORG_SECTION_TIMELINE_DEFS = [
+  { key: "gliederungen", areaKey: "gliederungen", field: "ziel_headcount", combine: "max" },
+  { key: "gliederungenUmsatz", areaKey: "gliederungen", field: "ziel_umsatz_teur", combine: "sum" },
+  { key: "rollen", areaKey: "rollen", field: "ziel_anzahl", combine: "max" },
+];
+
+function aggregateP1OrgSegmentForYear(planPayload, phase1, year, areaKey, opts = {}) {
+  const field = opts.field || "ziel_headcount";
+  const combine = opts.combine || "max";
+  const measures = planPayload?.measures || {};
+  const segments = new Map();
+  let milestoneCount = 0;
+
+  Object.values(measures).forEach((list) => {
+    (list || []).forEach((m) => {
+      if (!m || m.kind !== "p1Year" || Number(m.jahr) !== Number(year)) return;
+      if (m.area !== areaKey) return;
+      milestoneCount += 1;
+
+      const key = p1PlanEntryKey(m);
+      const entry = {
+        area: m.area,
+        subcategory: m.subcategory,
+        orgItemId: m.orgItemId || null,
+        entityRef: m.entityRef || null,
+      };
+      const label = resolveOrgLabel(phase1, entry, areaKey);
+      const value = parseTeur(m[field]);
+
+      if (!segments.has(key)) {
+        segments.set(key, { key, label, value: null });
+      }
+      const seg = segments.get(key);
+      if (label && label !== "–") seg.label = label;
+      if (value != null) {
+        if (combine === "sum") {
+          seg.value = (seg.value || 0) + value;
+        } else {
+          seg.value = seg.value == null ? value : Math.max(seg.value, value);
+        }
+      }
+    });
+  });
+
+  return { segments, milestoneCount };
+}
+
+function buildP1OrgIstFallbackSegments(phase1, years, def) {
+  const segments = [];
+  if (def.areaKey === "gliederungen" && def.field === "ziel_headcount") {
+    (phase1.organisation?.headcountByBereich || []).forEach((b) => {
+      const hc = Number(b.headcount) || 0;
+      if (hc <= 0) return;
+      segments.push({
+        key: String(b.id || b.bereich),
+        label: b.bereich,
+        values: years.map(() => hc),
+      });
+    });
+  } else if (def.areaKey === "gliederungen" && def.field === "ziel_umsatz_teur") {
+    (phase1.organisation?.umsatzByBereich || []).forEach((b) => {
+      const teur = Number(b.teur) || 0;
+      if (teur <= 0) return;
+      segments.push({
+        key: String(b.id || b.bereich),
+        label: b.bereich,
+        values: years.map(() => teur),
+      });
+    });
+  } else if (def.areaKey === "rollen" && def.field === "ziel_anzahl") {
+    (phase1.organisation?.rollenByRolle || []).forEach((r) => {
+      const n = Number(r.anzahl) || 0;
+      if (n <= 0) return;
+      segments.push({
+        key: String(r.id || r.rolle),
+        label: r.rolle,
+        values: years.map(() => n),
+      });
+    });
+  }
+  return segments.sort((a, b) => String(a.label).localeCompare(String(b.label), "de"));
+}
+
+function buildP1OrgSectionTimelineEntry(planPayload, phase1, years, def) {
+  const meta = ORG_SECTION_META[def.key];
+  const yearlyAggs = years.map((y) =>
+    aggregateP1OrgSegmentForYear(planPayload, phase1, y, def.areaKey, {
+      field: def.field,
+      combine: def.combine,
+    })
+  );
+  const milestoneCount = yearlyAggs.reduce((sum, row) => sum + row.milestoneCount, 0);
+  const segmentMap = new Map();
+
+  yearlyAggs.forEach((row, yearIndex) => {
+    row.segments.forEach((seg, key) => {
+      if (!segmentMap.has(key)) {
+        segmentMap.set(key, { key, label: seg.label, values: years.map(() => null) });
+      }
+      const stored = segmentMap.get(key);
+      if (seg.label) stored.label = seg.label;
+      if (seg.value != null && seg.value > 0) {
+        const cur = stored.values[yearIndex];
+        stored.values[yearIndex] = def.combine === "sum"
+          ? (cur || 0) + seg.value
+          : cur == null ? seg.value : Math.max(cur, seg.value);
+      }
+    });
+  });
+
+  const segments = [...segmentMap.values()]
+    .filter((seg) => seg.values.some((v) => v != null && v > 0))
+    .sort((a, b) => String(a.label).localeCompare(String(b.label), "de"));
+
+  const totals = years.map((_, yearIndex) =>
+    segments.reduce((sum, seg) => sum + (seg.values[yearIndex] || 0), 0)
+  );
+  const hasData = milestoneCount > 0 && totals.some((t) => t > 0);
+
+  if (!hasData && milestoneCount > 0) {
+    const istSegments = buildP1OrgIstFallbackSegments(phase1, years, def);
+    const istTotals = years.map((_, yearIndex) =>
+      istSegments.reduce((sum, seg) => sum + (seg.values[yearIndex] || 0), 0)
+    );
+    if (istTotals.some((t) => t > 0)) {
+      return {
+        key: def.key,
+        label: meta.label,
+        years: [...years],
+        segments: istSegments,
+        totals: istTotals,
+        milestoneCount,
+        hasData: true,
+        istFallback: true,
+        unit: meta.unit,
+        yAxisLabel: meta.yAxisLabel.replace("(SOLL)", "(IST)"),
+        xAxisLabel: meta.xAxisLabel,
+      };
+    }
+  }
+
+  return {
+    key: def.key,
+    label: meta.label,
+    years: [...years],
+    segments,
+    totals,
+    milestoneCount,
+    hasData,
+    unit: meta.unit,
+    yAxisLabel: meta.yAxisLabel,
+    xAxisLabel: meta.xAxisLabel,
+  };
+}
+
+function buildP1OrgSectionTimelines(planPayload, phase1, years = DEFAULT_TIMELINE_YEARS) {
+  const timelines = {};
+  ORG_SECTION_TIMELINE_DEFS.forEach((def) => {
+    timelines[def.key] = buildP1OrgSectionTimelineEntry(planPayload, phase1, years, def);
+  });
+  return timelines;
+}
+
 function buildP1DashboardSnapshot(entries, planPayload, year, registry, timelineYears = DEFAULT_TIMELINE_YEARS) {
   const phase1 = aggregatePhase1Entries(entries, registry);
   const p1Plan = aggregateP1PlanForYear(planPayload, year);
@@ -909,16 +1290,24 @@ function buildP1DashboardSnapshot(entries, planPayload, year, registry, timeline
     summary: comparison.summary,
     planMeta: planPayload?.meta || null,
     portfolioCategoryTimelines: buildP1PortfolioCategoryTimelines(planPayload, phase1, timelineYears),
+    orgSectionTimelines: buildP1OrgSectionTimelines(planPayload, phase1, timelineYears),
+    employeeSkillHeatmap: buildEmployeeSkillHeatmap(comparison.mitarbeiter),
   };
 }
 
 function mergeP1Summaries(byYear) {
-  const summary = { totalComparisons: 0, milestoneCount: 0, ok: 0, warn: 0, risk: 0, neutral: 0 };
+  const summary = {
+    totalComparisons: 0,
+    milestoneCount: 0,
+    skillComparisonCount: 0,
+    ok: 0, warn: 0, risk: 0, neutral: 0,
+  };
   byYear.forEach((row) => {
     const s = row.summary;
     if (!s) return;
     summary.totalComparisons += s.totalComparisons || 0;
     summary.milestoneCount += s.milestoneCount || 0;
+    summary.skillComparisonCount += s.skillComparisonCount || 0;
     summary.ok += s.ok || 0;
     summary.warn += s.warn || 0;
     summary.risk += s.risk || 0;
@@ -962,7 +1351,12 @@ function buildP1DashboardSnapshotAllYears(entries, planPayload, years, registry)
       planPayload,
       buildP1Comparison(phase1, p1Plan)
     );
-    return { year: Number(year), p1Plan: comparison, summary: comparison.summary };
+    return {
+      year: Number(year),
+      p1Plan: comparison,
+      summary: comparison.summary,
+      employeeSkillHeatmap: buildEmployeeSkillHeatmap(comparison.mitarbeiter),
+    };
   });
   return {
     allYears: true,
@@ -973,6 +1367,7 @@ function buildP1DashboardSnapshotAllYears(entries, planPayload, years, registry)
     summary: mergeP1Summaries(byYear),
     planMeta: planPayload?.meta || null,
     portfolioCategoryTimelines: buildP1PortfolioCategoryTimelines(planPayload, phase1, years),
+    orgSectionTimelines: buildP1OrgSectionTimelines(planPayload, phase1, years),
   };
 }
 
@@ -1064,6 +1459,8 @@ module.exports = {
   buildP1DashboardSnapshot,
   buildP1DashboardSnapshotAllYears,
   buildP1PortfolioCategoryTimelines,
+  buildP1OrgSectionTimelines,
+  buildEmployeeSkillHeatmap,
   countAllPlanMilestones,
   buildDemoEvaluationSummary,
   DEFAULT_TIMELINE_YEARS,

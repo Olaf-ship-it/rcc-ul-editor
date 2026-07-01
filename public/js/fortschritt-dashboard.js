@@ -294,6 +294,40 @@ const FORTSCHRITT_FIELD_MAPPINGS = [
       outcome: "IST Ø 3,0 · SOLL min. 3,5 · Gap −0,5",
     },
   },
+  {
+    kpi: "Mitarbeiter-Entwicklung (Fortschritt NEW)",
+    views: ["Fortschritt NEW"],
+    phase1: {
+      area: "Skills · Status · pro Mitarbeiter",
+      fields: ["skills[].kategorie", "skills[].technologie", "skills[].level", "softSkills[].kategorie", "softSkills[].level"],
+      agg: "IST-Level je Fach- und Soft-Skill pro skillEntryId",
+    },
+    phase2: {
+      area: "Planung NEW · Mitarbeiter · Skill-Plan",
+      fields: ["skillPlanKind", "kategorie", "technologie", "kompetenz", "ziel_skill_level_min", "ziel_quartal"],
+      agg: "Je Skill-Eintrag pro Mitarbeiter und Jahr ein Ziel-Level",
+    },
+    calc: "Gap = IST-Level − SOLL-Level je Skill; Heatmap: schlechtester Gap pro Mitarbeiter × Kategorie",
+    example: {
+      phase1Items: [
+        { label: "MA Müller · Cloud · AWS", field: "level", value: "2" },
+        { label: "MA Müller · Soft · Kommunikation", field: "level", value: "3" },
+      ],
+      phase1Calc: "Direkt je Skill-Zeile",
+      phase1Result: "IST 2 / 3",
+      phase2Items: [
+        { label: "Skill-Plan Cloud · AWS · 2027", field: "ziel_skill_level_min", value: "4" },
+        { label: "Skill-Plan Kommunikation · 2027", field: "ziel_skill_level_min", value: "4" },
+      ],
+      phase2Calc: "Ziel-Level je Skill",
+      phase2Result: "SOLL 4 / 4",
+      steps: [
+        "<b>Gap Cloud:</b> 2 − 4 = <b>−2</b> → Status: <em>kritisch</em>",
+        "<b>Heatmap-Zelle</b> „Cloud“: schlechtester Gap in dieser Kategorie",
+      ],
+      outcome: "Pro Mitarbeiter Skill-Tabelle + Unit-Heatmap",
+    },
+  },
 ];
 
 let fortschrittErlaeuterungRendered = false;
@@ -844,6 +878,227 @@ function renderFortschrittQuarterChartSvg(meta, slots, seriesList) {
     ${dots}
     ${emptyHint}
   </svg>`;
+}
+
+const FT_STACKED_YEAR_COLORS = [
+  "#2563eb", "#7c3aed", "#0f766e", "#c05621", "#334155", "#db2777", "#0891b2", "#65a30d",
+];
+
+function renderFortschrittStackedYearChartSvg(meta, years, segments) {
+  const yearList = years || [];
+  const seriesList = segments || [];
+  const unit = meta?.unit || "";
+  const yAxisLabel = meta?.yAxisLabel || "";
+  const xAxisLabel = meta?.xAxisLabel || "Jahr";
+
+  if (!yearList.length) {
+    return '<p class="fortschritt-empty">Keine Plan-Daten f\u00fcr diese Kennzahl.</p>';
+  }
+
+  const W = 960;
+  const H = 300;
+  const pad = { l: 58, r: 14, t: 24, b: 44 };
+  const totals = yearList.map((_, yi) =>
+    seriesList.reduce((sum, seg) => sum + (seg.values?.[yi] || 0), 0)
+  );
+  const hasValues = totals.some((t) => t > 0);
+  let max = hasValues ? Math.max(...totals) : 1;
+  if (max <= 0) max = 1;
+
+  const innerW = W - pad.l - pad.r;
+  const innerH = H - pad.t - pad.b;
+  const yearCount = yearList.length;
+  const slotW = innerW / Math.max(yearCount, 1);
+  const barW = Math.min(slotW * 0.65, 72);
+  const xCenter = (index) => pad.l + slotW * index + slotW / 2;
+  const yAt = (value) => pad.t + (1 - value / max) * innerH;
+  const baseY = pad.t + innerH;
+
+  const yTicks = [0, max / 2, max];
+  const gridLines = yTicks
+    .map((tick) => {
+      const y = yAt(tick).toFixed(1);
+      return `<line class="ft-tl-grid" x1="${pad.l}" y1="${y}" x2="${W - pad.r}" y2="${y}"/>`;
+    })
+    .join("");
+
+  const yLabels = yTicks
+    .map((tick) => {
+      const y = yAt(tick).toFixed(1);
+      return `<text class="ft-tl-axis-label" x="${pad.l - 8}" y="${y}" text-anchor="end" dominant-baseline="middle">${ftFormatTimelineTick(tick, unit)}</text>`;
+    })
+    .join("");
+
+  const yTitleX = 14;
+  const yTitleY = (pad.t + (H - pad.b)) / 2;
+  const yTitle = yAxisLabel
+    ? `<text class="ft-tl-axis-title" x="${yTitleX}" y="${yTitleY}" transform="rotate(-90 ${yTitleX} ${yTitleY})" text-anchor="middle">${ftEscAttr(yAxisLabel)}</text>`
+    : "";
+
+  const xLabels = yearList
+    .map((year, index) => {
+      const x = xCenter(index).toFixed(1);
+      return `<text class="ft-tl-axis-label" x="${x}" y="${H - 8}" text-anchor="middle">${year}</text>`;
+    })
+    .join("");
+
+  const xTitle = `<text class="ft-tl-axis-title ft-tl-axis-title--x" x="${(pad.l + W - pad.r) / 2}" y="${H - 2}" text-anchor="middle">${ftEscAttr(xAxisLabel)}</text>`;
+
+  let bars = "";
+  yearList.forEach((year, yi) => {
+    let stackBottom = baseY;
+    seriesList.forEach((seg, si) => {
+      const val = seg.values?.[yi];
+      if (val == null || val <= 0) return;
+      const color = seg.color || FT_STACKED_YEAR_COLORS[si % FT_STACKED_YEAR_COLORS.length];
+      const h = (val / max) * innerH;
+      const y = stackBottom - h;
+      const x = xCenter(yi) - barW / 2;
+      const tooltip = `${seg.label} \u00b7 ${year} \u00b7 ${ftFormatTimelineTooltipValue(val, unit)} ${unit}`;
+      bars += `<rect class="ft-year-stack-segment" x="${x.toFixed(1)}" y="${y.toFixed(1)}" width="${barW.toFixed(1)}" height="${Math.max(h, 0.5).toFixed(1)}" fill="${color}"><title>${ftEscAttr(tooltip)}</title></rect>`;
+      stackBottom = y;
+    });
+    if (totals[yi] > 0) {
+      bars += `<text class="ft-year-stack-total" x="${xCenter(yi).toFixed(1)}" y="${(yAt(totals[yi]) - 4).toFixed(1)}" text-anchor="middle">${ftFormatTimelineTick(totals[yi], unit)}</text>`;
+    }
+  });
+
+  const emptyHint = hasValues
+    ? ""
+    : `<text class="ft-tl-empty-hint" x="${(pad.l + W - pad.r) / 2}" y="${(pad.t + H - pad.b) / 2}" text-anchor="middle">Noch keine SOLL-Werte erfasst</text>`;
+
+  const ariaLabel = meta?.label || yAxisLabel || "Jahresverlauf";
+  return `<svg class="ft-tl-svg ft-tl-svg--year-stack" viewBox="0 0 ${W} ${H}" role="img" aria-label="${ftEscAttr(ariaLabel)}">
+    ${gridLines}
+    <line class="ft-tl-axis" x1="${pad.l}" y1="${pad.t}" x2="${pad.l}" y2="${H - pad.b}"/>
+    <line class="ft-tl-axis" x1="${pad.l}" y1="${H - pad.b}" x2="${W - pad.r}" y2="${H - pad.b}"/>
+    ${yLabels}
+    ${yTitle}
+    ${xLabels}
+    ${xTitle}
+    ${bars}
+    ${emptyHint}
+  </svg>`;
+}
+
+const FT_HEATMAP_CELL_COLORS = {
+  ok: "#bbf7d0",
+  warn: "#fde68a",
+  risk: "#fecaca",
+  neutral: "#dbeafe",
+  empty: "#ffffff",
+};
+
+function ftHeatmapCellColor(status) {
+  return FT_HEATMAP_CELL_COLORS[status] || FT_HEATMAP_CELL_COLORS.empty;
+}
+
+function ftHeatmapColLines(label, maxChars) {
+  const text = String(label || "").trim();
+  if (!text) return ["?"];
+  const words = text.split(/\s+/);
+  const lines = [];
+  let line = "";
+  words.forEach(function (word) {
+    const next = line ? line + " " + word : word;
+    if (next.length > maxChars && line) {
+      lines.push(line);
+      line = word;
+    } else {
+      line = next;
+    }
+  });
+  if (line) lines.push(line);
+  return lines.slice(0, 2);
+}
+
+function ftHeatmapCellLabel(cell) {
+  if (!cell) return "";
+  if (cell.gap != null && Number.isFinite(Number(cell.gap))) {
+    const g = Number(cell.gap);
+    return (g > 0 ? "+" : "") + String(g);
+  }
+  if (cell.sollLevel != null && Number.isFinite(Number(cell.sollLevel))) {
+    return "\u2192" + cell.sollLevel;
+  }
+  return "Plan";
+}
+
+function renderFortschrittSkillHeatmapSvg(meta, heatmap) {
+  if (!heatmap || !heatmap.hasData) {
+    return '<p class="p1f-heatmap__empty">Keine Skill-Planungen f\u00fcr die Heatmap vorhanden.</p>';
+  }
+
+  const rows = heatmap.rows || [];
+  const columns = heatmap.columns || [];
+  const cells = heatmap.cells || [];
+
+  const labelW = 156;
+  const headerH = 58;
+  const cellW = 76;
+  const cellH = 32;
+  const padR = 12;
+  const padB = 8;
+  const W = labelW + columns.length * cellW + padR;
+  const H = headerH + rows.length * cellH + padB;
+
+  let headerCols = "";
+  columns.forEach(function (col, ci) {
+    const x = labelW + ci * cellW + cellW / 2;
+    const kindHint = col.kind === "soft" ? "Soft" : "Fach";
+    const title = (col.label || "") + " (" + kindHint + ")";
+    const lines = ftHeatmapColLines(col.label, 11);
+    headerCols +=
+      '<text class="p1f-heatmap__col-label" x="' + x.toFixed(1) + '" y="12" text-anchor="middle" data-kind="' + ftEscAttr(col.kind || "") + '">' +
+      "<title>" + ftEscAttr(title) + "</title>" +
+      '<tspan class="p1f-heatmap__col-kind" x="' + x.toFixed(1) + '" dy="0">' + ftEscAttr(kindHint) + "</tspan>";
+    lines.forEach(function (line, li) {
+      headerCols += '<tspan class="p1f-heatmap__col-name" x="' + x.toFixed(1) + '" dy="' + (li === 0 ? "11" : "10") + '">' + ftEscAttr(line) + "</tspan>";
+    });
+    headerCols += "</text>";
+  });
+
+  let body = "";
+  rows.forEach(function (row, ri) {
+    const y = headerH + ri * cellH;
+    const rowLabel = String(row.label || "").length > 20
+      ? String(row.label).slice(0, 19) + "\u2026"
+      : (row.label || "");
+    body +=
+      '<text class="p1f-heatmap__row-label" x="' + (labelW - 8) + '" y="' + (y + cellH / 2).toFixed(1) + '" text-anchor="end" dominant-baseline="middle">' +
+      "<title>" + ftEscAttr(row.label || "") + "</title>" +
+      ftEscAttr(rowLabel) + "</text>";
+    columns.forEach(function (col, ci) {
+      const cell = (cells[ri] && cells[ri][ci]) || null;
+      const x = labelW + ci * cellW;
+      const status = cell ? (cell.status || "neutral") : "empty";
+      const fill = ftHeatmapCellColor(status);
+      const ist = cell && cell.istLevel != null ? cell.istLevel : "\u2013";
+      const soll = cell && cell.sollLevel != null ? cell.sollLevel : "\u2013";
+      const gap = cell && cell.gap != null ? cell.gap : "\u2013";
+      const tip = cell
+        ? row.label + " \u00b7 " + col.label + ": IST " + ist + " \u2192 SOLL " + soll + " (\u0394 " + gap + ")"
+        : row.label + " \u00b7 " + col.label + ": nicht geplant";
+      const cellLabel = ftHeatmapCellLabel(cell);
+      body +=
+        '<rect class="p1f-heatmap__cell p1f-heatmap__cell--' + status + '" x="' + x + '" y="' + y + '" width="' + cellW + '" height="' + cellH + '" fill="' + fill + '" stroke="#cbd5e1" stroke-width="1" data-kind="' + ftEscAttr(col.kind || "") + '" data-row="' + ri + '" data-status="' + ftEscAttr(status) + '">' +
+        "<title>" + ftEscAttr(tip) + "</title></rect>";
+      if (cellLabel) {
+        body +=
+          '<text class="p1f-heatmap__cell-text p1f-heatmap__cell-text--' + status + '" x="' + (x + cellW / 2).toFixed(1) + '" y="' + (y + cellH / 2).toFixed(1) + '" text-anchor="middle" dominant-baseline="middle">' +
+          ftEscAttr(cellLabel) + "</text>";
+      }
+    });
+  });
+
+  const ariaLabel = meta?.label || "Skill-Heatmap";
+  return (
+    '<svg class="p1f-heatmap__svg" viewBox="0 0 ' + W + " " + H + '" role="img" aria-label="' + ftEscAttr(ariaLabel) + '">' +
+    '<line class="p1f-heatmap__axis" x1="' + labelW + '" y1="' + headerH + '" x2="' + W + '" y2="' + headerH + '"/>' +
+    headerCols +
+    body +
+    "</svg>"
+  );
 }
 
 function renderFortschrittAllUnitsLegend(timelineData) {

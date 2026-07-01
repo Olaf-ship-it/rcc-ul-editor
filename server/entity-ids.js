@@ -305,13 +305,48 @@ function employeeSkillRows(emp) {
       technologie: String(s.technologie || s.label || "").trim() || "–",
       level: Number.isFinite(Number(s.level)) ? Number(s.level) : null,
       skillItemId: s.skillItemId || null,
+      kategorie_id: s.kategorie_id != null ? Number(s.kategorie_id) : null,
     })),
     softSkills: soft.map((s) => ({
       kind: "soft",
       kategorie: String(s.kategorie || "Sonstiges").trim(),
       level: Number.isFinite(Number(s.level)) ? Number(s.level) : null,
+      kategorie_id: s.kategorie_id != null ? Number(s.kategorie_id) : null,
     })),
   };
+}
+
+function employeeSkillCategoryKey(ms) {
+  if (!ms) return "unknown";
+  const kind = ms.skillPlanKind === "soft" ? "soft" : "tech";
+  const kat = String(ms.kategorie || "Sonstiges").trim();
+  return `${kind}:${kat}`;
+}
+
+function findEmployeeIstSkillLevel(employeeRow, planMs) {
+  if (!employeeRow || !planMs) return null;
+  if (planMs.skillPlanKind === "soft") {
+    const match = (employeeRow.softSkills || []).find((s) => {
+      if (planMs.kategorie_id != null && s.kategorie_id != null) {
+        return Number(s.kategorie_id) === Number(planMs.kategorie_id);
+      }
+      return String(s.kategorie || "").trim() === String(planMs.kategorie || "").trim();
+    });
+    return match && match.level != null ? Number(match.level) : null;
+  }
+  if (planMs.skillPlanKind === "tech") {
+    const match = (employeeRow.skills || []).find((s) => {
+      if (planMs.skillItemId && s.skillItemId) {
+        return String(s.skillItemId) === String(planMs.skillItemId);
+      }
+      const sameKat = String(s.kategorie || "").trim() === String(planMs.kategorie || "").trim();
+      const tech = String(planMs.technologie || "").trim();
+      const sTech = String(s.technologie || "").trim();
+      return sameKat && (!tech || !sTech || tech === sTech);
+    });
+    return match && match.level != null ? Number(match.level) : null;
+  }
+  return null;
 }
 
 module.exports = {
@@ -329,5 +364,7 @@ module.exports = {
   employeeDisplayName,
   employeeSkillSummary,
   employeeSkillRows,
+  employeeSkillCategoryKey,
+  findEmployeeIstSkillLevel,
   normalizeRegistryItem,
 };
