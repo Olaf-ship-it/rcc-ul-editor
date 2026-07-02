@@ -733,9 +733,9 @@ function renderFortschrittQuarterChartSvg(meta, slots, seriesList) {
   const xAxisLabel = meta?.xAxisLabel || "Zeit";
   const slotCount = quarters.length;
 
-  const W = 960;
-  const H = 300;
-  const pad = { l: 58, r: 14, t: 16, b: 52 };
+  const W = 560;
+  const H = 200;
+  const pad = { l: 48, r: 10, t: 16, b: 46 };
 
   if (!slotCount) {
     return '<p class="fortschritt-empty">Keine Plan-Daten für diese Kennzahl.</p>';
@@ -778,18 +778,18 @@ function renderFortschrittQuarterChartSvg(meta, slots, seriesList) {
   const yLabels = yTicks
     .map((tick) => {
       const y = yAt(tick).toFixed(1);
-      return `<text class="ft-tl-axis-label" x="${pad.l - 8}" y="${y}" text-anchor="end" dominant-baseline="middle">${ftFormatTimelineTick(tick, unit)}</text>`;
+      return `<text class="ft-tl-axis-label" font-size="10" x="${pad.l - 6}" y="${y}" text-anchor="end" dominant-baseline="middle">${ftFormatTimelineTick(tick, unit)}</text>`;
     })
     .join("");
 
-  const yTitleX = 14;
+  const yTitleX = 12;
   const yTitleY = (pad.t + (H - pad.b)) / 2;
-  const yTitle = `<text class="ft-tl-axis-title" x="${yTitleX}" y="${yTitleY}" transform="rotate(-90 ${yTitleX} ${yTitleY})" text-anchor="middle">${ftEscAttr(yAxisLabel)}</text>`;
+  const yTitle = `<text class="ft-tl-axis-title" font-size="10" x="${yTitleX}" y="${yTitleY}" transform="rotate(-90 ${yTitleX} ${yTitleY})" text-anchor="middle">${ftEscAttr(yAxisLabel)}</text>`;
 
   const xQuarterLabels = quarters
     .map((slot, index) => {
       const x = xAt(index).toFixed(1);
-      return `<text class="ft-tl-axis-label ft-tl-x-q-label" x="${x}" y="${H - pad.b + 14}" text-anchor="middle">${slot.label || "Q" + slot.quarter}</text>`;
+      return `<text class="ft-tl-axis-label ft-tl-x-q-label" font-size="8" x="${x}" y="${H - pad.b + 12}" text-anchor="middle">${slot.label || "Q" + slot.quarter}</text>`;
     })
     .join("");
 
@@ -801,7 +801,7 @@ function renderFortschrittQuarterChartSvg(meta, slots, seriesList) {
       const yearStart = quarters.findIndex((s) => s.year === slot.year);
       const yearEnd = quarters.length - 1 - [...quarters].reverse().findIndex((s) => s.year === slot.year);
       const x = ((xAt(yearStart) + xAt(yearEnd)) / 2).toFixed(1);
-      return `<text class="ft-tl-axis-label ft-tl-x-year-label" x="${x}" y="${H - 6}" text-anchor="middle">${slot.year}</text>`;
+      return `<text class="ft-tl-axis-label ft-tl-x-year-label" font-size="10" x="${x}" y="${H - 4}" text-anchor="middle">${slot.year}</text>`;
     })
     .join("");
 
@@ -813,7 +813,7 @@ function renderFortschrittQuarterChartSvg(meta, slots, seriesList) {
     })
     .join("");
 
-  const xTitle = `<text class="ft-tl-axis-title ft-tl-axis-title--x" x="${(pad.l + W - pad.r) / 2}" y="${H - 2}" text-anchor="middle">${ftEscAttr(xAxisLabel)}</text>`;
+  const xTitle = `<text class="ft-tl-axis-title ft-tl-axis-title--x" font-size="10" x="${(pad.l + W - pad.r) / 2}" y="${H - 1}" text-anchor="middle">${ftEscAttr(xAxisLabel)}</text>`;
 
   const paths = (seriesList || [])
     .map((series) => {
@@ -864,7 +864,7 @@ function renderFortschrittQuarterChartSvg(meta, slots, seriesList) {
     : `<text class="ft-tl-empty-hint" x="${(pad.l + W - pad.r) / 2}" y="${(pad.t + H - pad.b) / 2}" text-anchor="middle">Noch keine Umsatzwerte (TEUR) erfasst</text>`;
 
   const ariaLabel = meta?.label || yAxisLabel;
-  return `<svg class="ft-tl-svg ft-tl-svg--quarter" viewBox="0 0 ${W} ${H}" role="img" aria-label="${ftEscAttr(ariaLabel)}">
+  return `<svg class="ft-tl-svg ft-tl-svg--quarter" width="${W}" height="${H}" viewBox="0 0 ${W} ${H}" role="img" aria-label="${ftEscAttr(ariaLabel)}">
     ${gridLines}
     ${yearDividers}
     <line class="ft-tl-axis" x1="${pad.l}" y1="${pad.t}" x2="${pad.l}" y2="${H - pad.b}"/>
@@ -895,9 +895,9 @@ function renderFortschrittStackedYearChartSvg(meta, years, segments) {
     return '<p class="fortschritt-empty">Keine Plan-Daten f\u00fcr diese Kennzahl.</p>';
   }
 
-  const W = 960;
-  const H = 300;
-  const pad = { l: 58, r: 14, t: 24, b: 44 };
+  const W = 560;
+  const H = 190;
+  const pad = { l: 48, r: 10, t: 16, b: 36 };
   const totals = yearList.map((_, yi) =>
     seriesList.reduce((sum, seg) => sum + (seg.values?.[yi] || 0), 0)
   );
@@ -909,7 +909,7 @@ function renderFortschrittStackedYearChartSvg(meta, years, segments) {
   const innerH = H - pad.t - pad.b;
   const yearCount = yearList.length;
   const slotW = innerW / Math.max(yearCount, 1);
-  const barW = Math.min(slotW * 0.65, 72);
+  const barW = Math.min(slotW * 0.58, 42);
   const xCenter = (index) => pad.l + slotW * index + slotW / 2;
   const yAt = (value) => pad.t + (1 - value / max) * innerH;
   const baseY = pad.t + innerH;
@@ -925,24 +925,24 @@ function renderFortschrittStackedYearChartSvg(meta, years, segments) {
   const yLabels = yTicks
     .map((tick) => {
       const y = yAt(tick).toFixed(1);
-      return `<text class="ft-tl-axis-label" x="${pad.l - 8}" y="${y}" text-anchor="end" dominant-baseline="middle">${ftFormatTimelineTick(tick, unit)}</text>`;
+      return `<text class="ft-tl-axis-label" font-size="10" x="${pad.l - 6}" y="${y}" text-anchor="end" dominant-baseline="middle">${ftFormatTimelineTick(tick, unit)}</text>`;
     })
     .join("");
 
-  const yTitleX = 14;
+  const yTitleX = 12;
   const yTitleY = (pad.t + (H - pad.b)) / 2;
   const yTitle = yAxisLabel
-    ? `<text class="ft-tl-axis-title" x="${yTitleX}" y="${yTitleY}" transform="rotate(-90 ${yTitleX} ${yTitleY})" text-anchor="middle">${ftEscAttr(yAxisLabel)}</text>`
+    ? `<text class="ft-tl-axis-title" font-size="10" x="${yTitleX}" y="${yTitleY}" transform="rotate(-90 ${yTitleX} ${yTitleY})" text-anchor="middle">${ftEscAttr(yAxisLabel)}</text>`
     : "";
 
   const xLabels = yearList
     .map((year, index) => {
       const x = xCenter(index).toFixed(1);
-      return `<text class="ft-tl-axis-label" x="${x}" y="${H - 8}" text-anchor="middle">${year}</text>`;
+      return `<text class="ft-tl-axis-label" font-size="10" x="${x}" y="${H - 10}" text-anchor="middle">${year}</text>`;
     })
     .join("");
 
-  const xTitle = `<text class="ft-tl-axis-title ft-tl-axis-title--x" x="${(pad.l + W - pad.r) / 2}" y="${H - 2}" text-anchor="middle">${ftEscAttr(xAxisLabel)}</text>`;
+  const xTitle = `<text class="ft-tl-axis-title ft-tl-axis-title--x" font-size="10" x="${(pad.l + W - pad.r) / 2}" y="${H - 1}" text-anchor="middle">${ftEscAttr(xAxisLabel)}</text>`;
 
   let bars = "";
   yearList.forEach((year, yi) => {
@@ -959,7 +959,7 @@ function renderFortschrittStackedYearChartSvg(meta, years, segments) {
       stackBottom = y;
     });
     if (totals[yi] > 0) {
-      bars += `<text class="ft-year-stack-total" x="${xCenter(yi).toFixed(1)}" y="${(yAt(totals[yi]) - 4).toFixed(1)}" text-anchor="middle">${ftFormatTimelineTick(totals[yi], unit)}</text>`;
+      bars += `<text class="ft-year-stack-total" font-size="10" x="${xCenter(yi).toFixed(1)}" y="${(yAt(totals[yi]) - 3).toFixed(1)}" text-anchor="middle">${ftFormatTimelineTick(totals[yi], unit)}</text>`;
     }
   });
 
@@ -968,7 +968,7 @@ function renderFortschrittStackedYearChartSvg(meta, years, segments) {
     : `<text class="ft-tl-empty-hint" x="${(pad.l + W - pad.r) / 2}" y="${(pad.t + H - pad.b) / 2}" text-anchor="middle">Noch keine SOLL-Werte erfasst</text>`;
 
   const ariaLabel = meta?.label || yAxisLabel || "Jahresverlauf";
-  return `<svg class="ft-tl-svg ft-tl-svg--year-stack" viewBox="0 0 ${W} ${H}" role="img" aria-label="${ftEscAttr(ariaLabel)}">
+  return `<svg class="ft-tl-svg ft-tl-svg--year-stack" width="${W}" height="${H}" viewBox="0 0 ${W} ${H}" role="img" aria-label="${ftEscAttr(ariaLabel)}">
     ${gridLines}
     <line class="ft-tl-axis" x1="${pad.l}" y1="${pad.t}" x2="${pad.l}" y2="${H - pad.b}"/>
     <line class="ft-tl-axis" x1="${pad.l}" y1="${H - pad.b}" x2="${W - pad.r}" y2="${H - pad.b}"/>

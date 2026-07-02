@@ -419,7 +419,7 @@ function renderFnPortfolioCategoryChart(sectionDef, timeline) {
   }
   var html = '<div class="p1f-category-dashboard">';
   html += '<h4 class="p1f-category-dashboard__title">' + fnEsc(sectionDef.label) + ' \u00b7 Umsatz \u00fcber alle Jahre</h4>';
-  html += chartHtml;
+  html += '<div class="p1f-category-dashboard__wrap">' + chartHtml + "</div>";
   html += '<div class="p1f-category-dashboard__legend">';
   html += '<span class="p1f-category-dashboard__legend-item"><span class="p1f-category-dashboard__swatch p1f-category-dashboard__swatch--soll" style="background:' + color + '"></span>SOLL Planung NEW</span>';
   html += '<span class="p1f-category-dashboard__legend-item"><span class="p1f-category-dashboard__swatch p1f-category-dashboard__swatch--ist" style="color:' + color + ';border-color:' + color + '"></span>IST projiziert</span>';
@@ -846,7 +846,7 @@ function renderFnOrgSectionChart(sectionDef, timeline) {
   if (timeline.istFallback) {
     html += '<p class="p1f-org-chart__note">Keine SOLL-Werte in Meilensteinen \u2013 Anzeige aus Phase-1-IST (konstant \u00fcber alle Jahre).</p>';
   }
-  html += chartHtml;
+  html += '<div class="p1f-org-chart__wrap">' + chartHtml + "</div>";
   if (legend) html += '<div class="p1f-org-chart__legend">' + legend + "</div>";
   html += "</div>";
   return html;
@@ -1181,34 +1181,36 @@ function fnFindEmployeePhase1Row(phase1, item) {
 
 function renderFnMaEmployeeSkillHeatmaps(item, years) {
   var heatmaps = fnBuildEmployeeSkillYearHeatmap(item, years);
+  var hasTech = heatmaps.tech.hasData;
+  var hasSoft = heatmaps.soft.hasData;
+  var hasAny = hasTech || hasSoft;
   var html = '<div class="p1f-ma-skill-heatmaps">';
-  var hasAny = false;
 
-  if (heatmaps.tech.hasData) {
-    hasAny = true;
-    html += '<div class="p1f-ma-skill-heatmap-section" data-ma-kind="tech">';
-    html += '<h5 class="p1f-ma-skill-heatmap__title">Fachliche Skills</h5>';
-    html += '<div class="p1f-heatmap-wrap">';
-    if (typeof renderFortschrittSkillLevelHeatmapSvg === "function") {
-      html += renderFortschrittSkillLevelHeatmapSvg({ label: "Fachliche Skills" }, heatmaps.tech);
+  if (hasAny) {
+    html += '<div class="p1f-ma-skill-heatmaps__row">';
+    if (hasTech) {
+      html += '<div class="p1f-ma-skill-heatmap-section" data-ma-kind="tech">';
+      html += '<h5 class="p1f-ma-skill-heatmap__title">Fachliche Skills</h5>';
+      html += '<div class="p1f-heatmap-wrap">';
+      if (typeof renderFortschrittSkillLevelHeatmapSvg === "function") {
+        html += renderFortschrittSkillLevelHeatmapSvg({ label: "Fachliche Skills" }, heatmaps.tech);
+      }
+      html += "</div></div>";
     }
-    html += "</div></div>";
-  }
-
-  if (heatmaps.soft.hasData) {
-    hasAny = true;
-    html += '<div class="p1f-ma-skill-heatmap-section" data-ma-kind="soft">';
-    html += '<h5 class="p1f-ma-skill-heatmap__title">Soft Skills</h5>';
-    html += '<div class="p1f-heatmap-wrap">';
-    if (typeof renderFortschrittSkillLevelHeatmapSvg === "function") {
-      html += renderFortschrittSkillLevelHeatmapSvg({ label: "Soft Skills" }, heatmaps.soft);
+    if (hasSoft) {
+      html += '<div class="p1f-ma-skill-heatmap-section" data-ma-kind="soft">';
+      html += '<h5 class="p1f-ma-skill-heatmap__title">Soft Skills</h5>';
+      html += '<div class="p1f-heatmap-wrap">';
+      if (typeof renderFortschrittSkillLevelHeatmapSvg === "function") {
+        html += renderFortschrittSkillLevelHeatmapSvg({ label: "Soft Skills" }, heatmaps.soft);
+      }
+      html += "</div></div>";
     }
-    html += "</div></div>";
-  }
-
-  if (hasAny && typeof renderFortschrittSkillLevelLegend === "function") {
-    html += renderFortschrittSkillLevelLegend();
-  } else if (!hasAny) {
+    html += "</div>";
+    if (typeof renderFortschrittSkillLevelLegend === "function") {
+      html += renderFortschrittSkillLevelLegend();
+    }
+  } else {
     html += '<p class="bc-muted p1f-ma-skill-heatmap__empty">Keine Skill-Planungen vorhanden.</p>';
   }
 
