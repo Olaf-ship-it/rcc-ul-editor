@@ -63,6 +63,19 @@ function fnStatusLabel(status) {
   return "Keine Daten";
 }
 
+function fnStatusTooltip(status) {
+  if (status === "ok") {
+    return "Im Plan: IST erreicht oder \u00fcbertrifft das SOLL-Ziel.";
+  }
+  if (status === "warn") {
+    return "Leichte Abweichung: IST liegt knapp unter dem Planziel.";
+  }
+  if (status === "risk") {
+    return "Kritisch: deutlicher Abstand zwischen IST und SOLL.";
+  }
+  return "Keine Daten: kein IST-Wert vorhanden oder Vergleich nicht m\u00f6glich.";
+}
+
 function fnStatusIcon(status) {
   if (status === "ok") return "\u2705";
   if (status === "warn") return "\u26a0\ufe0f";
@@ -885,62 +898,61 @@ function fnMaFilterState() {
   };
 }
 
-function fnBuildEmployeeSkillHeatmapClient(mitarbeiterItems) {
-  var rows = [];
-  var columnMap = {};
-  var rowCellMaps = [];
+function fnMaSkillPlanRowKey(ms) {
+  if (!ms) return "";
+  if (ms.skillPlanKind === "tech") {
+    if (ms.skillItemId) return "tech:id:" + ms.skillItemId;
+    return "tech:" + String(ms.kategorie || "").trim() + "|" + String(ms.technologie || "").trim();
+  }
+  if (ms.skillPlanKind === "soft") {
+    if (ms.kategorie_id != null) return "soft:id:" + ms.kategorie_id;
+    return "soft:" + String(ms.kategorie || "").trim() + "|" + String(ms.kompetenz || "").trim();
+  }
+  return "";
+}
 
-  (mitarbeiterItems || []).forEach(function (item) {
-    var skillComparisons = (item.skillComparisons || []).filter(function (sc) {
-      return sc.skillKey && sc.skillKey !== "legacy:general" && sc.kategorie;
-    });
-    if (!skillComparisons.length) return;
+function fnMaSkillPlanRowLabel(ms) {
+  if (!ms) return "?";
+  var kat = String(ms.kategorie || "").trim();
+  if (ms.skillPlanKind === "tech") {
+    var tech = String(ms.technologie || "").trim();
+    if (tech) return tech;
+    if (kat) return kat;
+    return "?";
+  }
+  var detail = String(ms.kompetenz || "").trim();
+  if (kat && detail) return kat + " \u00b7 " + detail;
+  return kat || detail || "?";
+}
 
-    rows.push({
-      skillEntryId: item.skillEntryId || null,
-      label: item.label || item.subcategory || "\u2013",
-    });
-    var cellMap = {};
+function fnBuildEmployeeSkillYearHeatmapKind(milestones, kind, years) {
+  var yearList = (years || []).map(function (y) { return Number(y); });
+  var rowMap = {};
+  var levelMap = {};
 
-    skillComparisons.forEach(function (sc) {
-      var catKey = sc.skillKey || ((sc.skillPlanKind === "soft" ? "soft:" : "tech:") + (sc.kategorie || ""));
-      if (!columnMap[catKey]) {
-        columnMap[catKey] = {
-          key: catKey,
-          label: sc.kategorie || "\u2013",
-          kind: sc.skillPlanKind === "soft" ? "soft" : "tech",
-        };
-      }
-      var existing = cellMap[catKey];
-      if (!existing) {
-        cellMap[catKey] = {
-          istLevel: sc.istLevel,
-          sollLevel: sc.sollLevel,
-          gap: sc.gap,
-          status: sc.status,
-        };
-        return;
-      }
-      if (sc.sollLevel != null && (existing.sollLevel == null || sc.sollLevel > existing.sollLevel)) {
-        existing.sollLevel = sc.sollLevel;
-      }
-      if (sc.gap != null && (existing.gap == null || sc.gap < existing.gap)) {
-        existing.istLevel = sc.istLevel;
-        existing.gap = sc.gap;
-        existing.status = sc.status;
-      }
-    });
-    rowCellMaps.push(cellMap);
+  (milestones || []).forEach(function (m) {
+    if (!m || m.skillPlanKind !== kind) return;
+    var level = m.ziel_skill_level_min != null ? Number(m.ziel_skill_level_min) : null;
+    if (!Number.isFinite(level) || level < 1 || level > 5) return;
+    var key = fnMaSkillPlanRowKey(m);
+    if (!key) return;
+    if (!rowMap[key]) rowMap[key] = { key: key, label: fnMaSkillPlanRowLabel(m) };
+    var year = m.jahr != null ? Number(m.jahr) : null;
+    if (year == null || yearList.indexOf(year) < 0) return;
+    if (!levelMap[key]) levelMap[key] = {};
+    var existing = levelMap[key][year];
+    if (existing == null || level > existing) levelMap[key][year] = level;
   });
 
-  var columns = Object.keys(columnMap).map(function (k) { return columnMap[k]; }).sort(function (a, b) {
-    var la = String(a.label).localeCompare(String(b.label), "de");
-    if (la !== 0) return la;
-    return String(a.kind).localeCompare(String(b.kind));
+  var rows = Object.keys(rowMap).map(function (k) { return rowMap[k]; }).sort(function (a, b) {
+    return String(a.label).localeCompare(String(b.label), "de");
   });
-
-  var cells = rowCellMaps.map(function (cellMap) {
-    return columns.map(function (col) { return cellMap[col.key] || null; });
+  var columns = yearList.map(function (y) { return { key: y, label: String(y) }; });
+  var cells = rows.map(function (row) {
+    return columns.map(function (col) {
+      var level = levelMap[row.key] && levelMap[row.key][col.key];
+      return level != null ? { level: level } : null;
+    });
   });
 
   return {
@@ -951,24 +963,11 @@ function fnBuildEmployeeSkillHeatmapClient(mitarbeiterItems) {
   };
 }
 
-function fnFilterHeatmapByKind(heatmap, kind) {
-  if (!heatmap || kind === "all") return heatmap;
-  var colIndexes = [];
-  var columns = (heatmap.columns || []).filter(function (col, ci) {
-    if (col.kind === kind) {
-      colIndexes.push(ci);
-      return true;
-    }
-    return false;
-  });
-  var cells = (heatmap.cells || []).map(function (row) {
-    return colIndexes.map(function (ci) { return row[ci] || null; });
-  });
+function fnBuildEmployeeSkillYearHeatmap(item, years) {
+  var milestones = item.allYearMilestones || item.milestones || [];
   return {
-    rows: heatmap.rows,
-    columns: columns,
-    cells: cells,
-    hasData: columns.length > 0 && heatmap.rows.length > 0,
+    tech: fnBuildEmployeeSkillYearHeatmapKind(milestones, "tech", years),
+    soft: fnBuildEmployeeSkillYearHeatmapKind(milestones, "soft", years),
   };
 }
 
@@ -1133,10 +1132,10 @@ function fnNormalizeMitarbeiterList(items, phase1) {
 }
 
 function fnResolveMitarbeiterDashboardData(data) {
-  if (!data) return { mitarbeiter: [], heatmap: null, phase1: null };
+  if (!data) return { mitarbeiter: [], phase1: null, years: [] };
   var phase1 = data.phase1 || null;
   var mitarbeiter = [];
-  var heatmap = null;
+  var years = data.years || [];
 
   if (data.allYears && data.byYear) {
     if (_fnYearAll) {
@@ -1145,21 +1144,16 @@ function fnResolveMitarbeiterDashboardData(data) {
       var yearRow = (data.byYear || []).find(function (r) { return Number(r.year) === Number(_fnYear); });
       if (yearRow) {
         mitarbeiter = (yearRow.p1Plan && yearRow.p1Plan.mitarbeiter) || [];
-        heatmap = yearRow.employeeSkillHeatmap || null;
       } else {
         mitarbeiter = fnCollectAllYearsMitarbeiter(data);
       }
     }
   } else {
     mitarbeiter = (data.p1Plan && data.p1Plan.mitarbeiter) || [];
-    heatmap = data.employeeSkillHeatmap || null;
   }
 
   mitarbeiter = fnNormalizeMitarbeiterList(mitarbeiter, phase1);
-  if (!heatmap || !heatmap.hasData) {
-    heatmap = fnBuildEmployeeSkillHeatmapClient(mitarbeiter);
-  }
-  return { mitarbeiter: mitarbeiter, heatmap: heatmap, phase1: phase1 };
+  return { mitarbeiter: mitarbeiter, phase1: phase1, years: years };
 }
 
 function fnFilterMaItems(mitarbeiter, filters) {
@@ -1185,65 +1179,41 @@ function fnFindEmployeePhase1Row(phase1, item) {
   }) || null;
 }
 
-function renderFnMaIstSkillList(employeeRow) {
-  if (!employeeRow) return "";
-  var tech = employeeRow.skills || [];
-  var soft = employeeRow.softSkills || [];
-  if (!tech.length && !soft.length) {
-    return '<p class="bc-muted p1f-ma-ist__empty">Keine Skills in Phase 1 erfasst.</p>';
-  }
-  var html = '<div class="p1f-ma-ist"><div class="p1f-ma-ist__head">IST-Skills aus Phase 1</div><ul class="p1f-ma-skill-list">';
-  tech.forEach(function (s) {
-    var label = (s.kategorie ? s.kategorie + " \u00b7 " : "") + (s.technologie || "\u2013");
-    html += '<li class="p1f-ma-skill p1f-ma-skill--tech"><span class="p1f-skill-kind p1f-skill-kind--tech">Fach</span>';
-    html += '<span class="p1f-ma-skill__label">' + fnEsc(label) + "</span>";
-    if (s.level != null) html += '<span class="p1f-ma-skill__level">Lvl ' + fnEsc(String(s.level)) + "</span>";
-    html += "</li>";
-  });
-  soft.forEach(function (s) {
-    html += '<li class="p1f-ma-skill p1f-ma-skill--soft"><span class="p1f-skill-kind p1f-skill-kind--soft">Soft</span>';
-    html += '<span class="p1f-ma-skill__label">' + fnEsc(s.kategorie || "Soft Skill") + "</span>";
-    if (s.level != null) html += '<span class="p1f-ma-skill__level">Lvl ' + fnEsc(String(s.level)) + "</span>";
-    html += "</li>";
-  });
-  html += "</ul></div>";
-  return html;
-}
+function renderFnMaEmployeeSkillHeatmaps(item, years) {
+  var heatmaps = fnBuildEmployeeSkillYearHeatmap(item, years);
+  var html = '<div class="p1f-ma-skill-heatmaps">';
+  var hasAny = false;
 
-function renderFnMaSkillComparisonTable(item, showYear) {
-  var rows = item.skillComparisons || [];
-  if (!rows.length) {
-    return '<p class="bc-muted p1f-ma-skill__empty">Keine Skill-Planungen mit Kategorie und Ziel-Level gefunden.</p>';
-  }
-  var head = "<tr><th>Art</th><th>Kategorie</th><th>Skill / Technologie</th>";
-  if (showYear) head += "<th>Jahr</th><th>Q</th>";
-  head += "<th>IST</th><th>SOLL</th><th>\u0394</th><th>Status</th></tr>";
-  var body = "";
-  rows.forEach(function (sc) {
-    var kindLabel = sc.skillPlanKind === "soft" ? "Soft" : (sc.skillPlanKind === "tech" ? "Fach" : "\u2013");
-    var kindCls = sc.skillPlanKind === "soft" ? "p1f-skill-kind--soft" : "p1f-skill-kind--tech";
-    var detail = sc.skillPlanKind === "soft"
-      ? (sc.kompetenz || "\u2013")
-      : (sc.technologie || "\u2013");
-    body += '<tr class="' + fnStatusClass(sc.status) + '">';
-    body += '<td><span class="p1f-skill-kind ' + kindCls + '">' + kindLabel + "</span></td>";
-    body += "<td>" + fnEsc(sc.kategorie || "\u2013") + "</td>";
-    body += "<td>" + fnEsc(detail) + "</td>";
-    if (showYear) {
-      body += "<td>" + fnEsc(sc.planYear != null ? sc.planYear : "\u2013") + "</td>";
-      body += "<td>" + fnEsc(sc.planQuarter || "\u2013") + "</td>";
+  if (heatmaps.tech.hasData) {
+    hasAny = true;
+    html += '<div class="p1f-ma-skill-heatmap-section" data-ma-kind="tech">';
+    html += '<h5 class="p1f-ma-skill-heatmap__title">Fachliche Skills</h5>';
+    html += '<div class="p1f-heatmap-wrap">';
+    if (typeof renderFortschrittSkillLevelHeatmapSvg === "function") {
+      html += renderFortschrittSkillLevelHeatmapSvg({ label: "Fachliche Skills" }, heatmaps.tech);
     }
-    body += "<td>" + fnEsc(sc.istLevel != null ? fnFormatNum(sc.istLevel) : "\u2013") + "</td>";
-    body += "<td>" + fnEsc(sc.sollLevel != null ? fnFormatNum(sc.sollLevel) : "\u2013") + "</td>";
-    body += "<td>" + fnEsc(sc.gap != null ? ((sc.gap > 0 ? "+" : "") + fnFormatNum(sc.gap)) : "\u2013") + "</td>";
-    body += "<td>" + fnStatusIcon(sc.status) + " " + fnEsc(fnStatusLabel(sc.status)) + "</td>";
-    body += "</tr>";
-  });
-  return (
-    '<div class="tbl-wrap p1f-ma-table-wrap">' +
-    '<table class="entries fortschritt-table p1f-ma-table p1f-skill-table">' +
-    "<thead>" + head + "</thead><tbody>" + body + "</tbody></table></div>"
-  );
+    html += "</div></div>";
+  }
+
+  if (heatmaps.soft.hasData) {
+    hasAny = true;
+    html += '<div class="p1f-ma-skill-heatmap-section" data-ma-kind="soft">';
+    html += '<h5 class="p1f-ma-skill-heatmap__title">Soft Skills</h5>';
+    html += '<div class="p1f-heatmap-wrap">';
+    if (typeof renderFortschrittSkillLevelHeatmapSvg === "function") {
+      html += renderFortschrittSkillLevelHeatmapSvg({ label: "Soft Skills" }, heatmaps.soft);
+    }
+    html += "</div></div>";
+  }
+
+  if (hasAny && typeof renderFortschrittSkillLevelLegend === "function") {
+    html += renderFortschrittSkillLevelLegend();
+  } else if (!hasAny) {
+    html += '<p class="bc-muted p1f-ma-skill-heatmap__empty">Keine Skill-Planungen vorhanden.</p>';
+  }
+
+  html += "</div>";
+  return html;
 }
 
 function renderFnMaOverviewTable(items) {
@@ -1269,51 +1239,19 @@ function renderFnMaOverviewTable(items) {
   );
 }
 
-function renderFnMaEmployeeSubcat(item, phase1, showYear) {
+function renderFnMaEmployeeSubcat(item, years) {
   var statusCls = fnStatusClass(item.status);
-  var planned = item.plannedSkillCount || (item.skillComparisons && item.skillComparisons.length) || 0;
-  var employeeRow = fnFindEmployeePhase1Row(phase1, item);
+  var heatmaps = fnBuildEmployeeSkillYearHeatmap(item, years);
+  var planned = heatmaps.tech.rows.length + heatmaps.soft.rows.length;
   var html = '<details class="p1f-subcat p1f-ma-subcat ' + statusCls + '" data-ma-subcat="' + fnEsc(item.skillEntryId || item.label || "") + '">';
   html += '<summary class="p1f-subcat__head">';
   html += '<span class="p1f-subcat__label">' + fnEsc(item.label || item.subcategory) + "</span>";
   html += '<span class="p1f-subcat__count">' + planned + " Skills \u00b7 " + fnEsc(fnStatusLabel(item.status)) + "</span>";
   html += "</summary>";
   html += '<div class="p1f-subcat__body">';
-  html += renderFnMaIstSkillList(employeeRow);
-  html += renderFnMaSkillComparisonTable(item, showYear);
-  if (item.milestones && item.milestones.length) {
-    html += renderFnMilestones(item.milestones, {
-      collapsible: true,
-      summaryLabel: "Meilensteine (" + item.milestones.length + ")",
-    });
-  }
+  html += renderFnMaEmployeeSkillHeatmaps(item, years);
   html += "</div></details>";
   return html;
-}
-
-function renderFnMaHeatmapSection(heatmap) {
-  var chartHtml = "";
-  if (typeof renderFortschrittSkillHeatmapSvg === "function") {
-    chartHtml = renderFortschrittSkillHeatmapSvg(
-      { label: "Skill-Gaps nach Kategorie (IST \u2192 SOLL)" },
-      heatmap
-    );
-  }
-  var legend = '<div class="p1f-heatmap__legend">';
-  legend += '<span class="p1f-heatmap__legend-item"><span class="p1f-heatmap__swatch p1f-heatmap__swatch--ok"></span>Im Plan (IST \u2265 SOLL)</span>';
-  legend += '<span class="p1f-heatmap__legend-item"><span class="p1f-heatmap__swatch p1f-heatmap__swatch--warn"></span>Leichte L\u00fccke</span>';
-  legend += '<span class="p1f-heatmap__legend-item"><span class="p1f-heatmap__swatch p1f-heatmap__swatch--risk"></span>Kritische L\u00fccke</span>';
-  legend += '<span class="p1f-heatmap__legend-item"><span class="p1f-heatmap__swatch p1f-heatmap__swatch--neutral"></span>Geplant, IST fehlt</span>';
-  legend += '<span class="p1f-heatmap__legend-item"><span class="p1f-heatmap__swatch p1f-heatmap__swatch--empty"></span>Nicht geplant</span>';
-  legend += "</div>";
-  return (
-    '<div class="p1f-heatmap card">' +
-    '<h4 class="p1f-heatmap__title">Skill-Heatmap \u00b7 Mitarbeiter \u00d7 Kategorie</h4>' +
-    '<p class="p1f-heatmap__hint">Zeigt geplante Skill-Kategorien pro Mitarbeiter. In der Zelle steht der Gap (IST \u2212 SOLL) oder \u2192SOLL, wenn kein IST vorliegt. Leere Felder = f\u00fcr diesen Mitarbeiter in der Kategorie kein Plan.</p>' +
-    '<div class="p1f-heatmap-wrap" id="p1fMaHeatmapHost">' + chartHtml + "</div>" +
-    legend +
-    "</div>"
-  );
 }
 
 function renderFnMaFilters() {
@@ -1335,16 +1273,6 @@ function fnRefreshMaFilteredView() {
   if (!_fnMaDashboardData) return;
   var filters = fnMaFilterState();
   var filtered = fnFilterMaItems(_fnMaDashboardData.mitarbeiter, filters);
-  var heatmap = fnBuildEmployeeSkillHeatmapClient(filtered);
-  heatmap = fnFilterHeatmapByKind(heatmap, filters.kind);
-
-  var host = document.getElementById("p1fMaHeatmapHost");
-  if (host && typeof renderFortschrittSkillHeatmapSvg === "function") {
-    host.innerHTML = renderFortschrittSkillHeatmapSvg(
-      { label: "Skill-Gaps nach Kategorie (IST \u2192 SOLL)" },
-      heatmap
-    );
-  }
 
   document.querySelectorAll(".p1f-ma-subcat").forEach(function (el) {
     var key = el.getAttribute("data-ma-subcat") || "";
@@ -1352,6 +1280,14 @@ function fnRefreshMaFilteredView() {
       return String(item.skillEntryId || item.label || "") === key;
     });
     el.style.display = visible ? "" : "none";
+  });
+
+  document.querySelectorAll(".p1f-ma-skill-heatmap-section[data-ma-kind]").forEach(function (el) {
+    var kind = el.getAttribute("data-ma-kind") || "";
+    var showKind = filters.kind === "all" || filters.kind === kind;
+    var parent = el.closest(".p1f-ma-subcat");
+    var parentVisible = !parent || parent.style.display !== "none";
+    el.style.display = showKind && parentVisible ? "" : "none";
   });
 
   document.querySelectorAll(".p1f-ma-table tbody tr[data-ma-row]").forEach(function (tr) {
@@ -1390,6 +1326,7 @@ function fnBindMitarbeiterFilters() {
       fnRefreshMaFilteredView();
     });
   }
+  fnRefreshMaFilteredView();
 }
 
 function renderFnMitarbeiterArea(data, areaDef) {
@@ -1397,39 +1334,31 @@ function renderFnMitarbeiterArea(data, areaDef) {
   var mitarbeiter = resolved.mitarbeiter || [];
   if (!mitarbeiter.length) return "";
 
+  var years = resolved.years && resolved.years.length ? resolved.years : (data.years || []);
+
   _fnMaDashboardData = {
     mitarbeiter: mitarbeiter.slice(),
     phase1: resolved.phase1,
+    years: years.slice(),
   };
 
-  var filters = fnMaFilterState();
-  var filtered = fnFilterMaItems(mitarbeiter, filters);
-  var heatmap = fnBuildEmployeeSkillHeatmapClient(filtered);
-  heatmap = fnFilterHeatmapByKind(heatmap, filters.kind);
-  if (!heatmap.hasData && resolved.heatmap && resolved.heatmap.hasData) {
-    heatmap = fnFilterHeatmapByKind(resolved.heatmap, filters.kind);
-  }
-
-  var showYear = _fnYearAll || mitarbeiter.some(function (item) {
-    return (item.skillComparisons || []).some(function (sc) { return sc.planYear; });
-  });
   var skillCount = mitarbeiter.reduce(function (n, item) {
-    return n + ((item.skillComparisons && item.skillComparisons.length) || 0);
+    var hm = fnBuildEmployeeSkillYearHeatmap(item, years);
+    return n + hm.tech.rows.length + hm.soft.rows.length;
   }, 0);
 
   var html = '<details class="p1f-area p1f-area--ma">';
   html += '<summary class="p1f-area__head">';
   html += '<span class="p1f-area__icon">' + areaDef.icon + "</span>";
   html += '<span class="p1f-area__label">' + fnEsc(areaDef.label) + "</span>";
-  html += '<span class="p1f-area__count">' + mitarbeiter.length + " MA \u00b7 " + skillCount + " Skill-Vergleiche</span>";
+  html += '<span class="p1f-area__count">' + mitarbeiter.length + " MA \u00b7 " + skillCount + " Skills geplant</span>";
   html += "</summary>";
   html += '<div class="p1f-area__body p1f-area__body--ma">';
   html += renderFnMaFilters();
-  html += renderFnMaHeatmapSection(heatmap);
   html += renderFnMaOverviewTable(mitarbeiter);
   html += '<div class="p1f-ma-employees">';
   mitarbeiter.forEach(function (item) {
-    html += renderFnMaEmployeeSubcat(item, resolved.phase1, showYear);
+    html += renderFnMaEmployeeSubcat(item, years);
   });
   html += "</div></div></details>";
   return html;
@@ -1599,17 +1528,29 @@ function renderFnArea(areaDef, items) {
   return html;
 }
 
+function renderFnSummaryChip(status, count, compact, labelSuffix) {
+  var cls = "p1f-summary__chip";
+  if (status === "ok" || status === "warn" || status === "risk") {
+    cls += " p1f-summary__chip--" + status;
+  }
+  return (
+    '<span class="' + cls + '" title="' + fnEsc(fnStatusTooltip(status)) + '">' +
+    fnStatusIcon(status) + " " + count + (compact ? "" : " " + labelSuffix) +
+    "</span>"
+  );
+}
+
 function renderFnSummaryChips(summary, compact) {
   if (!summary) return "";
   var count = summary.milestoneCount || summary.totalComparisons || 0;
   if (!count) return "";
   var gridCls = compact ? "p1f-summary__grid p1f-summary__grid--compact" : "p1f-summary__grid";
   var html = '<div class="' + gridCls + '">';
-  html += '<span class="p1f-summary__chip p1f-summary__chip--ok">\u2705 ' + (summary.ok || 0) + (compact ? "" : " Im Plan") + "</span>";
-  html += '<span class="p1f-summary__chip p1f-summary__chip--warn">\u26a0\ufe0f ' + (summary.warn || 0) + (compact ? "" : " Abweichung") + "</span>";
-  html += '<span class="p1f-summary__chip p1f-summary__chip--risk">\ud83d\udd34 ' + (summary.risk || 0) + (compact ? "" : " Kritisch") + "</span>";
+  html += renderFnSummaryChip("ok", summary.ok || 0, compact, "Im Plan");
+  html += renderFnSummaryChip("warn", summary.warn || 0, compact, "Abweichung");
+  html += renderFnSummaryChip("risk", summary.risk || 0, compact, "Kritisch");
   if (summary.neutral) {
-    html += '<span class="p1f-summary__chip">\u2796 ' + summary.neutral + (compact ? "" : " Keine Daten") + "</span>";
+    html += renderFnSummaryChip("neutral", summary.neutral, compact, "Keine Daten");
   }
   html += "</div>";
   return html;

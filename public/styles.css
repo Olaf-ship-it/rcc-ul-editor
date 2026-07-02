@@ -747,7 +747,7 @@ body.session-booting.rc-app-backcasting > *:not(.session-boot-splash){visibility
 .p1f-summary__title{font-size:.82rem;font-weight:700;color:var(--rc-text);margin-bottom:.5rem}
 .p1f-summary__grid{display:flex;flex-wrap:wrap;gap:.5rem}
 .p1f-summary__grid--compact{gap:.35rem}
-.p1f-summary__chip{font-size:.78rem;padding:.25rem .65rem;border-radius:var(--rc-radius);background:#f1f5f9;border:1px solid var(--rc-border)}
+.p1f-summary__chip{font-size:.78rem;padding:.25rem .65rem;border-radius:var(--rc-radius);background:#f1f5f9;border:1px solid var(--rc-border);cursor:help}
 .p1f-summary__chip--ok{background:#f0fdf4;border-color:#bbf7d0;color:#166534}
 .p1f-summary__chip--warn{background:#fefce8;border-color:#fde68a;color:#92400e}
 .p1f-summary__chip--risk{background:#fef2f2;border-color:#fecaca;color:#991b1b}
@@ -828,6 +828,18 @@ body.session-booting.rc-app-backcasting > *:not(.session-boot-splash){visibility
 .p1f-ma-skill{display:flex;flex-wrap:wrap;align-items:center;gap:.35rem .5rem;font-size:.76rem}
 .p1f-ma-skill__label{flex:1;min-width:0}
 .p1f-ma-skill__level{font-size:.7rem;color:var(--rc-muted);white-space:nowrap}
+.p1f-ma-skill-heatmaps{display:flex;flex-direction:column;gap:.65rem}
+.p1f-ma-skill-heatmap-section{margin:0}
+.p1f-ma-skill-heatmap__title{margin:0 0 .35rem;font-size:.78rem;font-weight:700;color:var(--rc-text)}
+.p1f-ma-skill-heatmap__empty{margin:0;font-size:.76rem;font-style:italic}
+.p1f-skill-level-heatmap__svg{display:block;width:auto;max-width:100%;height:auto}
+.p1f-skill-level-heatmap__row-label{fill:var(--rc-text)}
+.p1f-skill-level-heatmap__col-label{font-weight:600;fill:var(--rc-text)}
+.p1f-skill-level-heatmap__cell-text{pointer-events:none}
+.p1f-skill-level-heatmap__axis{stroke:var(--rc-border);stroke-width:1}
+.p1f-skill-level-legend{display:flex;flex-wrap:wrap;gap:.35rem 1rem;margin-top:.15rem;font-size:.72rem;color:var(--rc-muted)}
+.p1f-skill-level-legend__item{display:inline-flex;align-items:center;gap:.35rem}
+.p1f-skill-level-legend__swatch{display:inline-block;width:.9rem;height:.9rem;border-radius:2px;border:1px solid rgba(0,0,0,.08)}
 .p1f-skill-kind{display:inline-block;font-size:.65rem;font-weight:600;padding:.1rem .35rem;border-radius:3px;text-transform:uppercase;letter-spacing:.02em}
 .p1f-skill-kind--tech{background:#dbeafe;color:#1d4ed8}
 .p1f-skill-kind--soft{background:#f3e8ff;color:#7e22ce}

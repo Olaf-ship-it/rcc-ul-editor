@@ -307,7 +307,7 @@ const FORTSCHRITT_FIELD_MAPPINGS = [
       fields: ["skillPlanKind", "kategorie", "technologie", "kompetenz", "ziel_skill_level_min", "ziel_quartal"],
       agg: "Je Skill-Eintrag pro Mitarbeiter und Jahr ein Ziel-Level",
     },
-    calc: "Gap = IST-Level − SOLL-Level je Skill; Heatmap: schlechtester Gap pro Mitarbeiter × Kategorie",
+    calc: "Pro Mitarbeiter Heatmap: Skills \u00d7 Planungsjahre, Zellenfarbe = geplantes Ziel-Level (1\u20135)",
     example: {
       phase1Items: [
         { label: "MA Müller · Cloud · AWS", field: "level", value: "2" },
@@ -319,13 +319,13 @@ const FORTSCHRITT_FIELD_MAPPINGS = [
         { label: "Skill-Plan Cloud · AWS · 2027", field: "ziel_skill_level_min", value: "4" },
         { label: "Skill-Plan Kommunikation · 2027", field: "ziel_skill_level_min", value: "4" },
       ],
-      phase2Calc: "Ziel-Level je Skill",
-      phase2Result: "SOLL 4 / 4",
+      phase2Calc: "Ziel-Level je Skill und Jahr",
+      phase2Result: "SOLL Level 4 in 2027",
       steps: [
-        "<b>Gap Cloud:</b> 2 − 4 = <b>−2</b> → Status: <em>kritisch</em>",
-        "<b>Heatmap-Zelle</b> „Cloud“: schlechtester Gap in dieser Kategorie",
+        "<b>Heatmap-Zelle</b> „Cloud · 2027“: geplantes Level <b>4</b> (Erfahren)",
+        "<b>Entwicklungspfad</b>: Level je Skill \u00fcber die Planungsjahre 2026\u20132030",
       ],
-      outcome: "Pro Mitarbeiter Skill-Tabelle + Unit-Heatmap",
+      outcome: "Pro Mitarbeiter Skill\u00d7Jahr-Heatmap (Fach + Soft)",
     },
   },
 ];
@@ -1095,6 +1095,112 @@ function renderFortschrittSkillHeatmapSvg(meta, heatmap) {
   return (
     '<svg class="p1f-heatmap__svg" viewBox="0 0 ' + W + " " + H + '" role="img" aria-label="' + ftEscAttr(ariaLabel) + '">' +
     '<line class="p1f-heatmap__axis" x1="' + labelW + '" y1="' + headerH + '" x2="' + W + '" y2="' + headerH + '"/>' +
+    headerCols +
+    body +
+    "</svg>"
+  );
+}
+
+const FT_SKILL_LEVEL_COLORS = {
+  1: "#F0F0F0",
+  2: "#C6DBEF",
+  3: "#6BAED6",
+  4: "#3182BD",
+  5: "#08519C",
+};
+
+const FT_SKILL_LEVEL_LABELS = {
+  1: "Grundlagen",
+  2: "Anwender",
+  3: "Fortgeschritten",
+  4: "Erfahren",
+  5: "Experte",
+};
+
+function ftSkillLevelColor(level) {
+  const n = Number(level);
+  return FT_SKILL_LEVEL_COLORS[n] || FT_SKILL_LEVEL_COLORS[1];
+}
+
+function ftSkillLevelTextColor(level) {
+  return Number(level) >= 3 ? "#ffffff" : "#1e293b";
+}
+
+function renderFortschrittSkillLevelLegend() {
+  let items = "";
+  [1, 2, 3, 4, 5].forEach(function (lvl) {
+    items +=
+      '<span class="p1f-skill-level-legend__item">' +
+      '<span class="p1f-skill-level-legend__swatch" style="background:' + ftSkillLevelColor(lvl) + '"></span>' +
+      "<span>" + lvl + " " + ftEscAttr(FT_SKILL_LEVEL_LABELS[lvl]) + "</span></span>";
+  });
+  return '<div class="p1f-skill-level-legend">' + items + "</div>";
+}
+
+function renderFortschrittSkillLevelHeatmapSvg(meta, heatmap) {
+  if (!heatmap || !heatmap.hasData) {
+    return '<p class="p1f-heatmap__empty">Keine Skill-Planungen vorhanden.</p>';
+  }
+
+  const rows = heatmap.rows || [];
+  const columns = heatmap.columns || [];
+  const cells = heatmap.cells || [];
+
+  const labelW = 148;
+  const headerH = 24;
+  const cellW = 42;
+  const cellH = 28;
+  const padR = 10;
+  const padB = 8;
+  const fontRow = 10;
+  const fontCol = 10;
+  const fontCell = 11;
+  const W = labelW + columns.length * cellW + padR;
+  const H = headerH + rows.length * cellH + padB;
+
+  let headerCols = "";
+  columns.forEach(function (col, ci) {
+    const x = labelW + ci * cellW + cellW / 2;
+    headerCols +=
+      '<text class="p1f-skill-level-heatmap__col-label" font-size="' + fontCol + '" x="' + x.toFixed(1) + '" y="17" text-anchor="middle">' +
+      ftEscAttr(col.label || String(col.key || "")) + "</text>";
+  });
+
+  let body = "";
+  rows.forEach(function (row, ri) {
+    const y = headerH + ri * cellH;
+    const rowLabel = String(row.label || "").length > 22
+      ? String(row.label).slice(0, 21) + "\u2026"
+      : (row.label || "");
+    body +=
+      '<text class="p1f-skill-level-heatmap__row-label" font-size="' + fontRow + '" x="' + (labelW - 8) + '" y="' + (y + cellH / 2).toFixed(1) + '" text-anchor="end" dominant-baseline="middle">' +
+      "<title>" + ftEscAttr(row.label || "") + "</title>" +
+      ftEscAttr(rowLabel) + "</text>";
+    columns.forEach(function (col, ci) {
+      const cell = (cells[ri] && cells[ri][ci]) || null;
+      const x = labelW + ci * cellW;
+      const level = cell && cell.level != null ? Number(cell.level) : null;
+      const fill = level != null ? ftSkillLevelColor(level) : "#ffffff";
+      const textColor = level != null ? ftSkillLevelTextColor(level) : "";
+      const levelLabel = level != null ? (FT_SKILL_LEVEL_LABELS[level] || "") : "";
+      const tip = level != null
+        ? row.label + " \u00b7 " + col.label + ": Level " + level + " (" + levelLabel + ")"
+        : row.label + " \u00b7 " + col.label + ": nicht geplant";
+      body +=
+        '<rect class="p1f-skill-level-heatmap__cell" x="' + x + '" y="' + y + '" width="' + cellW + '" height="' + cellH + '" fill="' + fill + '" stroke="#cbd5e1" stroke-width="1">' +
+        "<title>" + ftEscAttr(tip) + "</title></rect>";
+      if (level != null) {
+        body +=
+          '<text class="p1f-skill-level-heatmap__cell-text" font-size="' + fontCell + '" font-weight="600" fill="' + textColor + '" x="' + (x + cellW / 2).toFixed(1) + '" y="' + (y + cellH / 2).toFixed(1) + '" text-anchor="middle" dominant-baseline="middle">' +
+          ftEscAttr(String(level)) + "</text>";
+      }
+    });
+  });
+
+  const ariaLabel = meta?.label || "Skill-Level-Heatmap";
+  return (
+    '<svg class="p1f-skill-level-heatmap__svg" width="' + W + '" height="' + H + '" viewBox="0 0 ' + W + " " + H + '" role="img" aria-label="' + ftEscAttr(ariaLabel) + '">' +
+    '<line class="p1f-skill-level-heatmap__axis" x1="' + labelW + '" y1="' + headerH + '" x2="' + W + '" y2="' + headerH + '"/>' +
     headerCols +
     body +
     "</svg>"
