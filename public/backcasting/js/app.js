@@ -6,7 +6,7 @@ const STATUSES=["Geplant","In Arbeit","Abgeschlossen","Blockiert"];
 const LS_PLAN = "rc_bc_plan";
 const LS_PLAN_MIGRATED = "rc_bc_plan_migrated";
 const LS_BC_TAB = "rc_bc_active_tab";
-const BC_TAB_IDS = ["planung", "planung-new", "review", "leitplanken", "export"];
+const BC_TAB_IDS = ["planung", "jahresabschluss", "review", "leitplanken", "export"];
 
 let plan = { meta: {}, measures: {} }, currentCat = null;
 let bcUserUnit = '';
@@ -20,7 +20,11 @@ let bcUnitSwitcherBound = false;
 
 function readPersistedBcTab() {
   try {
+    const urlTab = new URLSearchParams(window.location.search).get("tab");
+    if (urlTab === "planung-new") return "planung";
+    if (urlTab && BC_TAB_IDS.indexOf(urlTab) >= 0) return urlTab;
     const tab = sessionStorage.getItem(LS_BC_TAB) || "";
+    if (tab === "planung-new") return "planung";
     return BC_TAB_IDS.indexOf(tab) >= 0 ? tab : "planung";
   } catch (_e) {
     return "planung";
@@ -38,7 +42,9 @@ function writePersistedBcTab(tab) {
 
 function runBcTabSideEffects(tabId) {
   if (tabId === "review") renderReview();
-  if (tabId === "planung-new" && typeof initPlanungNew === "function") initPlanungNew();
+  if (tabId === "planung" && typeof initPlanungNew === "function") initPlanungNew();
+  if (tabId === "vorgaben" && typeof initVorgabenPlanung === "function") initVorgabenPlanung();
+  if (tabId === "jahresabschluss" && typeof initYearClose === "function") initYearClose();
 }
 
 function activateBcTab(tabId, options) {
@@ -63,25 +69,6 @@ function refreshActiveBcTab() {
 }
 
 function escAttr(s){return (s==null?'':String(s)).replace(/&/g,'&amp;').replace(/"/g,'&quot;').replace(/</g,'&lt;');}
-
-const BC_SVG_SAVE =
-  '<svg viewBox="0 0 24 24" width="16" height="16" aria-hidden="true" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M19 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11l5 5v11a2 2 0 0 1-2 2z"/><polyline points="17 21 17 13 7 13 7 21"/><polyline points="7 3 7 8 15 8"/></svg>';
-const BC_SVG_TRASH =
-  '<svg viewBox="0 0 24 24" width="16" height="16" aria-hidden="true" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="3 6 5 6 21 6"/><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/><line x1="10" y1="11" x2="10" y2="17"/><line x1="14" y1="11" x2="14" y2="17"/></svg>';
-const BC_SVG_CHEVRON =
-  '<svg viewBox="0 0 24 24" width="16" height="16" aria-hidden="true" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="18 15 12 9 6 15"/></svg>';
-const BC_SVG_EDIT =
-  '<svg viewBox="0 0 24 24" width="16" height="16" aria-hidden="true" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"/><path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"/></svg>';
-
-let milestoneModalCtx = null;
-
-function bcMsIconBtn(className, title, onclick, svg, id) {
-  const idAttr = id ? ` id="${id}"` : "";
-  return (
-    `<button type="button" class="bc-ms-icon-btn ${className} no-print"${idAttr}` +
-    ` title="${escAttr(title)}" aria-label="${escAttr(title)}" onclick="${onclick}">${svg}</button>`
-  );
-}
 
 function initBcSessionFromDetail(me){
   if(!me){
@@ -243,7 +230,6 @@ function uid(){return 'm'+Date.now().toString(36)+Math.random().toString(36).sli
 function toast(m){const t=document.getElementById('toast');t.textContent=m;t.classList.add('show');setTimeout(()=>t.classList.remove('show'),1900)}
 function esc(s){return (s==null?'':String(s)).replace(/[&<>"]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]))}
 function catId(g){return g.workstream+'||'+g.kategorie}
-function wsId(ws){return 'WS||'+ws}
 
 /* ---------- init ---------- */
 function initPlanState() {
@@ -312,35 +298,6 @@ async function savePlan(options = {}) {
   }
 }
 
-async function saveMilestone(ws, yr, idx){
-  if(isBcViewAll()) return;
-  if(!requireBcSaveUnit()) return;
-  const entries=getWsEntries(ws, yr);
-  const entry=entries[idx];
-  if(!entry) return;
-  const mid='ms_'+yr+'_'+idx;
-  const bezField=document.getElementById(mid+'_bezeichnung');
-  const descField=document.getElementById(mid+'_ergebnis');
-  if(!String(entry.bezeichnung||'').trim()){
-    toast('„Bezeichnung“ ist ein Pflichtfeld.', '#e74c3c');
-    document.getElementById(mid)?.classList.remove('closed');
-    bezField?.classList.add('bc-input-invalid');
-    bezField?.focus();
-    return;
-  }
-  if(!String(entry.ergebnis||'').trim()){
-    toast('„Beschreibung“ ist ein Pflichtfeld.', '#e74c3c');
-    document.getElementById(mid)?.classList.remove('closed');
-    descField?.classList.add('bc-input-invalid');
-    descField?.focus();
-    return;
-  }
-  bezField?.classList.remove('bc-input-invalid');
-  descField?.classList.remove('bc-input-invalid');
-  const ok = await savePlan();
-  if(ok) toast('Gespeichert');
-}
-
 async function loadPlanFromApi() {
   const unit = getBcSaveUnit();
   if (!unit) return false;
@@ -375,439 +332,13 @@ async function loadPlanFromApi() {
 function initSelectors(){
   const wss=typeof workstreams==='function'?workstreams():[];
 
-  // Leitplanken Ansicht (read-only)
   const lpWs=document.getElementById('lpWs');
   if(lpWs) lpWs.innerHTML='<option value="">Alle</option>'+wss.map(w=>'<option>'+esc(w)+'</option>').join('');
 
   if(typeof initGuidelineSelectors==='function') initGuidelineSelectors();
 
-  // Planung (Workstream Dropdown)
-  const planWs=document.getElementById('planWs');
-  const planWsTop=document.getElementById('planWsTop');
-  const opts = wss.map(w=>'<option value="'+esc(w)+'">'+esc(w)+'</option>').join('');
-  if(planWs) planWs.innerHTML=opts;
-  if(planWsTop) planWsTop.innerHTML=opts;
-
-  // auto-select first workstream and render immediately
-  if(wss.length){
-    if(planWs) planWs.value = wss[0];
-    if(planWsTop) planWsTop.value = wss[0];
-  }
-
   if(document.getElementById('lpTable')) renderLeitplanken();
-
-  const wsSel = (planWsTop && planWsTop.value) ? planWsTop.value : (planWs ? planWs.value : '');
-  if(wsSel) {
-    currentCat = wsId(wsSel);
-    renderWsDetail(wsSel);
-    updateWsHeader(wsSel);
-  }
-
-  if(document.getElementById('reviewTable')) renderReview();
 }
-
-/* ---------- leitplanken view ---------- */
-function syncWsFromTop(){
-  onWsChange();
-}
-
-function updateWsHeader(ws){
-  // Workstream-Name wird nicht mehr separat angezeigt.
-  const cnt = ws ? Object.values(plan.measures).flat().filter(m=>m && m.workstream===ws).length : 0;
-
-  // Falls noch vorhanden (oben), ausblenden/aktualisieren – primär wird unten im Erfassungs-Header angezeigt.
-  const cntTop=document.getElementById('wsTopCount');
-  if(cntTop){
-    cntTop.textContent = cnt + ' Einträge';
-    cntTop.style.display='none';
-  }
-
-  const cntIn=document.getElementById('wsEntryCount');
-  if(cntIn) cntIn.textContent = cnt + ' Einträge';
-}
-
-function onWsChange(){
-  // falls Leitplanken-Pflege offen ist, Editor refreshen
-  if(document.getElementById('gpTable')) renderGuidelineEditor();
-  const top=document.getElementById('planWsTop');
-  const dd=document.getElementById('planWs');
-  const wsSel = (top && top.value) ? top.value : (dd ? dd.value : '');
-
-  if(dd && wsSel) dd.value = wsSel;
-  if(top && wsSel) top.value = wsSel;
-
-  currentCat = wsSel ? wsId(wsSel) : null;
-  updateWsHeader(wsSel);
-
-  // Erfassung + Leitplanken sofort umschalten
-  if(wsSel) {
-    renderWsDetail(wsSel);
-    updateWsHeader(wsSel);
-  }
-}
-
-function renderLeitplanken(){
-  const ws=(document.getElementById('lpWs')?.value)||'';
-  const pr=(document.getElementById('lpPrio')?.value)||'';
-  const q=((document.getElementById('lpSearch')?.value)||'').toLowerCase();
-  const tb=document.querySelector('#lpTable tbody');
-  if(!tb) return;
-  tb.innerHTML='';
-  guidelines.filter(g=>(!ws||g.workstream===ws)&&(!pr||g.prioritaet===pr)&&(!q||JSON.stringify(g).toLowerCase().includes(q)))
-  .forEach(g=>{
-    const tr=document.createElement('tr');
-    tr.innerHTML='<td><span class="badge '+(g.prioritaet||'empty')+'">'+(g.prioritaet||'–')+'</span></td>'+
-      '<td>'+esc(g.workstream)+'</td><td><b>'+esc(g.kategorie)+'</b></td>'+
-      '<td>'+esc(g.leitfrage)+'</td><td>'+esc(g.festlegung)+'</td><td>'+esc(g.zielwert)+'</td><td>'+esc(g.verantwortlich)+'</td>';
-    tb.appendChild(tr);
-  });
-}
-
-/* ---------- planung ---------- */
-function catsForWs(ws){return guidelines.filter(g=>g.workstream===ws)}
-function measuresFor(cid){return (plan.measures[cid]||[])}
-
-function renderCatList(){
-  // UI wurde umgestellt: keine separate Leitplanken-Übersicht mehr nötig.
-  return;
-}
-
-function renderWsDetail(ws){
-  const wid=wsId(ws);
-  // show all guidelines for this workstream
-  const gs=guidelines.filter(g=>g.workstream===ws);
-  const prioCounts = {H:0,M:0,N:0};
-  gs.forEach(g=>{const p=(g.prioritaet||''); if(prioCounts[p]!=null) prioCounts[p]++});
-
-  let h='<div class="ws-split" id="wsSplit">'+
-    '<div class="ws-left ws-plan" id="wsLeft">'+
-      '<h3 style="margin-top:0;color:var(--rc-accent2)">Erfassung / Backcasting je Jahr ('+YEARS[0]+' → '+YEARS[YEARS.length-1]+') <span class="bc-tag" id="wsEntryCount">0 Einträge</span></h3>';
-
-
-  YEARS.forEach((yr,idx)=>{
-    const entries = getWsEntries(ws, yr);
-    h+='<div class="acc'+(idx===0?' open':'')+'" data-yr="'+yr+'">'+
-      '<div class="acc-head" onclick="this.parentNode.classList.toggle(\'open\')">'+
-        '<span class="yr">'+yr+'</span><span class="bc-muted">'+(entries.length? (entries.length+' Meilenstein(e)') : 'leer')+'</span>'+
-      '</div>'+
-      '<div class="acc-body">'+
-        wsYearForm(ws, yr)+
-      '</div>'+
-    '</div>';
-  });
-
-  h+='</div>'+
-    '<div class="ws-resize" id="wsResize" title="Ziehe, um die Breite anzupassen"></div>'+
-    '<div class="ws-right vorgabe" id="wsRight" style="margin:0">'+
-      '<div class="lf">Workstream-Leitplanke: '+esc(ws)+'</div>'+
-      '<div class="bc-muted">Diese Leitplanke besteht aus '+gs.length+' Vorgaben (H: '+prioCounts.H+', M: '+prioCounts.M+', N: '+prioCounts.N+').</div>'+
-      '<div class="tbl-wrap" style="margin-top:.65rem;max-height:60vh">'+
-        '<table class="entries"><thead><tr><th>Kategorie</th><th>Prio</th><th>Festlegung</th><th>Zielwert</th></tr></thead><tbody>'+
-        gs.map(g=>'<tr><td><b>'+esc(g.kategorie)+'</b></td><td><span class="badge '+(g.prioritaet||'empty')+'">'+(g.prioritaet||'–')+'</span></td><td>'+esc(g.festlegung)+'</td><td>'+esc(g.zielwert)+'</td></tr>').join('')+
-        '</tbody></table>'+
-      '</div>'+
-    '</div>'+
-  '</div>';
-  document.getElementById('planDetail').innerHTML=h;
-  initSplitter();
-}
-
-function getWsEntries(ws, yr){
-  const key = wsId(ws)+'||'+yr;
-  const v = plan.measures[key];
-  if(!v) return [];
-  return Array.isArray(v) ? v : [v];
-}
-
-function setWsEntries(ws, yr, arr) {
-  if (!requireBcSaveUnit()) return;
-  const key = wsId(ws) + "||" + yr;
-  plan.measures[key] = arr;
-}
-
-function initSplitter(){
-  const resize=document.getElementById('wsResize');
-  const left=document.getElementById('wsLeft');
-  const right=document.getElementById('wsRight');
-  if(!resize||!left||!right) return;
-
-  // restore ratio from plan.meta (in-memory) if present
-  const saved = plan?.meta?.splitRatio;
-  if(saved && typeof saved==='number'){
-    left.style.flex = `0 0 ${Math.max(35, Math.min(80, saved))}%`;
-    right.style.flex = `1 1 ${100 - Math.max(35, Math.min(80, saved))}%`;
-  }
-
-  let dragging=false;
-  const onDown=(e)=>{dragging=true; document.body.style.cursor='col-resize'; e.preventDefault();};
-  const onUp=()=>{if(!dragging) return; dragging=false; document.body.style.cursor='';
-    // persist ratio
-    const total = left.getBoundingClientRect().width + right.getBoundingClientRect().width + resize.getBoundingClientRect().width;
-    if(total>0){
-      const pct = (left.getBoundingClientRect().width / total) * 100;
-      plan.meta = plan.meta || {};
-      plan.meta.splitRatio = pct;
-      savePlan({ allowIncomplete: true });
-    }
-  };
-  const onMove=(e)=>{
-    if(!dragging) return;
-    const container=document.getElementById('wsSplit');
-    const rect=container.getBoundingClientRect();
-    const x = (e.touches? e.touches[0].clientX : e.clientX);
-    let pct = ((x - rect.left) / rect.width) * 100;
-    pct = Math.max(35, Math.min(80, pct));
-    left.style.flex = `0 0 ${pct}%`;
-    right.style.flex = `1 1 ${100-pct}%`;
-  };
-
-  resize.onmousedown=onDown;
-  resize.ontouchstart=onDown;
-  window.addEventListener('mousemove', onMove);
-  window.addEventListener('touchmove', onMove, {passive:false});
-  window.addEventListener('mouseup', onUp);
-  window.addEventListener('touchend', onUp);
-}
-
-function toggleMs(id){
-  const el=document.getElementById(id);
-  if(!el) return;
-  el.classList.toggle('closed');
-  const btn=document.getElementById(id+'_toggle');
-  if(!btn) return;
-  const collapsed=el.classList.contains('closed');
-  btn.classList.toggle('is-expanded', !collapsed);
-  const label=collapsed ? 'Aufklappen' : 'Zuklappen';
-  btn.title=label;
-  btn.setAttribute('aria-label', label);
-}
-
-function wsYearForm(ws, yr){
-  const entries = getWsEntries(ws, yr);
-
-  let h='<div class="bc-muted">Du kannst pro Jahr mehrere Meilensteine erfassen (z. B. mehrere Artefakte oder Initiativen in diesem Workstream).</div>';
-  h+='<div class="row" style="margin:8px 0" class="no-print">'+
-     '<button class="btn btn-sm btn-primary" onclick="addWsEntry(\''+esc(ws).replace(/'/g,'')+'\','+yr+')">+ Meilenstein hinzufügen</button>'+
-     '</div>';
-
-  if(!entries.length){
-    h+='<p class="bc-muted">Noch kein Meilenstein für '+yr+'.</p>';
-  }
-
-  entries.forEach((e, idx)=>{
-    const wsJs=esc(ws).replace(/'/g,"\\'");
-    const mid = 'ms_'+yr+'_'+idx;
-    const title=milestoneTitle(e);
-    const titleClass=(e.bezeichnung||e.ergebnis||'').trim()?'ms-title':'ms-title ms-title--empty';
-    const isDraft=idx===0 && !(e.bezeichnung||'').trim() && !(e.ergebnis||'').trim();
-    const wsArg="'"+esc(ws).replace(/'/g,"\\'")+"'";
-
-    if(isDraft){
-      const oc=(field)=>`onchange="updWs('${wsJs}',${yr},${idx},'${field}',this.value)"`;
-      h += '<div class="measure">'+
-        '<div class="bc-flex-between measure-head" style="cursor:pointer" onclick="toggleMs(\''+mid+'\')">'+
-          '<b class="'+titleClass+'" id="'+mid+'_title">'+esc(title)+'</b>'+
-          '<div class="ms-actions" onclick="event.stopPropagation()">'+
-            bcMsIconBtn('bc-ms-icon-btn--save', 'Speichern', "saveMilestone("+wsArg+","+yr+","+idx+")", BC_SVG_SAVE)+
-            bcMsIconBtn('bc-ms-icon-btn--delete', 'Löschen', "delWsEntry('"+esc(ws).replace(/'/g,'')+"',"+yr+","+idx+")", BC_SVG_TRASH)+
-            bcMsIconBtn('bc-ms-icon-btn--toggle is-expanded', 'Zuklappen', "toggleMs('"+mid+"')", BC_SVG_CHEVRON, mid+'_toggle')+
-          '</div>'+
-        '</div>'+
-        '<div id="'+mid+'" class="ms-body">'+
-          renderMilestoneFormFields(ws, yr, idx, e, mid, true)+
-        '</div>'+
-      '</div>';
-      return;
-    }
-
-    h += '<div class="measure measure--compact">'+
-      '<div class="bc-flex-between measure-head">'+
-        '<b class="'+titleClass+'">'+esc(title)+'</b>'+
-        '<div class="ms-actions">'+
-          bcMsIconBtn('bc-ms-icon-btn--edit', 'Bearbeiten', "openMilestoneEditModal("+wsArg+","+yr+","+idx+")", BC_SVG_EDIT)+
-          bcMsIconBtn('bc-ms-icon-btn--delete', 'Löschen', "delWsEntry('"+esc(ws).replace(/'/g,'')+"',"+yr+","+idx+")", BC_SVG_TRASH)+
-        '</div>'+
-      '</div>'+
-    '</div>';
-  });
-
-  return h;
-}
-
-function renderMilestoneFormFields(ws, yr, idx, e, idPrefix, live){
-  const wsJs=esc(ws).replace(/'/g,"\\'");
-  const oc=(field)=>live?`onchange="updWs('${wsJs}',${yr},${idx},'${field}',this.value)"`:'';
-  const bezeichnungLive=live?` oninput="updWs('${wsJs}',${yr},${idx},'bezeichnung',this.value)"`:'';
-  const fid=(name)=>idPrefix+'_'+name;
-  return ''+
-    '<div class="field">'+tipRequired('Bezeichnung','Kurze Überschrift des Meilensteins. Erscheint als Titel in der Liste.')+
-      '<input type="text" id="'+fid('bezeichnung')+'" class="bc-ms-required" required'+bezeichnungLive+' '+oc('bezeichnung')+' value="'+esc(e.bezeichnung||'')+'"></div>'+
-    '<div class="field">'+tipRequired('Beschreibung','Beschreibe konkret, was bis Jahresende erreicht sein soll (z. B. Offering, Playbook, Governance, Pilot, Asset, Board-Entscheidung).')+
-      '<textarea id="'+fid('ergebnis')+'" class="bc-ms-required" required '+oc('ergebnis')+'>'+esc(e.ergebnis||'')+'</textarea></div>'+
-    '<div class="field">'+tip('2. Messbare KPIs (Woran messen wir Erfolg?)','Nenne messbare Kennzahlen für dieses Jahr (z. B. #Piloten, %Reuse, Recurring-Anteil, #Zertifizierungen, Marge).')+
-      '<textarea id="'+fid('kpis')+'" '+oc('kpis')+'>'+esc(e.kpis||'')+'</textarea></div>'+
-    '<div class="field">'+tip('3. Voraussetzungen (Was muss vorher passieren?)','Liste Voraussetzungen, die vorher erfüllt sein müssen (Budgetfreigabe, Rollenbesetzung, Trainings, Tooling, Entscheidungsgremien).')+
-      '<textarea id="'+fid('voraussetzungen')+'" '+oc('voraussetzungen')+'>'+esc(e.voraussetzungen||'')+'</textarea></div>'+
-    '<div class="field">'+tip('4. Abhängigkeiten (Welche anderen Streams?)','Welche anderen Workstreams/Teams müssen liefern, damit das klappt? (z. B. Partner, Organisation, Skills).')+
-      '<textarea id="'+fid('abhaengigkeiten')+'" '+oc('abhaengigkeiten')+'>'+esc(e.abhaengigkeiten||'')+'</textarea></div>'+
-    '<div class="field">'+tip('5. Risiken / Blocker (Was könnte scheitern?)','Beschreibe Risiken/Blocker und ggf. Gegenmaßnahmen. Beispiel: fehlende Skills, zu wenig Kapazität, keine Referenzkunden.')+
-      '<textarea id="'+fid('risiken')+'" '+oc('risiken')+'>'+esc(e.risiken||'')+'</textarea></div>'+
-    '<div class="field">'+tip('6. Verantwortlich (Wer treibt das Thema?)','Wer ist accountable in diesem Jahr? Nenne Rolle/Person und ggf. Mitwirkende.')+
-      '<input id="'+fid('verantwortlich')+'" '+oc('verantwortlich')+' value="'+esc(e.verantwortlich||'')+'"></div>'+
-    renderStructuredTargets(ws, yr, idx, e, idPrefix, live);
-}
-
-function openMilestoneEditModal(ws, yr, idx){
-  const entries=getWsEntries(ws, yr);
-  const e=entries[idx];
-  if(!e) return;
-  milestoneModalCtx={ ws, yr, idx };
-  const overlay=document.getElementById('bcMilestoneEdit');
-  const body=document.getElementById('bcMilestoneEditBody');
-  const titleEl=document.getElementById('bcMilestoneEditTitle');
-  if(!overlay||!body) return;
-  if(titleEl) titleEl.textContent=milestoneTitle(e)+' · '+yr;
-  body.innerHTML=renderMilestoneFormFields(ws, yr, idx, e, 'bcMilestoneEdit', false);
-  overlay.style.display='flex';
-  document.getElementById('bcMilestoneEdit_bezeichnung')?.focus();
-}
-
-function closeMilestoneEditModal(){
-  const overlay=document.getElementById('bcMilestoneEdit');
-  if(overlay) overlay.style.display='none';
-  milestoneModalCtx=null;
-}
-
-function readMilestoneFormValues(idPrefix){
-  const val=(name)=>document.getElementById(idPrefix+'_'+name)?.value ?? '';
-  const num=(name)=>{
-    const raw=val(name).trim();
-    if(!raw) return null;
-    const n=/prozent|level/.test(name)?parseInt(raw,10):parseFloat(raw.replace(',','.'));
-    return Number.isFinite(n)?n:null;
-  };
-  return {
-    bezeichnung: val('bezeichnung'),
-    ergebnis: val('ergebnis'),
-    kpis: val('kpis'),
-    voraussetzungen: val('voraussetzungen'),
-    abhaengigkeiten: val('abhaengigkeiten'),
-    risiken: val('risiken'),
-    verantwortlich: val('verantwortlich'),
-    ziel_quartal: val('ziel_quartal'),
-    ziel_skill_kategorie: val('ziel_skill_kategorie'),
-    ziel_umsatz_teur: num('ziel_umsatz_teur'),
-    ziel_headcount: num('ziel_headcount'),
-    ziel_skill_level_min: num('ziel_skill_level_min'),
-    ziel_anteil_prozent: num('ziel_anteil_prozent'),
-  };
-}
-
-async function saveMilestoneEditModal(){
-  if(!milestoneModalCtx) return;
-  const { ws, yr, idx }=milestoneModalCtx;
-  const entries=getWsEntries(ws, yr);
-  const e=entries[idx];
-  if(!e) return;
-  const values=readMilestoneFormValues('bcMilestoneEdit');
-  if(!String(values.bezeichnung||'').trim()){
-    toast('„Bezeichnung“ ist ein Pflichtfeld.', '#e74c3c');
-    document.getElementById('bcMilestoneEdit_bezeichnung')?.classList.add('bc-input-invalid');
-    document.getElementById('bcMilestoneEdit_bezeichnung')?.focus();
-    return;
-  }
-  if(!String(values.ergebnis||'').trim()){
-    toast('„Beschreibung“ ist ein Pflichtfeld.', '#e74c3c');
-    document.getElementById('bcMilestoneEdit_ergebnis')?.classList.add('bc-input-invalid');
-    document.getElementById('bcMilestoneEdit_ergebnis')?.focus();
-    return;
-  }
-  Object.assign(e, values, { updatedAt: new Date().toISOString() });
-  setWsEntries(ws, yr, entries);
-  const ok=await savePlan();
-  if(!ok) return;
-  closeMilestoneEditModal();
-  renderWsDetail(ws);
-  renderCatList();
-  toast('Gespeichert');
-}
-
-function addWsEntry(ws, yr){
-  const entries=getWsEntries(ws, yr);
-  entries.unshift({id: uid(), kind:'wsYear', workstream: ws, jahr: yr,
-    bezeichnung:'', ergebnis:'', kpis:'', voraussetzungen:'', abhaengigkeiten:'', risiken:'', verantwortlich:'',
-    ziel_umsatz_teur: null, ziel_headcount: null, ziel_quartal: '', ziel_skill_kategorie: '',
-    ziel_skill_level_min: null, ziel_anteil_prozent: null
-  });
-  setWsEntries(ws, yr, entries);
-  renderWsDetail(ws);
-  renderCatList();
-  setTimeout(() => document.getElementById('ms_'+yr+'_0_bezeichnung')?.focus(), 0);
-}
-
-function delWsEntry(ws, yr, idx){
-  if(!confirm('Meilenstein löschen?')) return;
-  const entries=getWsEntries(ws, yr);
-  entries.splice(idx,1);
-  setWsEntries(ws, yr, entries);
-  renderWsDetail(ws);
-  renderCatList();
-}
-
-function updWs(ws, yr, idx, field, val){
-  const entries=getWsEntries(ws, yr);
-  const e=entries[idx];
-  if(!e) return;
-  e[field]=val;
-  e.updatedAt=new Date().toISOString();
-  setWsEntries(ws, yr, entries);
-  if(field==='bezeichnung' || field==='ergebnis'){
-    const mid='ms_'+yr+'_'+idx;
-    const titleEl=document.getElementById(mid+'_title');
-    const fieldEl=document.getElementById(mid+'_'+(field==='bezeichnung'?'bezeichnung':'ergebnis'));
-    if(titleEl){
-      titleEl.textContent=milestoneTitle(e);
-      titleEl.classList.toggle('ms-title--empty', !(String(e.bezeichnung||'').trim() || String(e.ergebnis||'').trim()));
-    }
-    if(fieldEl && String(val||'').trim()) fieldEl.classList.remove('bc-input-invalid');
-  }
-  renderCatList();
-}
-
-function updWsNum(ws, yr, idx, field, val){
-  const entries=getWsEntries(ws, yr);
-  const e=entries[idx];
-  if(!e) return;
-  if(val === '' || val == null) e[field] = null;
-  else {
-    const n = /prozent|level/.test(field) ? parseInt(val, 10) : parseFloat(String(val).replace(',', '.'));
-    e[field] = Number.isFinite(n) ? n : null;
-  }
-  e.updatedAt=new Date().toISOString();
-  setWsEntries(ws, yr, entries);
-  renderCatList();
-}
-
-function renderStructuredTargets(ws, yr, idx, e, idPrefix, live){
-  const wsEsc = esc(ws).replace(/'/g, "\\'");
-  const ocNum=live?(field)=>`onchange="updWsNum('${wsEsc}',${yr},${idx},'${field}',this.value)"`:()=>'';
-  const oc=live?(field)=>`onchange="updWs('${wsEsc}',${yr},${idx},'${field}',this.value)"`:()=>'';
-  const fid=(name)=>(idPrefix?idPrefix+'_'+name:name);
-  const qOpts=['Q1','Q2','Q3','Q4'].map(q=>'<option value="'+q+'"'+(e.ziel_quartal===q?' selected':'')+'>'+q+'</option>').join('');
-  return '<details class="bc-structured-targets" open>'+
-    '<summary>Strukturierte Zielwerte (IST/SOLL-Vergleich)</summary>'+
-    '<p class="bc-muted" style="margin:.35rem 0 .65rem">Numerische Ziele für den Abgleich mit Phase 1 (Status Aufnahme).</p>'+
-    '<div class="review-mini-grid">'+
-      '<div class="field"><label>Ziel-Umsatz (TEUR)</label><input type="number" min="0" step="1" id="'+fid('ziel_umsatz_teur')+'" '+ocNum('ziel_umsatz_teur')+' value="'+(e.ziel_umsatz_teur!=null?esc(e.ziel_umsatz_teur):'')+'"></div>'+
-      '<div class="field"><label>Ziel-Headcount</label><input type="number" min="0" step="1" id="'+fid('ziel_headcount')+'" '+ocNum('ziel_headcount')+' value="'+(e.ziel_headcount!=null?esc(e.ziel_headcount):'')+'"></div>'+
-      '<div class="field"><label>Ziel-Quartal</label><select id="'+fid('ziel_quartal')+'" '+oc('ziel_quartal')+'><option value="">–</option>'+qOpts+'</select></div>'+
-      '<div class="field"><label>Skill-Kategorie (Ziel)</label><select id="'+fid('ziel_skill_kategorie')+'" '+oc('ziel_skill_kategorie')+'>'+buildHarmSkillCategoryOptions(e.ziel_skill_kategorie||'')+'</select></div>'+
-      '<div class="field"><label>Min. Skill-Level (1–5)</label><input type="number" min="1" max="5" step="1" id="'+fid('ziel_skill_level_min')+'" '+ocNum('ziel_skill_level_min')+' value="'+(e.ziel_skill_level_min!=null?esc(e.ziel_skill_level_min):'')+'"></div>'+
-      '<div class="field"><label>Ziel-Anteil (% der MA)</label><input type="number" min="0" max="100" step="1" id="'+fid('ziel_anteil_prozent')+'" '+ocNum('ziel_anteil_prozent')+' value="'+(e.ziel_anteil_prozent!=null?esc(e.ziel_anteil_prozent):'')+'"></div>'+
-    '</div></details>';
-}
-function tip(label,text){return '<label>'+esc(label)+' <span class="help" tabindex="0" data-tip="'+esc(text)+'">i</span></label>'}
-function tipRequired(label,text){return '<label>'+esc(label)+' <span class="bc-required" aria-hidden="true">*</span> <span class="help" tabindex="0" data-tip="'+esc(text)+'">i</span></label>'}
 
 function milestoneTitle(entry) {
   const bez = String(entry?.bezeichnung || "").trim();
@@ -834,181 +365,148 @@ function findMilestonesMissingErgebnis() {
   return missing;
 }
 
-
-/* legacy measureCard block removed */
-function fld(cid,m,key,label,type,opts,helpText){
-  const v=m[key]||'';
-  const oc='onchange="upd(\''+cid+'\',\''+m.id+'\',\''+key+'\',this.value)"';
-  let inp;
-  if(type==='textarea')inp='<textarea '+oc+'>'+esc(v)+'</textarea>';
-  else if(type==='select')inp='<select '+oc+'>'+opts.map(o=>'<option'+(o===v?' selected':'')+'>'+esc(o)+'</option>').join('')+'</select>';
-  else inp='<input '+oc+' value="'+esc(v)+'">';
-  return '<div class="field">'+tip(label, helpText||'Bitte Feld passend zur geplanten Maßnahme ausfüllen.')+inp+'</div>';
-}
-// NOTE: Die frühere Maßnahme-CRUD-Logik pro Vorgabe-Kategorie wird in dieser Version nicht mehr genutzt,
-// da Planung pro Workstream (1 Leitplanke) und Jahr erfolgt. Die Daten liegen in plan.measures["WS||<workstream>||<jahr>"]
-// und werden über updWs() gepflegt.
-function addMeasure(){toast('In dieser Version werden Einträge pro Workstream/Jahr direkt im Formular erfasst.');}
-function upd(){}
-function dupMeasure(){toast('Nicht verfügbar: Planung erfolgt pro Workstream/Jahr.');}
-function delMeasure(){toast('Nicht verfügbar: Planung erfolgt pro Workstream/Jahr.');}
-
-/* ---------- review ---------- */
-function ampelFor(ws,yr){
-  const cats=guidelines.filter(g=>g.workstream===ws);
-  if(!cats.length)return{c:'grey',n:0};
-
-  const entries = getWsEntries(ws, yr);
-  if(!entries.length) return {c:'red', n:0};
-
-  // "grün" wenn alle Einträge core-Felder haben, und keiner als Risiko/Blocker leer ist optional
-  const coreOk = entries.every(e => (e.bezeichnung||'').trim() && (e.ergebnis||'').trim() && (e.kpis||'').trim() && (e.verantwortlich||'').trim());
-  const hasAnyRisk = entries.some(e => (e.risiken||'').trim());
-
-  if(coreOk && !hasAnyRisk) return {c:'green', n:entries.length};
-  return {c:'amber', n:entries.length};
-}
-function renderReview(){
-  const wss=workstreams();
-  let h='<thead><tr><th>Workstream</th>'+YEARS.map(y=>'<th style="text-align:center">'+y+'</th>').join('')+'</tr></thead><tbody>';
-  wss.forEach(ws=>{
-    h+='<tr><td><b>'+esc(ws)+'</b></td>';
-    YEARS.forEach(y=>{const a=ampelFor(ws,y);
-      h+='<td class="cell" onclick="drill(\''+esc(ws).replace(/'/g,"")+'\','+y+')"><span class="dot '+a.c+'"></span><div class="bc-muted">'+a.n+'</div></td>';});
-    h+='</tr>';
+/* ---------- leitplanken view ---------- */
+function renderLeitplanken(){
+  const ws=(document.getElementById('lpWs')?.value)||'';
+  const pr=(document.getElementById('lpPrio')?.value)||'';
+  const q=((document.getElementById('lpSearch')?.value)||'').toLowerCase();
+  const tb=document.querySelector('#lpTable tbody');
+  if(!tb) return;
+  tb.innerHTML='';
+  guidelines.filter(g=>(!ws||g.workstream===ws)&&(!pr||g.prioritaet===pr)&&(!q||JSON.stringify(g).toLowerCase().includes(q)))
+  .forEach(g=>{
+    const tr=document.createElement('tr');
+    tr.innerHTML='<td><span class="badge '+(g.prioritaet||'empty')+'">'+(g.prioritaet||'–')+'</span></td>'+
+      '<td>'+esc(g.workstream)+'</td><td><b>'+esc(g.kategorie)+'</b></td>'+
+      '<td>'+esc(g.leitfrage)+'</td><td>'+esc(g.festlegung)+'</td><td>'+esc(g.zielwert)+'</td><td>'+esc(g.verantwortlich)+'</td>';
+    tb.appendChild(tr);
   });
-  h+='</tbody>';
-  document.getElementById('reviewTable').innerHTML=h;
 }
 
-// Alte Maßnahme-Kartenlogik (pro Vorgabe-Kategorie) wird in dieser Version nicht mehr genutzt.
-function measureCard(){return ''}
-function drill(ws,yr){
-  const entries=getWsEntries(ws, yr);
-  let h='<div class="bc-flex-between"><h3>'+esc(ws)+' · '+yr+'</h3><button class="btn btn-sm btn-outline" onclick="document.getElementById(\'reviewDrill\').style.display=\'none\'">Schließen</button></div>';
-  if(!entries.length){
-    h+='<p class="bc-muted">Keine Einträge.</p>';
-  } else {
-    entries.forEach((e)=>{
-      h+='<div class="measure" style="margin-top:10px"><b>'+esc(milestoneTitle(e))+'</b></div>';
-      const items=[
-        ['Bezeichnung', e.bezeichnung],
-        ['Beschreibung', e.ergebnis],
-        ['Messbare KPIs', e.kpis],
-        ['Voraussetzungen', e.voraussetzungen],
-        ['Abhängigkeiten', e.abhaengigkeiten],
-        ['Risiken / Blocker', e.risiken],
-        ['Verantwortlich', e.verantwortlich],
-      ];
-      items.forEach(([t,v])=>{
-        h+='<div class="measure" style="margin-top:6px"><b>'+esc(t)+'</b><div class="bc-muted" style="white-space:pre-wrap;margin-top:4px">'+esc(v||'–')+'</div></div>';
-      });
-    });
-  }
-  const d=document.getElementById('reviewDrill');d.innerHTML=h;d.style.display='block';d.scrollIntoView({behavior:'smooth'})
+/* ---------- Planungsstatus (ehem. Review) ---------- */
+let _p1OverviewModel = null;
+let reviewSelected = {area:null, year:null};
+
+const REVIEW_TILE_IDS = { portfolio:'rvPortfolio', gliederungen:'rvGliederungen', rollen:'rvRollen', mitarbeiter:'rvMitarbeiter' };
+
+function renderReviewTiles(model){
+  model.forEach(area=>{
+    const tileId = REVIEW_TILE_IDS[area.key];
+    if(!tileId) return;
+    const numEl = document.getElementById(tileId);
+    const subEl = document.getElementById(tileId+'Sub');
+    const total = area.items.length;
+    if(numEl) numEl.textContent = total ? (area.fullyPlanned+' / '+total) : '–';
+    if(subEl) subEl.textContent = total ? 'vollständig geplant · alle Jahre' : 'keine Basis in Phase 1';
+    const card = numEl?.closest('.stat-card');
+    if(card){
+      card.classList.toggle('bc-stat-empty', !total);
+      card.classList.toggle('bc-stat-warn', area.mandatory && total>0 && area.fullyPlanned<total);
+    }
+  });
 }
 
-const REVIEW_YEARS = YEARS;
-let reviewSelected = {ws:'', year:2026};
+function reviewCellClass(state, hasBasis){
+  if(!hasBasis) return 'c-grey';
+  if(state.planned===0) return 'c-red';
+  if(state.planned===state.total) return 'c-green';
+  return 'c-amber';
+}
 
-function reviewAllEntries(){
-  return Object.values(plan.measures||{}).flat().filter(m=>m && m.kind==='wsYear');
-}
-function reviewEntries(ws, year){ return getWsEntries(ws, year); }
-function reviewCoreFilled(m){ return !!((m.bezeichnung||'').trim() && (m.ergebnis||'').trim() && (m.kpis||'').trim() && (m.verantwortlich||'').trim()); }
-function reviewExtendedCount(m){ return [m.bezeichnung,m.ergebnis,m.kpis,m.voraussetzungen,m.abhaengigkeiten,m.risiken,m.verantwortlich].filter(v=>String(v||'').trim()).length; }
-function reviewQualityState(items){
-  if(!items.length) return {cls:'c-red', label:'leer', risk:false};
-  const avg = items.reduce((a,m)=>a+reviewExtendedCount(m),0)/items.length;
-  const anyRisk = items.some(m=>String(m.risiken||'').trim());
-  const allCore = items.every(reviewCoreFilled);
-  if(allCore && avg >= 5.2 && !anyRisk) return {cls:'c-green', label:'stark', risk:false};
-  if(allCore) return {cls:'c-amber', label:'solide', risk:anyRisk};
-  return {cls:'c-red', label:'kritisch', risk:anyRisk};
-}
-function renderReviewStats(){
-  const wss = workstreams();
-  const all = reviewAllEntries();
-  const totalCells = wss.length * REVIEW_YEARS.length || 1;
-  const covered = wss.flatMap(ws=>REVIEW_YEARS.map(y=>reviewEntries(ws,y))).filter(arr=>arr.length).length;
-  const complete = all.filter(reviewCoreFilled).length;
-  const risks = all.filter(d=>String(d.risiken||'').trim()).length;
-  const depOpen = all.filter(d=>String(d.abhaengigkeiten||'').trim() && !String(d.voraussetzungen||'').trim()).length;
-  const byId = id => document.getElementById(id);
-  if(byId('rvCoverage')) byId('rvCoverage').textContent = Math.round((covered/totalCells)*100) + '%';
-  if(byId('rvQuality')) byId('rvQuality').textContent = all.length ? Math.round((complete/all.length)*100) + '%' : '0%';
-  if(byId('rvRisk')) byId('rvRisk').textContent = all.length ? Math.round((risks/all.length)*100) + '%' : '0%';
-  if(byId('rvDepOpen')) byId('rvDepOpen').textContent = depOpen;
-}
-function selectReviewCell(ws, year){ reviewSelected = {ws, year}; renderReviewDrill(); }
-function renderReview(){
-  renderReviewStats();
-  const wss=workstreams();
-  if(!reviewSelected.ws && wss.length) reviewSelected = {ws:wss[0], year:2026};
-  let h='<thead><tr><th>Workstream</th>'+REVIEW_YEARS.map(y=>'<th style="text-align:center">'+y+'</th>').join('')+'</tr></thead><tbody>';
-  wss.forEach(ws=>{
-    h+='<tr><td><b>'+esc(ws)+'</b></td>';
-    REVIEW_YEARS.forEach(year=>{
-      const items = reviewEntries(ws, year);
-      const q = reviewQualityState(items);
-      const avg = items.length ? Math.round(items.reduce((a,m)=>a+reviewExtendedCount(m),0)/items.length) : 0;
-      h += '<td><div class="review-cellbox '+q.cls+'" onclick="selectReviewCell(\''+esc(ws).replace(/'/g,'')+'\','+year+')">'+
-           '<div class="review-cell-top"><div class="review-count">'+items.length+'</div><div class="review-quality">'+q.label+'</div><div class="review-risk">'+(q.risk ? '⚠' : '')+'</div></div>'+
-           '<div class="review-cell-sub">Ø '+avg+'/7 Felder</div></div></td>';
+function selectReviewCell(areaKey, year){ reviewSelected = {area:areaKey, year:year}; renderReviewDrill(); }
+
+function renderReviewMatrix(model){
+  const box = document.getElementById('reviewTable'); if(!box) return;
+  let h='<thead><tr><th>Bereich</th>'+YEARS.map(y=>'<th style="text-align:center">'+y+'</th>').join('')+'</tr></thead><tbody>';
+  model.forEach(area=>{
+    const hasBasis = area.items.length>0;
+    h+='<tr><td><b>'+esc(area.label)+'</b>'+(area.mandatory ? ' <span class="bc-muted" style="font-size:.7rem">(Pflicht)</span>' : '')+'</td>';
+    YEARS.forEach(year=>{
+      const st = area.yearTotals[year];
+      const cls = reviewCellClass(st, hasBasis);
+      const pct = st.total ? Math.round((st.planned/st.total)*100) : 0;
+      const sub = hasBasis ? (st.planned+'/'+st.total+' geplant') : 'keine Basis';
+      h += '<td><div class="review-cellbox '+cls+'" onclick="selectReviewCell(\''+area.key+'\','+year+')">'+
+           '<div class="review-cell-top"><div class="review-count">'+(hasBasis ? pct+'%' : '–')+'</div></div>'+
+           '<div class="review-cell-sub">'+sub+'</div></div></td>';
     });
     h+='</tr>';
   });
   h+='</tbody>';
-  document.getElementById('reviewTable').innerHTML=h;
-  renderReviewQualityBars();
-  renderReviewRiskBoard();
-  renderReviewDrill();
+  box.innerHTML=h;
+  if(!reviewSelected.area && model.length) reviewSelected = {area:model[0].key, year:YEARS[0]};
 }
-function renderReviewQualityBars(){
-  const box = document.getElementById('reviewQualityBars'); if(!box) return;
-  let h='';
-  workstreams().forEach(ws=>{
-    const items = reviewAllEntries().filter(d=>d.workstream===ws);
-    const pct = items.length ? Math.round((items.reduce((a,m)=>a+reviewExtendedCount(m),0)/(items.length*7))*100) : 0;
-    h += '<div class="review-bar-row"><div><b>'+esc(ws)+'</b></div><div class="review-bar-track"><div class="review-bar-fill" style="width:'+pct+'%"></div></div><div><b>'+pct+'%</b></div></div>';
-  });
-  box.innerHTML = h;
-}
+
 function renderReviewDrill(){
   const box = document.getElementById('reviewDrill'); const title = document.getElementById('reviewDrillTitle');
   if(!box || !title) return;
-  const ws = reviewSelected.ws; const year = reviewSelected.year;
-  const items = ws ? reviewEntries(ws, year) : [];
-  const mode = (document.getElementById('reviewRiskFilter')||{}).value || 'all';
-  const filtered = items.filter(m=>{
-    const hasRisk = !!String(m.risiken||'').trim();
-    if(mode==='withRisk') return hasRisk;
-    if(mode==='withoutRisk') return !hasRisk;
+  const area = (_p1OverviewModel||[]).find(a=>a.key===reviewSelected.area);
+  const year = reviewSelected.year;
+  if(!area || !year){ title.textContent = 'Wähle eine Zelle in der Matrix.'; box.innerHTML=''; return; }
+  if(!area.items.length){
+    title.textContent = area.label+' · '+year;
+    box.innerHTML = '<div class="bc-muted">Keine Phase-1-Einträge für diesen Bereich – nichts zu planen.</div>';
+    return;
+  }
+  const mode = (document.getElementById('reviewOpenFilter')||{}).value || 'open';
+  const rows = area.items.filter(it=>{
+    const st = it.years[year];
+    if(mode==='open') return !st.complete;
+    if(mode==='done') return st.complete;
     return true;
   });
-  title.textContent = ws ? (ws + ' · ' + year + ' · ' + filtered.length + ' Meilenstein(e)') : 'Wähle eine Zelle in der Matrix.';
-  if(!filtered.length){ box.innerHTML = '<div class="bc-muted">Keine passenden Meilensteine in dieser Auswahl.</div>'; return; }
-  box.innerHTML = filtered.map((m,i)=>{
-    const score = reviewExtendedCount(m);
-    const cls = !reviewCoreFilled(m) ? 'red' : (String(m.risiken||'').trim() ? 'amber' : 'green');
-    const label = !reviewCoreFilled(m) ? 'kritisch' : (String(m.risiken||'').trim() ? 'mit Risiko' : 'stabil');
-    return '<div class="review-mile"><div class="review-mile-head"><div><div class="review-mile-title">'+esc(milestoneTitle(m))+'</div><div class="bc-muted" style="margin-top:4px">Vollständigkeit '+score+'/7</div></div><span class="review-pill '+cls+'">'+label+'</span></div>'+
-      '<div class="review-mini-grid">'+
-      '<div class="review-field"><div class="k">Messbare KPIs</div><div class="v">'+esc(m.kpis)+'</div></div>'+
-      '<div class="review-field"><div class="k">Verantwortlich</div><div class="v">'+esc(m.verantwortlich)+'</div></div>'+
-      '<div class="review-field"><div class="k">Voraussetzungen</div><div class="v">'+esc(m.voraussetzungen||'–')+'</div></div>'+
-      '<div class="review-field"><div class="k">Abhängigkeiten</div><div class="v">'+esc(m.abhaengigkeiten||'–')+'</div></div>'+
-      '<div class="review-field"><div class="k">Risiken / Blocker</div><div class="v">'+esc(m.risiken||'–')+'</div></div>'+
-      '<div class="review-field"><div class="k">Workstream / Jahr</div><div class="v">'+esc(m.workstream)+' · '+m.jahr+'</div></div>'+
-      '</div></div>';
+  title.textContent = area.label+' · '+year+' · '+rows.length+' Eintrag(e)';
+  if(!rows.length){ box.innerHTML = '<div class="bc-muted">Keine passenden Einträge in dieser Auswahl.</div>'; return; }
+  box.innerHTML = rows.map(it=>{
+    const st = it.years[year];
+    const cls = st.complete ? 'green' : 'red';
+    const label = area.key==='mitarbeiter'
+      ? (st.complete ? 'vollständig' : st.filled+'/'+st.total+' Skills')
+      : (st.complete ? 'geplant' : 'noch offen');
+    return '<div class="review-mile"><div class="review-mile-head"><div><div class="review-mile-title">'+esc(it.label)+'</div></div><span class="review-pill '+cls+'">'+label+'</span></div></div>';
   }).join('');
 }
-function renderReviewRiskBoard(){
-  const box = document.getElementById('reviewRiskBoard'); if(!box) return;
-  const risks = reviewAllEntries().filter(d=>String(d.risiken||'').trim());
-  box.innerHTML = risks.length ? risks.map(r=>
-    '<div class="review-risk-item"><div class="bc-flex-between"><b>'+esc(milestoneTitle(r))+'</b><span class="bc-muted">'+r.jahr+'</span></div><div class="bc-muted" style="margin:4px 0 8px">'+esc(r.workstream)+' · Verantwortlich: '+esc(r.verantwortlich)+'</div><div style="font-size:13px;white-space:pre-wrap">'+esc(r.risiken)+'</div></div>'
-  ).join('') : '<div class="bc-muted">Keine Risiken / Blocker gepflegt.</div>';
+
+function renderReviewMandatoryChecklist(model){
+  const box = document.getElementById('reviewMandatory'); if(!box) return;
+  const area = model.find(a=>a.key==='mitarbeiter');
+  if(!area || !area.items.length){
+    box.innerHTML = '<div class="bc-muted">Keine Mitarbeiter-Skillprofile aus Phase 1 gefunden.</div>';
+    return;
+  }
+  const openCount = area.items.length - area.fullyPlanned;
+  const rows = area.items.map(it=>{
+    const cells = YEARS.map(yr=>{
+      const st = it.years[yr];
+      const cls = st.complete ? 'green' : 'red';
+      const label = st.complete ? '✓' : (st.filled+'/'+st.total);
+      return '<td><span class="review-pill '+cls+'">'+label+'</span></td>';
+    }).join('');
+    return '<tr><td>'+esc(it.label)+'</td>'+cells+'</tr>';
+  }).join('');
+  box.innerHTML =
+    '<p class="bc-muted" style="margin-bottom:.65rem">'+(openCount
+      ? '<b>'+openCount+'</b> von '+area.items.length+' Mitarbeitern haben noch nicht für alle Jahre vollständig bewertete Skills.'
+      : 'Alle '+area.items.length+' Mitarbeiter sind für alle Planjahre vollständig bewertet.')+'</p>'+
+    '<div class="tbl-wrap"><table class="entries matrix"><thead><tr><th>Mitarbeiter</th>'+YEARS.map(y=>'<th style="text-align:center">'+y+'</th>').join('')+'</tr></thead><tbody>'+rows+'</tbody></table></div>';
+}
+
+async function renderReview(){
+  const notice = document.getElementById('reviewUnitNotice');
+  if(isBcViewAll()){
+    if(notice) notice.style.display='';
+    ['reviewTable','reviewDrill','reviewMandatory'].forEach(id=>{ const el=document.getElementById(id); if(el) el.innerHTML=''; });
+    const title = document.getElementById('reviewDrillTitle'); if(title) title.textContent = 'Wähle eine Zelle in der Matrix.';
+    return;
+  }
+  if(notice) notice.style.display='none';
+  const ok = await ensureP1OverviewDataLoaded();
+  if(!ok) return;
+  _p1OverviewModel = buildP1OverviewModel();
+  renderReviewTiles(_p1OverviewModel);
+  renderReviewMatrix(_p1OverviewModel);
+  renderReviewDrill();
+  renderReviewMandatoryChecklist(_p1OverviewModel);
 }
 
 /* ---------- export ---------- */
@@ -1138,15 +636,8 @@ async function bootBackcastingPlan(me) {
 
 document.addEventListener('rc-backcasting-ready', (e)=>void bootBackcastingPlan(e.detail));
 if(document.body.dataset.rcUserUnit) void bootBackcastingPlan(null);
-document.getElementById('bcMilestoneEdit')?.addEventListener('click', (e)=>{
-  if(e.target.id==='bcMilestoneEdit') closeMilestoneEditModal();
-});
-document.addEventListener('keydown', (e)=>{
-  if(e.key==='Escape' && milestoneModalCtx) closeMilestoneEditModal();
-});
 window.addEventListener('error', function(e){
   const msg = 'JS-Fehler: ' + (e && e.message ? e.message : 'Unbekannter Fehler');
   const cs=document.getElementById('csvStatus'); if(cs) cs.textContent=msg;
-  const pcs=document.getElementById('planCsvStatus'); if(pcs) pcs.textContent=msg;
   console.error(e);
 });

@@ -4,7 +4,7 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>Phase 2 · Backcasting-Planung 2026–2029 · realcore</title>
-<link rel="stylesheet" href="/styles.css">
+<link rel="stylesheet" href="/styles.css?v=20260803a">
 <link rel="stylesheet" href="/backcasting/styles.css">
 <link rel="prefetch" href="/">
 </head>
@@ -51,7 +51,8 @@
   <div class="tabs" id="bcTabs">
     <div class="tabs-nav-main">
     <div class="tab active" data-tab="planung">① Planung</div>
-    <div class="tab" data-tab="planung-new">② Planung NEW</div>
+    <div class="tab" data-tab="vorgaben">◎ Vorgaben &amp; Planung</div>
+    <div class="tab" data-tab="jahresabschluss">② Jahresabschluss</div>
     <div class="tab" data-tab="review">③ Review</div>
     <div class="tab" data-tab="leitplanken">④ Leitplanken</div>
     <div class="tab" data-tab="export">⑤ Export</div>
@@ -65,165 +66,98 @@
 <!-- PLANUNG -->
 <div class="page active" id="page-planung">
   <div class="unit-save-notice" id="bcUnitSaveNotice" style="display:none" role="status">
-    <strong>Speichern nicht möglich:</strong> Oben ist <em>Alle Units</em> aktiv.
-    Bitte im <strong>Filter</strong> eine konkrete Unit wählen, dann planen und speichern.
-  </div>
-  <div class="card" style="margin-bottom:.75rem">
-    <div class="filter-row" style="margin-bottom:0">
-      <div style="min-width:260px;max-width:360px"><label>Workstream</label><select id="planWsTop" onchange="syncWsFromTop()" oninput="syncWsFromTop()"></select></div>
-      <div class="bc-muted" style="flex:1;min-width:200px;align-self:end;padding-bottom:.15rem"><span class="bc-tag" id="wsTopCount" style="display:none">0 Einträge</span></div>
-    </div>
-    <div id="planCsvStatus" class="bc-muted" style="margin-top:.5rem"></div>
-  </div>
-  <div class="bc-plan-layout">
-    <div class="bc-detail" id="planDetail">
-      <p class="bc-muted">Bitte oben einen Workstream wählen.</p>
-    </div>
-  </div>
-</div>
-
-<!-- PLANUNG NEW -->
-<div class="page" id="page-planung-new">
-  <div class="unit-save-notice" id="bcUnitSaveNoticeNew" style="display:none" role="status">
     <strong>Speichern nicht m&ouml;glich:</strong> Oben ist <em>Alle Units</em> aktiv.
     Bitte im <strong>Filter</strong> eine konkrete Unit w&auml;hlen, dann planen und speichern.
   </div>
   <div id="planungNewContent"></div>
 </div>
 
+<!-- VORGABEN & PLANUNG (Workstream-Fahrplan) – Prototyp -->
+<div class="page" id="page-vorgaben">
+  <div id="vorgabenPlanungContent"></div>
+</div>
+
 <!-- REVIEW -->
 <div class="page" id="page-review">
   <div class="card">
     <div class="bc-flex-between">
-      <h3 style="margin:0">Review · Jahresübersicht Backcasting</h3>
+      <h3 style="margin:0">Planungsstatus &middot; Erfassungs&uuml;bersicht</h3>
       <button type="button" class="btn btn-sm btn-outline" onclick="renderReview()">Aktualisieren</button>
     </div>
-    <p class="bc-muted">Die Review-Ansicht ist bewusst von der Erfassung getrennt. Die vier Kennzahlen-Kacheln werden aus allen erfassten Meilensteinen (Matrix Workstream × Jahr, 2026–2029) berechnet – <b>Klick auf eine Kachel</b> öffnet die ausführliche Erklärung <span class="bc-stat-tip-icon bc-stat-tip-icon--inline" aria-hidden="true">i</span>.</p>
+    <p class="bc-muted">Zeigt, wo in Portfolio, Organisation und Mitarbeiter-Skills bereits geplant wurde und wo noch nicht &ndash; je Planjahr. Nicht jeder Bereich muss vollst&auml;ndig sein: fehlt in Phase 1 die Basis (z.&nbsp;B. kein Partnergesch&auml;ft, keine Rollen erfasst), z&auml;hlt das nicht als L&uuml;cke. <b>Ausnahme Mitarbeiter/Skills:</b> Dieser Bereich ist Pflicht &ndash; hier sollte f&uuml;r jeden Mitarbeiter und jeden Skill ein Ziel-Level je Planjahr gesetzt sein.</p>
+  </div>
+  <div class="unit-save-notice" id="reviewUnitNotice" style="display:none" role="status">
+    <strong>Keine Anzeige m&ouml;glich:</strong> Oben ist <em>Alle Units</em> aktiv. Bitte im <strong>Filter</strong> eine konkrete Unit w&auml;hlen.
   </div>
   <div class="stats bc-review-stats">
-    <div class="stat-card bc-has-tip" tabindex="0" role="button" aria-expanded="false" data-stat-tip="coverage" aria-label="Abdeckung Jahre – Klicken für Erklärung">
+    <div class="stat-card bc-has-tip" tabindex="0" role="button" aria-expanded="false" aria-label="Portfolio &ndash; Klicken f&uuml;r Erkl&auml;rung">
       <span class="bc-stat-tip-icon" aria-hidden="true">i</span>
-      <div class="num" id="rvCoverage">0%</div>
-      <div class="lbl">Abdeckung Jahre</div>
-      <div class="bc-stat-tooltip" role="dialog" aria-label="Erklärung Abdeckung Jahre">
-        <button type="button" class="bc-stat-tip-close" aria-label="Schließen">×</button>
-        <strong>1) Abdeckung Jahre</strong>
-        <p>Anteil der Matrix-Zellen <em>Workstream × Jahr</em> (z. B. 2026–2029), in denen mindestens ein Meilenstein existiert.</p>
-        <p><b>Berechnung:</b><br>Abdeckung = (Zellen mit ≥ 1 Meilenstein) ÷ (alle Zellen) × 100<br>
-        Alle Zellen = Anzahl Workstreams × Anzahl Jahre</p>
-        <p><b>Beispiel 80 %:</b> In 80 % aller Workstream/Jahr-Kombinationen gibt es bereits Planungseinträge.</p>
+      <div class="num" id="rvPortfolio">&ndash;</div>
+      <div class="lbl">Portfolio<br><span class="bc-muted" id="rvPortfolioSub" style="font-size:.68rem"></span></div>
+      <div class="bc-stat-tooltip" role="dialog" aria-label="Erkl&auml;rung Portfolio">
+        <button type="button" class="bc-stat-tip-close" aria-label="Schlie&szlig;en">&times;</button>
+        <strong>Portfolio</strong>
+        <p>Anteil der Portfolio-Positionen aus Phase 1 (Produkte, Services, L&ouml;sungen, Partnergesch&auml;ft, Projektgesch&auml;ft), f&uuml;r die in <b>jedem</b> Planjahr mindestens ein Meilenstein mit Inhalt hinterlegt ist.</p>
+        <p>Positionen ohne Basis in Phase 1 (z.&nbsp;B. keine Partnergesch&auml;ft-Eintr&auml;ge) tauchen hier gar nicht auf &ndash; kein Pflichtbereich.</p>
       </div>
     </div>
-    <div class="stat-card bc-has-tip" tabindex="0" role="button" aria-expanded="false" data-stat-tip="quality" aria-label="Vollständige Meilensteine – Klicken für Erklärung">
+    <div class="stat-card bc-has-tip" tabindex="0" role="button" aria-expanded="false" aria-label="Organisation Gliederungen &ndash; Klicken f&uuml;r Erkl&auml;rung">
       <span class="bc-stat-tip-icon" aria-hidden="true">i</span>
-      <div class="num" id="rvQuality">0%</div>
-      <div class="lbl">Vollständige Meilensteine</div>
-      <div class="bc-stat-tooltip" role="dialog" aria-label="Erklärung Vollständige Meilensteine">
-        <button type="button" class="bc-stat-tip-close" aria-label="Schließen">×</button>
-        <strong>2) Vollständige Meilensteine</strong>
-        <p>Ein Meilenstein gilt als vollständig, wenn diese 4 Kernfelder gefüllt sind:</p>
-        <ul>
-          <li>Bezeichnung</li>
-          <li>Beschreibung</li>
-          <li>Messbare KPIs</li>
-          <li>Verantwortlich</li>
-        </ul>
-        <p><b>Berechnung:</b><br>Vollständig = (Meilensteine mit Bezeichnung + Beschreibung + KPI + Verantwortlich) ÷ (alle Meilensteine) × 100</p>
-        <p><b>Beispiel 100 %:</b> Jeder Meilenstein hat mindestens diese vier Kernangaben gepflegt.</p>
+      <div class="num" id="rvGliederungen">&ndash;</div>
+      <div class="lbl">Organisation<br>Gliederungen<br><span class="bc-muted" id="rvGliederungenSub" style="font-size:.68rem"></span></div>
+      <div class="bc-stat-tooltip" role="dialog" aria-label="Erkl&auml;rung Organisation Gliederungen">
+        <button type="button" class="bc-stat-tip-close" aria-label="Schlie&szlig;en">&times;</button>
+        <strong>Organisation &middot; Gliederungen</strong>
+        <p>Anteil der in Phase 1 erfassten organisatorischen Gliederungen, f&uuml;r die in jedem Planjahr eine Planung hinterlegt ist.</p>
+        <p>Keine Gliederungen in Phase 1 erfasst &rarr; kein Pflichtbereich, wird als &bdquo;keine Basis&ldquo; angezeigt.</p>
       </div>
     </div>
-    <div class="stat-card bc-has-tip" tabindex="0" role="button" aria-expanded="false" data-stat-tip="risk" aria-label="Risikoquote – Klicken für Erklärung">
+    <div class="stat-card bc-has-tip" tabindex="0" role="button" aria-expanded="false" aria-label="Organisation Rollen &ndash; Klicken f&uuml;r Erkl&auml;rung">
       <span class="bc-stat-tip-icon" aria-hidden="true">i</span>
-      <div class="num" id="rvRisk">0%</div>
-      <div class="lbl">Risikoquote</div>
-      <div class="bc-stat-tooltip" role="dialog" aria-label="Erklärung Risikoquote">
-        <button type="button" class="bc-stat-tip-close" aria-label="Schließen">×</button>
-        <strong>3) Risikoquote</strong>
-        <p>Ein Meilenstein zählt als „mit Risiko“, wenn das Feld <em>Risiken / Blocker</em> nicht leer ist.</p>
-        <p><b>Berechnung:</b><br>Risikoquote = (Meilensteine mit Risiko/Blocker) ÷ (alle Meilensteine) × 100</p>
-        <p><b>Beispiel 34 %:</b> Rund ein Drittel aller Meilensteine hat dokumentierte Risiken oder Blocker.</p>
+      <div class="num" id="rvRollen">&ndash;</div>
+      <div class="lbl">Organisation<br>Rollen<br><span class="bc-muted" id="rvRollenSub" style="font-size:.68rem"></span></div>
+      <div class="bc-stat-tooltip" role="dialog" aria-label="Erkl&auml;rung Organisation Rollen">
+        <button type="button" class="bc-stat-tip-close" aria-label="Schlie&szlig;en">&times;</button>
+        <strong>Organisation &middot; Rollen</strong>
+        <p>Anteil der in Phase 1 erfassten Rollen, f&uuml;r die in jedem Planjahr eine Planung hinterlegt ist.</p>
+        <p>Keine Rollen in Phase 1 erfasst &rarr; kein Pflichtbereich, wird als &bdquo;keine Basis&ldquo; angezeigt.</p>
       </div>
     </div>
-    <div class="stat-card bc-has-tip" tabindex="0" role="button" aria-expanded="false" data-stat-tip="governance" aria-label="Offene Governance – Klicken für Erklärung">
+    <div class="stat-card bc-has-tip" tabindex="0" role="button" aria-expanded="false" aria-label="Mitarbeiter Skills &ndash; Pflichtbereich &ndash; Klicken f&uuml;r Erkl&auml;rung">
       <span class="bc-stat-tip-icon" aria-hidden="true">i</span>
-      <div class="num" id="rvDepOpen">0</div>
-      <div class="lbl">Offene Governance</div>
-      <div class="bc-stat-tooltip" role="dialog" aria-label="Erklärung Offene Governance">
-        <button type="button" class="bc-stat-tip-close" aria-label="Schließen">×</button>
-        <strong>4) Offene Governance</strong>
-        <p>Ein Meilenstein zählt als „offene Governance“, wenn:</p>
-        <ul>
-          <li><em>Abhängigkeiten</em> gepflegt sind (nicht leer)</li>
-          <li><em>Voraussetzungen</em> leer sind</li>
-        </ul>
-        <p>Hinweis auf eine Governance-Lücke: Abhängigkeiten sind benannt, aber nicht beschrieben, was vorher passieren muss.</p>
-        <p><b>Berechnung (Anzahl, nicht Prozent):</b><br>Offene Governance = Meilensteine mit Abhängigkeiten, aber ohne Voraussetzungen</p>
-        <p><b>Beispiel 0:</b> Kein Eintrag mit dieser Lücke – oder konkreter Arbeitsvorrat, falls &gt; 0.</p>
+      <div class="num" id="rvMitarbeiter">&ndash;</div>
+      <div class="lbl">Mitarbeiter / Skills<br><b>Pflichtbereich</b><br><span class="bc-muted" id="rvMitarbeiterSub" style="font-size:.68rem"></span></div>
+      <div class="bc-stat-tooltip" role="dialog" aria-label="Erkl&auml;rung Mitarbeiter Skills">
+        <button type="button" class="bc-stat-tip-close" aria-label="Schlie&szlig;en">&times;</button>
+        <strong>Mitarbeiter / Skills &ndash; Pflichtbereich</strong>
+        <p>Anders als Portfolio/Organisation soll dieser Bereich <b>vollst&auml;ndig</b> gepflegt sein: f&uuml;r jeden Mitarbeiter aus Phase 1 und jeden seiner Fach- und Soft-Skills ein Ziel-Level je Planjahr.</p>
+        <p>Ein Mitarbeiter z&auml;hlt erst als vollst&auml;ndig, wenn <b>alle</b> seine Skills in <b>allen</b> Planjahren bewertet sind.</p>
       </div>
     </div>
   </div>
   <div class="bc-review-split">
     <div class="bc-review-main">
       <div class="card">
-        <h3>Workstream × Jahr Matrix</h3>
-        <p class="bc-muted" style="margin-bottom:.65rem">Zahl = Anzahl Meilensteine, Farbe = Reifegrad, Warnsymbol = Risiko vorhanden.</p>
+        <h3>Bereich &times; Jahr Matrix</h3>
+        <p class="bc-muted" style="margin-bottom:.65rem">Prozentzahl = Anteil vollst&auml;ndig geplanter Eintr&auml;ge je Bereich und Jahr. Grau = keine Basis in Phase 1. <b>Klick auf eine Zelle</b> &ouml;ffnet die Details rechts.</p>
         <div class="tbl-wrap"><table class="entries matrix" id="reviewTable"></table></div>
       </div>
       <div class="card">
-        <div class="bc-tip-title-row bc-has-tip" tabindex="0" role="button" aria-expanded="false" aria-label="Qualität je Workstream – Klicken für Berechnungslogik">
-          <span class="bc-stat-tip-icon" aria-hidden="true">i</span>
-          <h3 style="margin:0">Qualität je Workstream</h3>
-          <div class="bc-stat-tooltip bc-stat-tooltip--title" role="dialog" aria-label="Erklärung Qualität je Workstream">
-            <button type="button" class="bc-stat-tip-close" aria-label="Schließen">×</button>
-            <strong>Qualität je Workstream – Berechnungslogik</strong>
-            <p>Die Kennzahl ist eine <b>Vollständigkeitsmessung</b> über alle Meilensteine eines Workstreams (über alle Jahre).</p>
-            <p><b>1) Felder in die Qualität (7/7)</b></p>
-            <p>Pro Meilenstein werden geprüft:</p>
-            <ul>
-              <li>Bezeichnung (<em>bezeichnung</em>)</li>
-              <li>Beschreibung (<em>ergebnis</em>)</li>
-              <li>Messbare KPIs (<em>kpis</em>)</li>
-              <li>Voraussetzungen (<em>voraussetzungen</em>)</li>
-              <li>Abhängigkeiten (<em>abhaengigkeiten</em>)</li>
-              <li>Risiken / Blocker (<em>risiken</em>)</li>
-              <li>Verantwortlich (<em>verantwortlich</em>)</li>
-            </ul>
-            <p>Feld gefüllt (nicht leer) → 1 Punkt · Feld leer → 0 Punkte → Score pro Meilenstein: 0 bis 7.</p>
-            <p><b>2) Berechnung pro Workstream (%)</b></p>
-            <ul>
-              <li>Alle Meilensteine des Workstreams sammeln (alle Jahre)</li>
-              <li>Pro Meilenstein: Anzahl gefüllter Felder (0–7) zählen</li>
-              <li>Summe ÷ (Anzahl Meilensteine × 7), in Prozent</li>
-            </ul>
-            <p><b>Formel:</b><br>Qualität(WS) = Σ gefüllte Felder aller Meilensteine ÷ (Anzahl Meilensteine × 7) × 100</p>
-            <p><b>3) Interpretation</b></p>
-            <ul>
-              <li><b>100 %:</b> Alle 7 Felder bei allen Meilensteinen gepflegt</li>
-              <li><b>mittel:</b> Einträge vorhanden, z. B. Voraussetzungen/Abhängigkeiten/Risiken oft leer</li>
-              <li><b>niedrig:</b> Viele Meilensteine nur grob erfasst</li>
-            </ul>
-            <p><b>Hinweis:</b> Die Kennzahl misst Vollständigkeit, nicht automatisch inhaltliche Qualität (z. B. ob eine KPI wirklich messbar ist).</p>
-          </div>
-        </div>
-        <p class="bc-muted" style="margin-bottom:.65rem">Durchschnittliche Vollständigkeit aller Meilensteine eines Workstreams – <b>Klick auf Überschrift oder</b> <span class="bc-stat-tip-icon bc-stat-tip-icon--inline" aria-hidden="true">i</span> <b>für die Berechnungslogik.</b></p>
-        <div id="reviewQualityBars"></div>
+        <h3>Pflicht-Check Mitarbeiter &middot; Skills</h3>
+        <p class="bc-muted" style="margin-bottom:.65rem">Ampel je Mitarbeiter und Planjahr &ndash; gr&uuml;n = alle Skills bewertet, rot = noch offen.</p>
+        <div id="reviewMandatory"></div>
       </div>
     </div>
     <div class="bc-review-side">
       <div class="card">
         <div class="bc-flex-between" style="margin-bottom:.65rem;align-items:flex-start">
           <div>
-            <h3 style="margin:0 0 .25rem">Drilldown Meilensteine</h3>
-            <p class="bc-muted" id="reviewDrillTitle">Wähle eine Zelle in der Matrix.</p>
+            <h3 style="margin:0 0 .25rem">Details</h3>
+            <p class="bc-muted" id="reviewDrillTitle">W&auml;hle eine Zelle in der Matrix.</p>
           </div>
-          <div style="min-width:140px"><label>Risiko-Filter</label><select id="reviewRiskFilter" onchange="renderReviewDrill()"><option value="all">Alle</option><option value="withRisk">Nur mit Risiko</option><option value="withoutRisk">Nur ohne Risiko</option></select></div>
+          <div style="min-width:140px"><label>Filter</label><select id="reviewOpenFilter" onchange="renderReviewDrill()"><option value="open">Nur offen</option><option value="done">Nur geplant</option><option value="all">Alle</option></select></div>
         </div>
         <div id="reviewDrill"></div>
-      </div>
-      <div class="card">
-        <h3>Risiko- / Blocker-Board</h3>
-        <p class="bc-muted" style="margin-bottom:.65rem">Verdichtete Steuerungssicht über alle Jahre und Workstreams.</p>
-        <div id="reviewRiskBoard"></div>
       </div>
     </div>
   </div>
@@ -264,19 +198,15 @@
   </div>
 </div>
 
-</div>
-<div class="bc-modal-overlay" id="bcMilestoneEdit" style="display:none" role="dialog" aria-modal="true" aria-labelledby="bcMilestoneEditTitle">
-  <div class="bc-modal-box">
-    <div class="bc-flex-between bc-modal-head">
-      <h3 id="bcMilestoneEditTitle" style="margin:0">Meilenstein bearbeiten</h3>
-      <button type="button" class="bc-ms-icon-btn" onclick="closeMilestoneEditModal()" aria-label="Schließen" title="Schließen">✕</button>
-    </div>
-    <div id="bcMilestoneEditBody" class="bc-modal-body"></div>
-    <div class="btn-group bc-modal-actions">
-      <button type="button" class="btn btn-outline" onclick="closeMilestoneEditModal()">Abbrechen</button>
-      <button type="button" class="btn btn-primary" onclick="saveMilestoneEditModal()">💾 Speichern</button>
-    </div>
+<!-- JAHRESABSCHLUSS -->
+<div class="page" id="page-jahresabschluss">
+  <div class="unit-save-notice" id="ycUnitSaveNotice" style="display:none" role="status">
+    <strong>Speichern nicht möglich:</strong> Oben ist <em>Alle Units</em> aktiv.
+    Bitte im <strong>Filter</strong> eine konkrete Unit wählen.
   </div>
+  <div id="ycRoot"></div>
+</div>
+
 </div>
 <div class="bc-modal-overlay" id="p1RenameModal" style="display:none" role="dialog" aria-modal="true" aria-labelledby="p1RenameModalTitle">
   <div class="bc-modal-box p1-add-modal-box">
@@ -316,8 +246,10 @@
 <script src="/js/organisation-ref-data.js" defer></script>
 <script src="/js/presence.js" defer></script>
 <script src="/backcasting/shell.js" defer></script>
-<script src="/backcasting/js/guidelines.js" defer></script>
-<script src="/backcasting/js/planning-new.js" defer></script>
-<script src="/backcasting/js/app.js" defer></script>
+<script src="/backcasting/js/guidelines.js?v=20260803a" defer></script>
+<script src="/backcasting/js/planning-new.js?v=20260710b" defer></script>
+<script src="/backcasting/js/vorgaben-planung.js?v=20260803a" defer></script>
+<script src="/backcasting/js/year-close.js?v=20260703a" defer></script>
+<script src="/backcasting/js/app.js?v=20260710a" defer></script>
 </body>
 </html>

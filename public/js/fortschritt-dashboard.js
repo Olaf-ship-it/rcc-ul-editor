@@ -2,11 +2,6 @@
  * Management-Dashboard: IST (Phase 1) vs. SOLL (Backcasting)
  */
 
-let fortschrittYear = new Date().getFullYear();
-let fortschrittYearAll = true;
-let fortschrittSnapshot = null;
-let fortschrittInitDone = false;
-let gesamtfortschrittInitDone = false;
 let demoDatenInitDone = false;
 let fortschrittTipDocBound = false;
 let demoLoadPanelState = null;
@@ -37,13 +32,9 @@ async function afterDemoDataChanged(options) {
       filterMode === "unit" ? unit : resolveDemoFortschrittUnitFromPanel();
     await openFortschrittAfterDemoLoad(fortschrittUnit);
   } else if (document.getElementById("page-gesamtfortschritt")?.classList.contains("active")) {
-    await loadGesamtfortschrittDashboard();
+    if (typeof initGesamtfortschrittNew === "function") initGesamtfortschrittNew();
   } else if (document.getElementById("page-fortschritt")?.classList.contains("active")) {
-    if (filterMode !== "all") {
-      await ensureFortschrittViewUnit();
-    }
-    await loadFortschrittDashboard();
-    await refreshFortschrittDemoStatus();
+    if (typeof initFortschrittNew === "function") initFortschrittNew();
   }
 }
 
@@ -66,7 +57,7 @@ async function openFortschrittAfterDemoLoad(unit) {
   if (typeof switchTab === "function") {
     switchTab("fortschritt");
   }
-  await prepareFortschrittView();
+  if (typeof initFortschrittNew === "function") initFortschrittNew();
 }
 
 function ftEscAttr(s) {
@@ -155,7 +146,7 @@ function ftZeitstrahlTip(years, mode) {
 const FORTSCHRITT_FIELD_MAPPINGS = [
   {
     kpi: "Umsatz (TEUR)",
-    views: ["Gesamtfortschritt", "Detail"],
+    views: ["Gesamtfortschritt", "Fortschritt"],
     phase1: {
       area: "Portfolio · Status",
       fields: ["jahresumsatz_teur"],
@@ -166,7 +157,7 @@ const FORTSCHRITT_FIELD_MAPPINGS = [
       fields: ["ziel_umsatz_teur"],
       agg: "Summe aller Meilensteine (kind = wsYear) für das Jahr",
     },
-    calc: "IST = ein aktueller Gesamtumsatz; Zeitstrahl: lineare Projektion 2026→2029 zum SOLL 2029",
+    calc: "IST = Jahresabschluss Ende Jahr (oder Start-IST am Planungsstartjahr im Zeitstrahl); kein linearer Verlauf mehr",
     example: {
       phase1Items: [
         { label: "AMS Copilot (Produkte)", field: "jahresumsatz_teur", value: "120" },
@@ -190,7 +181,7 @@ const FORTSCHRITT_FIELD_MAPPINGS = [
   },
   {
     kpi: "Headcount",
-    views: ["Gesamtfortschritt", "Detail"],
+    views: ["Gesamtfortschritt", "Fortschritt"],
     phase1: {
       area: "Organisation · Status",
       fields: ["gliederungen[].headcount", "rollen[].anzahl (Fallback)"],
@@ -201,7 +192,7 @@ const FORTSCHRITT_FIELD_MAPPINGS = [
       fields: ["ziel_headcount"],
       agg: "Maximum über alle Meilensteine des Jahres",
     },
-    calc: "IST = aktueller Headcount; Zeitstrahl: lineare Projektion zum SOLL 2029",
+    calc: "IST = Jahresabschluss Headcount; Zeitstrahl aus echten Jahres-IST-Punkten",
     example: {
       phase1Items: [
         { label: "Gliederung Data &amp; AI", field: "headcount", value: "12" },
@@ -225,7 +216,7 @@ const FORTSCHRITT_FIELD_MAPPINGS = [
   },
   {
     kpi: "Zertifizierungsquote (%)",
-    views: ["Gesamtfortschritt", "Detail"],
+    views: ["Gesamtfortschritt", "Fortschritt"],
     phase1: {
       area: "Skills · Status",
       fields: ["zertifiziert = „ja“"],
@@ -236,7 +227,7 @@ const FORTSCHRITT_FIELD_MAPPINGS = [
       fields: ["ziel_anteil_prozent"],
       agg: "Höchster Anteil (max) über Meilensteine des Jahres",
     },
-    calc: "Detail: IST ≥ SOLL = auf Plan; Zeitstrahl: lineare Projektion der Quote",
+    calc: "Detail: IST ≥ SOLL = auf Plan; Zeitstrahl aus Jahresabschlüssen",
     example: {
       phase1Items: [
         { label: "Mitarbeiter A", field: "zertifiziert", value: "ja" },
@@ -261,7 +252,7 @@ const FORTSCHRITT_FIELD_MAPPINGS = [
   },
   {
     kpi: "Skill-Lücken",
-    views: ["Detail"],
+    views: ["Fortschritt"],
     phase1: {
       area: "Skills · Status",
       fields: ["skills[].level", "skills[].kategorie"],
@@ -272,7 +263,7 @@ const FORTSCHRITT_FIELD_MAPPINGS = [
       fields: ["ziel_skill_kategorie", "ziel_skill_level_min", "ziel_anteil_prozent (optional)"],
       agg: "Je gesetztem Skill-Ziel im Meilenstein",
     },
-    calc: "Gap = Ø Level IST − Mindest-Level SOLL (nur Detailfortschritt, nicht im Zeitstrahl)",
+    calc: "Gap = Ø Level IST − Mindest-Level SOLL (nur Fortschritt, nicht im Zeitstrahl)",
     example: {
       phase1Items: [
         { label: "MA 1 · Cloud", field: "level", value: "2" },
@@ -295,8 +286,8 @@ const FORTSCHRITT_FIELD_MAPPINGS = [
     },
   },
   {
-    kpi: "Mitarbeiter-Entwicklung (Fortschritt NEW)",
-    views: ["Fortschritt NEW"],
+    kpi: "Mitarbeiter-Entwicklung (Fortschritt)",
+    views: ["Fortschritt"],
     phase1: {
       area: "Skills · Status · pro Mitarbeiter",
       fields: ["skills[].kategorie", "skills[].technologie", "skills[].level", "softSkills[].kategorie", "softSkills[].level"],
@@ -425,7 +416,7 @@ function renderFortschrittErlaeuterungHtml() {
     <div class="ft-methodik-body">
       <h4>Ablauf Gesamtfortschritt (Zeitstrahl)</h4>
       ${pipelineGesamt}
-      <h4>Ablauf Detailfortschritt (IST vs. SOLL)</h4>
+      <h4>Ablauf Fortschritt (IST vs. SOLL)</h4>
       ${pipelineDetail}
       <h4>Feldzuordnung je Kennzahl</h4>
       <p style="color:var(--rc-muted);font-size:.72rem;margin:0 0 .5rem">
@@ -435,7 +426,7 @@ function renderFortschrittErlaeuterungHtml() {
       ${mappingRows}
       <p class="ft-methodik-note">
         Gemeinsame Server-Logik: <code>server/dashboard-service.js</code> (<code>aggregatePhase1Entries</code>, <code>aggregatePlanForYear</code>, <code>buildDashboardTimeline</code> / <code>buildDashboardSnapshot</code>).
-        Zeitstrahl: Register <em>Gesamtfortschritt</em>. IST/SOLL-Details und Skill-Lücken: Register <em>Detailfortschritt</em>.
+        Zeitstrahl: Register <em>Gesamtfortschritt</em>. IST/SOLL-Details und Skill-Lücken: Register <em>Fortschritt</em>.
       </p>
     </div>
   </div>`;
@@ -451,7 +442,7 @@ function renderFortschrittErlaeuterungPage() {
 }
 
 function fortschrittTipPageIds() {
-  return ["page-fortschritt", "page-gesamtfortschritt"];
+  return ["page-gesamtfortschritt"];
 }
 
 function closeFortschrittTipPopovers(exceptCard) {
@@ -901,8 +892,20 @@ function renderFortschrittStackedYearChartSvg(meta, years, segments) {
   const totals = yearList.map((_, yi) =>
     seriesList.reduce((sum, seg) => sum + (seg.values?.[yi] || 0), 0)
   );
-  const hasValues = totals.some((t) => t > 0);
-  let max = hasValues ? Math.max(...totals) : 1;
+  const showIstMarkers = meta?.showIstMarkers !== false;
+  const istTotalValue = meta?.istTotalValue;
+  const showIstTotal = meta?.showIstTotal === true && istTotalValue != null && Number.isFinite(istTotalValue);
+  const istRefs = showIstMarkers
+    ? seriesList.flatMap((seg) => {
+      const fromArray = (seg.istValues || []).filter((v) => v != null && Number.isFinite(v));
+      const single = seg.istValue != null && Number.isFinite(seg.istValue) ? [seg.istValue] : [];
+      return [...fromArray, ...single];
+    })
+    : showIstTotal
+      ? [istTotalValue]
+      : [];
+  const hasValues = totals.some((t) => t > 0) || istRefs.length > 0;
+  let max = hasValues ? Math.max(...totals, ...istRefs, 1) : 1;
   if (max <= 0) max = 1;
 
   const innerW = W - pad.l - pad.r;
@@ -945,21 +948,38 @@ function renderFortschrittStackedYearChartSvg(meta, years, segments) {
   const xTitle = `<text class="ft-tl-axis-title ft-tl-axis-title--x" font-size="10" x="${(pad.l + W - pad.r) / 2}" y="${H - 1}" text-anchor="middle">${ftEscAttr(xAxisLabel)}</text>`;
 
   let bars = "";
+  let istMarkers = "";
   yearList.forEach((year, yi) => {
     let stackBottom = baseY;
+    const yearHasSoll = totals[yi] > 0;
     seriesList.forEach((seg, si) => {
       const val = seg.values?.[yi];
-      if (val == null || val <= 0) return;
       const color = seg.color || FT_STACKED_YEAR_COLORS[si % FT_STACKED_YEAR_COLORS.length];
-      const h = (val / max) * innerH;
-      const y = stackBottom - h;
       const x = xCenter(yi) - barW / 2;
-      const tooltip = `${seg.label} \u00b7 ${year} \u00b7 ${ftFormatTimelineTooltipValue(val, unit)} ${unit}`;
-      bars += `<rect class="ft-year-stack-segment" x="${x.toFixed(1)}" y="${y.toFixed(1)}" width="${barW.toFixed(1)}" height="${Math.max(h, 0.5).toFixed(1)}" fill="${color}"><title>${ftEscAttr(tooltip)}</title></rect>`;
-      stackBottom = y;
+      if (val != null && val > 0) {
+        const h = (val / max) * innerH;
+        const y = stackBottom - h;
+        const tooltip = `${seg.label} \u00b7 ${year} \u00b7 SOLL ${ftFormatTimelineTooltipValue(val, unit)} ${unit}`;
+        bars += `<rect class="ft-year-stack-segment" x="${x.toFixed(1)}" y="${y.toFixed(1)}" width="${barW.toFixed(1)}" height="${Math.max(h, 0.5).toFixed(1)}" fill="${color}"><title>${ftEscAttr(tooltip)}</title></rect>`;
+        stackBottom = y;
+      }
+      const istVal = showIstMarkers
+        ? (seg.istValues?.[yi] ?? (yearHasSoll ? seg.istValue : null))
+        : null;
+      if (istVal != null && Number.isFinite(istVal)) {
+        const istY = yAt(istVal).toFixed(1);
+        const istTip = `${seg.label} \u00b7 ${year} \u00b7 IST ${ftFormatTimelineTooltipValue(istVal, unit)} ${unit}`;
+        istMarkers += `<line class="ft-year-stack-ist" x1="${x.toFixed(1)}" y1="${istY}" x2="${(x + barW).toFixed(1)}" y2="${istY}"><title>${ftEscAttr(istTip)}</title></line>`;
+      }
     });
     if (totals[yi] > 0) {
       bars += `<text class="ft-year-stack-total" font-size="10" x="${xCenter(yi).toFixed(1)}" y="${(yAt(totals[yi]) - 3).toFixed(1)}" text-anchor="middle">${ftFormatTimelineTick(totals[yi], unit)}</text>`;
+    }
+    if (showIstTotal && totals[yi] > 0) {
+      const x = xCenter(yi) - barW / 2;
+      const istY = yAt(istTotalValue).toFixed(1);
+      const istTip = `${year} \u00b7 IST gesamt ${ftFormatTimelineTooltipValue(istTotalValue, unit)} ${unit}`;
+      istMarkers += `<line class="ft-year-stack-ist ft-year-stack-ist--total" x1="${x.toFixed(1)}" y1="${istY}" x2="${(x + barW).toFixed(1)}" y2="${istY}"><title>${ftEscAttr(istTip)}</title></line>`;
     }
   });
 
@@ -977,7 +997,277 @@ function renderFortschrittStackedYearChartSvg(meta, years, segments) {
     ${xLabels}
     ${xTitle}
     ${bars}
+    ${istMarkers}
     ${emptyHint}
+  </svg>`;
+}
+
+function renderFortschrittSollIstYearChartSvg(meta, years, sollByYear, istByYear, opts) {
+  opts = opts || {};
+  const yearList = years || [];
+  const soll = sollByYear || [];
+  const ist = istByYear || [];
+  const unit = meta?.unit || "TEUR";
+  const yAxisLabel = meta?.yAxisLabel || "Umsatz (TEUR)";
+  const xAxisLabel = meta?.xAxisLabel || "Jahr";
+  const sollColor = opts.sollColor || "#2563eb";
+  const istColor = opts.istColor || "#0f766e";
+
+  if (!yearList.length) {
+    return '<p class="fortschritt-empty">Keine Daten f\u00fcr diese Kennzahl.</p>';
+  }
+
+  const allNums = [];
+  yearList.forEach((_, yi) => {
+    if (soll[yi] != null && soll[yi] > 0) allNums.push(soll[yi]);
+    if (ist[yi] != null && Number.isFinite(ist[yi])) allNums.push(ist[yi]);
+  });
+  if (!allNums.length) {
+    return '<p class="fortschritt-empty">Noch keine SOLL- oder IST-Werte erfasst.</p>';
+  }
+
+  const W = 560;
+  const H = 210;
+  const pad = { l: 48, r: 10, t: 28, b: 36 };
+  let max = Math.max(...allNums, 1);
+  const innerW = W - pad.l - pad.r;
+  const innerH = H - pad.t - pad.b;
+  const yearCount = yearList.length;
+  const slotW = innerW / Math.max(yearCount, 1);
+  const pairGap = 3;
+  const barW = Math.min((slotW - pairGap - 8) / 2, 22);
+  const groupW = barW * 2 + pairGap;
+  const xCenter = (index) => pad.l + slotW * index + slotW / 2;
+  const yAt = (value) => pad.t + (1 - value / max) * innerH;
+  const baseY = pad.t + innerH;
+
+  const yTicks = [0, max / 2, max];
+  const gridLines = yTicks
+    .map((tick) => {
+      const y = yAt(tick).toFixed(1);
+      return `<line class="ft-tl-grid" x1="${pad.l}" y1="${y}" x2="${W - pad.r}" y2="${y}"/>`;
+    })
+    .join("");
+
+  const yLabels = yTicks
+    .map((tick) => {
+      const y = yAt(tick).toFixed(1);
+      return `<text class="ft-tl-axis-label" font-size="10" x="${pad.l - 6}" y="${y}" text-anchor="end" dominant-baseline="middle">${ftFormatTimelineTick(tick, unit)}</text>`;
+    })
+    .join("");
+
+  const yTitleX = 12;
+  const yTitleY = (pad.t + (H - pad.b)) / 2;
+  const yTitle = `<text class="ft-tl-axis-title" font-size="10" x="${yTitleX}" y="${yTitleY}" transform="rotate(-90 ${yTitleX} ${yTitleY})" text-anchor="middle">${ftEscAttr(yAxisLabel)}</text>`;
+
+  const xLabels = yearList
+    .map((year, index) => {
+      const x = xCenter(index).toFixed(1);
+      return `<text class="ft-tl-axis-label" font-size="10" x="${x}" y="${H - 10}" text-anchor="middle">${year}</text>`;
+    })
+    .join("");
+
+  const xTitle = `<text class="ft-tl-axis-title ft-tl-axis-title--x" font-size="10" x="${(pad.l + W - pad.r) / 2}" y="${H - 1}" text-anchor="middle">${ftEscAttr(xAxisLabel)}</text>`;
+
+  const legend = `<g class="ft-soll-ist-legend" transform="translate(${pad.l}, 6)">
+    <rect x="0" y="-4" width="10" height="10" rx="1" fill="${sollColor}"/>
+    <text class="ft-tl-axis-label" font-size="10" x="14" y="4">SOLL (Plan)</text>
+    <rect x="88" y="-4" width="10" height="10" rx="1" fill="${istColor}"/>
+    <text class="ft-tl-axis-label" font-size="10" x="102" y="4">IST (Jahresabschluss)</text>
+  </g>`;
+
+  let bars = "";
+  yearList.forEach((year, yi) => {
+    const cx = xCenter(yi);
+    const xSoll = cx - groupW / 2;
+    const xIst = xSoll + barW + pairGap;
+    const sollVal = soll[yi];
+    const istVal = ist[yi];
+
+    if (sollVal != null && sollVal > 0) {
+      const h = (sollVal / max) * innerH;
+      const y = baseY - h;
+      const tip = `${year} \u00b7 SOLL ${ftFormatTimelineTooltipValue(sollVal, unit)} ${unit}`;
+      bars += `<rect class="ft-soll-ist-bar ft-soll-ist-bar--soll" x="${xSoll.toFixed(1)}" y="${y.toFixed(1)}" width="${barW.toFixed(1)}" height="${Math.max(h, 0.5).toFixed(1)}" fill="${sollColor}"><title>${ftEscAttr(tip)}</title></rect>`;
+      bars += `<text class="ft-soll-ist-bar__label" font-size="9" x="${(xSoll + barW / 2).toFixed(1)}" y="${(y - 3).toFixed(1)}" text-anchor="middle">${ftFormatTimelineTick(sollVal, unit)}</text>`;
+    }
+
+    if (istVal != null && Number.isFinite(istVal)) {
+      if (istVal > 0) {
+        const h = (istVal / max) * innerH;
+        const y = baseY - h;
+        const tip = `${year} \u00b7 IST ${ftFormatTimelineTooltipValue(istVal, unit)} ${unit}`;
+        bars += `<rect class="ft-soll-ist-bar ft-soll-ist-bar--ist" x="${xIst.toFixed(1)}" y="${y.toFixed(1)}" width="${barW.toFixed(1)}" height="${Math.max(h, 0.5).toFixed(1)}" fill="${istColor}"><title>${ftEscAttr(tip)}</title></rect>`;
+        bars += `<text class="ft-soll-ist-bar__label" font-size="9" x="${(xIst + barW / 2).toFixed(1)}" y="${(y - 3).toFixed(1)}" text-anchor="middle">${ftFormatTimelineTick(istVal, unit)}</text>`;
+      } else {
+        const tip = `${year} \u00b7 IST 0 ${unit}`;
+        bars += `<line class="ft-soll-ist-bar__zero" x1="${xIst.toFixed(1)}" y1="${baseY.toFixed(1)}" x2="${(xIst + barW).toFixed(1)}" y2="${baseY.toFixed(1)}" stroke="${istColor}" stroke-width="2"><title>${ftEscAttr(tip)}</title></line>`;
+        bars += `<text class="ft-soll-ist-bar__label ft-soll-ist-bar__label--zero" font-size="9" x="${(xIst + barW / 2).toFixed(1)}" y="${(baseY - 4).toFixed(1)}" text-anchor="middle">0</text>`;
+      }
+    }
+  });
+
+  const ariaLabel = meta?.label || "SOLL vs. IST je Jahr";
+  return `<svg class="ft-tl-svg ft-tl-svg--soll-ist" width="${W}" height="${H}" viewBox="0 0 ${W} ${H}" role="img" aria-label="${ftEscAttr(ariaLabel)}">
+    ${gridLines}
+    <line class="ft-tl-axis" x1="${pad.l}" y1="${pad.t}" x2="${pad.l}" y2="${H - pad.b}"/>
+    <line class="ft-tl-axis" x1="${pad.l}" y1="${H - pad.b}" x2="${W - pad.r}" y2="${H - pad.b}"/>
+    ${yLabels}
+    ${yTitle}
+    ${legend}
+    ${xLabels}
+    ${xTitle}
+    ${bars}
+  </svg>`;
+}
+
+const FT_ORG_HC_COLOR = "#2563eb";
+const FT_ORG_TEUR_COLOR = "#0f766e";
+
+function ftOrgShortLabel(label, maxLen) {
+  const text = String(label || "");
+  if (text.length <= maxLen) return text;
+  return text.slice(0, Math.max(1, maxLen - 1)) + "\u2026";
+}
+
+function renderFortschrittOrgDualMetricYearChartSvg(meta, years, segments) {
+  const yearList = years || [];
+  const segmentList = (segments || []).filter((seg) => {
+    const hasHc = (seg.hcValues || []).some((v) => v != null && v > 0) || (seg.istHc != null && seg.istHc > 0);
+    const hasTeur = (seg.teurValues || []).some((v) => v != null && v > 0) || (seg.istTeur != null && seg.istTeur > 0);
+    return hasHc || hasTeur;
+  });
+
+  if (!yearList.length || !segmentList.length) {
+    return '<p class="fortschritt-empty">Keine Plan-Daten f\u00fcr diese Kennzahl.</p>';
+  }
+
+  const hcNums = segmentList.flatMap((seg) => [
+    ...(seg.hcValues || []).filter((v) => v != null && v > 0),
+    seg.istHc,
+  ].filter((v) => v != null && v > 0));
+  const teurNums = segmentList.flatMap((seg) => [
+    ...(seg.teurValues || []).filter((v) => v != null && v > 0),
+    seg.istTeur,
+  ].filter((v) => v != null && v > 0));
+  const maxHc = hcNums.length ? Math.max(...hcNums, 1) : 1;
+  const maxTeur = teurNums.length ? Math.max(...teurNums, 1) : 1;
+
+  const W = 580;
+  const H = 220;
+  const pad = { l: 46, r: 46, t: 18, b: 52 };
+  const innerW = W - pad.l - pad.r;
+  const innerH = H - pad.t - pad.b;
+  const yearCount = yearList.length;
+  const segCount = segmentList.length;
+  const slotW = innerW / Math.max(yearCount, 1);
+  const clusterW = slotW * 0.86;
+  const groupW = clusterW / Math.max(segCount, 1);
+  const pairGap = 3;
+  const barW = Math.max(4, Math.min((groupW - pairGap) / 2, 16));
+  const baseY = pad.t + innerH;
+  const yAtHc = (value) => pad.t + (1 - value / maxHc) * innerH;
+  const yAtTeur = (value) => pad.t + (1 - value / maxTeur) * innerH;
+
+  const yTicksHc = [0, maxHc / 2, maxHc];
+  const yTicksTeur = [0, maxTeur / 2, maxTeur];
+  const gridLines = yTicksHc
+    .map((tick) => {
+      const y = yAtHc(tick).toFixed(1);
+      return `<line class="ft-tl-grid" x1="${pad.l}" y1="${y}" x2="${W - pad.r}" y2="${y}"/>`;
+    })
+    .join("");
+
+  const yLabelsLeft = yTicksHc
+    .map((tick) => {
+      const y = yAtHc(tick).toFixed(1);
+      return `<text class="ft-tl-axis-label ft-tl-axis-label--left" font-size="10" x="${pad.l - 6}" y="${y}" text-anchor="end" dominant-baseline="middle">${ftFormatTimelineTick(tick, "HC")}</text>`;
+    })
+    .join("");
+
+  const yLabelsRight = yTicksTeur
+    .map((tick) => {
+      const y = yAtTeur(tick).toFixed(1);
+      return `<text class="ft-tl-axis-label ft-tl-axis-label--right" font-size="10" x="${W - pad.r + 6}" y="${y}" text-anchor="start" dominant-baseline="middle">${ftFormatTimelineTick(tick, "TEUR")}</text>`;
+    })
+    .join("");
+
+  const yTitleLeft = `<text class="ft-tl-axis-title" font-size="10" x="12" y="${(pad.t + baseY) / 2}" transform="rotate(-90 12 ${(pad.t + baseY) / 2})" text-anchor="middle">Headcount</text>`;
+  const yTitleRight = `<text class="ft-tl-axis-title" font-size="10" x="${W - 10}" y="${(pad.t + baseY) / 2}" transform="rotate(90 ${W - 10} ${(pad.t + baseY) / 2})" text-anchor="middle">Umsatz (TEUR)</text>`;
+
+  let bars = "";
+  let istMarkers = "";
+  let subLabels = "";
+
+  yearList.forEach((year, yi) => {
+    const slotLeft = pad.l + slotW * yi;
+    const clusterLeft = slotLeft + (slotW - clusterW) / 2;
+    segmentList.forEach((seg, si) => {
+      const groupCenter = clusterLeft + groupW * si + groupW / 2;
+      const hcX = groupCenter - barW - pairGap / 2;
+      const teurX = groupCenter + pairGap / 2;
+      const hcVal = seg.hcValues?.[yi];
+      const teurVal = seg.teurValues?.[yi];
+      const hasHcSoll = hcVal != null && hcVal > 0;
+      const hasTeurSoll = teurVal != null && teurVal > 0;
+
+      if (hasHcSoll) {
+        const h = (hcVal / maxHc) * innerH;
+        const y = baseY - h;
+        const tip = `${seg.label} \u00b7 ${year} \u00b7 SOLL ${ftFormatTimelineTooltipValue(hcVal, "HC")} HC`;
+        bars += `<rect class="ft-org-dual-bar ft-org-dual-bar--hc" x="${hcX.toFixed(1)}" y="${y.toFixed(1)}" width="${barW.toFixed(1)}" height="${Math.max(h, 0.5).toFixed(1)}" fill="${FT_ORG_HC_COLOR}"><title>${ftEscAttr(tip)}</title></rect>`;
+        if (seg.istHc != null && seg.istHc > 0) {
+          const istY = yAtHc(seg.istHc).toFixed(1);
+          const istTip = `${seg.label} \u00b7 ${year} \u00b7 IST ${ftFormatTimelineTooltipValue(seg.istHc, "HC")} HC`;
+          istMarkers += `<line class="ft-org-dual-ist ft-org-dual-ist--hc" x1="${hcX.toFixed(1)}" y1="${istY}" x2="${(hcX + barW).toFixed(1)}" y2="${istY}"><title>${ftEscAttr(istTip)}</title></line>`;
+        }
+      } else if (seg.istHc != null && seg.istHc > 0 && meta?.istFallback) {
+        const h = (seg.istHc / maxHc) * innerH;
+        const y = baseY - h;
+        const tip = `${seg.label} \u00b7 ${year} \u00b7 IST ${ftFormatTimelineTooltipValue(seg.istHc, "HC")} HC`;
+        bars += `<rect class="ft-org-dual-bar ft-org-dual-bar--hc ft-org-dual-bar--ist" x="${hcX.toFixed(1)}" y="${y.toFixed(1)}" width="${barW.toFixed(1)}" height="${Math.max(h, 0.5).toFixed(1)}" fill="${FT_ORG_HC_COLOR}" opacity="0.45"><title>${ftEscAttr(tip)}</title></rect>`;
+      }
+
+      if (hasTeurSoll) {
+        const h = (teurVal / maxTeur) * innerH;
+        const y = baseY - h;
+        const tip = `${seg.label} \u00b7 ${year} \u00b7 SOLL ${ftFormatTimelineTooltipValue(teurVal, "TEUR")} TEUR`;
+        bars += `<rect class="ft-org-dual-bar ft-org-dual-bar--teur" x="${teurX.toFixed(1)}" y="${y.toFixed(1)}" width="${barW.toFixed(1)}" height="${Math.max(h, 0.5).toFixed(1)}" fill="${FT_ORG_TEUR_COLOR}"><title>${ftEscAttr(tip)}</title></rect>`;
+        if (seg.istTeur != null && seg.istTeur > 0) {
+          const istY = yAtTeur(seg.istTeur).toFixed(1);
+          const istTip = `${seg.label} \u00b7 ${year} \u00b7 IST ${ftFormatTimelineTooltipValue(seg.istTeur, "TEUR")} TEUR`;
+          istMarkers += `<line class="ft-org-dual-ist ft-org-dual-ist--teur" x1="${teurX.toFixed(1)}" y1="${istY}" x2="${(teurX + barW).toFixed(1)}" y2="${istY}"><title>${ftEscAttr(istTip)}</title></line>`;
+        }
+      } else if (seg.istTeur != null && seg.istTeur > 0 && meta?.istFallback) {
+        const h = (seg.istTeur / maxTeur) * innerH;
+        const y = baseY - h;
+        const tip = `${seg.label} \u00b7 ${year} \u00b7 IST ${ftFormatTimelineTooltipValue(seg.istTeur, "TEUR")} TEUR`;
+        bars += `<rect class="ft-org-dual-bar ft-org-dual-bar--teur ft-org-dual-bar--ist" x="${teurX.toFixed(1)}" y="${y.toFixed(1)}" width="${barW.toFixed(1)}" height="${Math.max(h, 0.5).toFixed(1)}" fill="${FT_ORG_TEUR_COLOR}" opacity="0.45"><title>${ftEscAttr(tip)}</title></rect>`;
+      }
+
+      if (segCount > 1) {
+        const short = ftOrgShortLabel(seg.label, segCount > 2 ? 8 : 12);
+        subLabels += `<text class="ft-org-dual-sublabel" font-size="8" x="${groupCenter.toFixed(1)}" y="${H - 28}" text-anchor="middle">${ftEscAttr(short)}</text>`;
+      }
+    });
+
+    const yearX = (slotLeft + slotW / 2).toFixed(1);
+    subLabels += `<text class="ft-tl-axis-label ft-org-dual-year" font-size="10" font-weight="600" x="${yearX}" y="${H - 12}" text-anchor="middle">${year}</text>`;
+  });
+
+  const ariaLabel = meta?.label || "Headcount und Umsatz je Jahr";
+  return `<svg class="ft-tl-svg ft-tl-svg--org-dual" width="${W}" height="${H}" viewBox="0 0 ${W} ${H}" role="img" aria-label="${ftEscAttr(ariaLabel)}">
+    ${gridLines}
+    <line class="ft-tl-axis" x1="${pad.l}" y1="${pad.t}" x2="${pad.l}" y2="${baseY}"/>
+    <line class="ft-tl-axis" x1="${W - pad.r}" y1="${pad.t}" x2="${W - pad.r}" y2="${baseY}"/>
+    <line class="ft-tl-axis" x1="${pad.l}" y1="${baseY}" x2="${W - pad.r}" y2="${baseY}"/>
+    ${yLabelsLeft}
+    ${yLabelsRight}
+    ${yTitleLeft}
+    ${yTitleRight}
+    ${bars}
+    ${istMarkers}
+    ${subLabels}
   </svg>`;
 }
 
@@ -1265,112 +1555,6 @@ function renderFortschrittTimeline(timelineData, allUnits, opts = {}) {
   </div>`;
 }
 
-async function loadFortschrittTimeline() {
-  if (isFortschrittAllUnitsMode()) {
-    return api("/api/dashboard/timeline?all=true");
-  }
-  const unit = fortschrittUnit();
-  if (!unit) return null;
-  return api(`/api/dashboard/timeline?unit=${encodeURIComponent(unit)}`);
-}
-
-function fortschrittStatusClass(status) {
-  if (status === "ok") return "fortschritt-status--ok";
-  if (status === "warn") return "fortschritt-status--warn";
-  if (status === "risk") return "fortschritt-status--risk";
-  return "fortschritt-status--neutral";
-}
-
-function fortschrittStatusLabel(status) {
-  if (status === "ok") return "auf Plan";
-  if (status === "warn") return "leicht hinter Plan";
-  if (status === "risk") return "kritisch";
-  return "–";
-}
-
-function renderFortschrittPortfolioBars(mix, totalTeur) {
-  if (!mix?.length || !totalTeur) {
-    return '<p class="fortschritt-empty">Keine Portfolio-Umsätze erfasst.</p>';
-  }
-  const colors = ["#3498db", "#9b59b6", "#1abc9c", "#e67e22", "#e74c3c", "#95a5a6"];
-  const bars = mix
-    .map((m, i) => {
-      const w = totalTeur > 0 ? (m.teur / totalTeur) * 100 : 0;
-      return `<div class="fortschritt-bar-seg" style="width:${w}%;background:${colors[i % colors.length]}" title="${esc(m.label)}: ${formatUmsatzTeur(m.teur)}"></div>`;
-    })
-    .join("");
-  const legend = mix
-    .map(
-      (m, i) =>
-        `<div class="fortschritt-legend-item"><span class="fortschritt-swatch" style="background:${colors[i % colors.length]}"></span>${esc(m.label)} · ${formatUmsatzTeur(m.teur)} (${m.pct}%)</div>`
-    )
-    .join("");
-  return `<div class="fortschritt-bar">${bars}</div><div class="fortschritt-legend">${legend}</div>`;
-}
-
-function renderFortschrittKpiCards(comparison) {
-  const kpis = comparison?.kpis || [];
-  if (!kpis.length) {
-    return '<p class="fortschritt-empty">Keine vergleichbaren Ziel-KPIs im Plan für dieses Jahr.</p>';
-  }
-  return `<div class="fortschritt-kpi-grid">${kpis
-    .map((k) => {
-      const istLabel = k.key === "zertifizierung" ? `${k.ist}%` : k.ist;
-      const sollLabel = k.key === "zertifizierung" ? `${k.soll}%` : k.soll;
-      const delta =
-        k.deltaPct != null
-          ? `${k.deltaPct > 0 ? "+" : ""}${k.deltaPct}% vs. Ziel`
-          : k.delta != null
-            ? `${k.delta > 0 ? "+" : ""}${k.delta} vs. Ziel`
-            : "";
-      return `<div class="stat-card fortschritt-kpi ${fortschrittStatusClass(k.status)}">
-        <div class="fortschritt-kpi-label">${esc(k.label)}</div>
-        <div class="fortschritt-kpi-values"><span>IST <b>${esc(String(istLabel))}</b></span><span>SOLL <b>${esc(String(sollLabel))}</b></span></div>
-        <div class="fortschritt-kpi-meta">${esc(delta)} · ${esc(fortschrittStatusLabel(k.status))}</div>
-      </div>`;
-    })
-    .join("")}</div>`;
-}
-
-function renderFortschrittSkillGaps(gaps) {
-  if (!gaps?.length) {
-    return '<p class="fortschritt-empty">Keine Skill-Zielvorgaben im Plan für dieses Jahr.</p>';
-  }
-  const rows = gaps
-    .map(
-      (g) => `<tr class="${fortschrittStatusClass(g.status)}">
-      <td>${esc(g.category)}</td>
-      <td>${g.istAvg != null ? esc(String(g.istAvg)) : "–"}</td>
-      <td>${esc(String(g.sollMin))}</td>
-      <td>${g.gap != null ? esc(String(g.gap)) : "–"}</td>
-      <td>${esc(fortschrittStatusLabel(g.status))}</td>
-    </tr>`
-    )
-    .join("");
-  return `<div class="tbl-wrap"><table class="entries fortschritt-table">
-    <thead><tr><th>Kategorie</th><th>Ø Level IST</th><th>Min. Level SOLL</th><th>Gap</th><th>Status</th></tr></thead>
-    <tbody>${rows}</tbody>
-  </table></div>`;
-}
-
-function renderFortschrittMilestones(milestones) {
-  if (!milestones?.length) {
-    return '<p class="fortschritt-empty">Keine Meilensteine im Plan für dieses Jahr.</p>';
-  }
-  return milestones
-    .slice(0, 8)
-    .map(
-      (m) => `<div class="fortschritt-milestone">
-      <div class="fortschritt-milestone-head"><b>${esc(m.workstream || "–")}</b>
-        ${m.ziel_umsatz_teur != null ? `<span class="fortschritt-tag">${formatUmsatzTeur(m.ziel_umsatz_teur)}</span>` : ""}
-        ${m.ziel_headcount != null ? `<span class="fortschritt-tag">${esc(String(m.ziel_headcount))} HC</span>` : ""}
-      </div>
-      <div class="fortschritt-milestone-body">${esc((m.bezeichnung || m.ergebnis || m.kpis || "–").slice(0, 120))}${(m.bezeichnung || m.ergebnis || "").length > 120 ? "…" : ""}</div>
-    </div>`
-    )
-    .join("");
-}
-
 const STANDARD_DEMO_UNITS = [
   "SAP Infrastructure",
   "SAP Engineers",
@@ -1415,33 +1599,6 @@ async function fetchDemoStatusForCurrentView() {
   }
   const data = await api(`/api/demo/status?unit=${encodeURIComponent(unit)}`);
   return { mode: "unit", unit, data };
-}
-
-async function ensureFortschrittViewUnit() {
-  if (fortschrittUnit()) return fortschrittUnit();
-  if (isDemoAllUnitsOverviewMode()) return "";
-
-  try {
-    if (isAdminDemoBulkEnabled()) {
-      const data = await api("/api/demo/status?all=true");
-      const firstActive = (data.units || []).find((row) => row.active);
-      if (firstActive?.unit) {
-        focusFilterAfterDemoLoad(firstActive.unit);
-        return firstActive.unit;
-      }
-    } else {
-      const unit = String(
-        (typeof getSaveUnit === "function" ? getSaveUnit() : "") || currentUnit || ""
-      ).trim();
-      if (unit) {
-        const data = await api(`/api/demo/status?unit=${encodeURIComponent(unit)}`);
-        if (data.active) return unit;
-      }
-    }
-  } catch (_e) {
-    /* ignore */
-  }
-  return "";
 }
 
 function demoAllUnitsStatusSummary(data) {
@@ -1615,7 +1772,7 @@ function buildDemoLoadProgressHtml(progress) {
       : "";
   const doneHint =
     progress.phase === "done"
-      ? `<p class="demo-daten-load-status__meta">Register <strong>Detailfortschritt</strong> zeigt den IST/SOLL-Vergleich aus Phase 1 (Erfassung) und Phase 2 (Backcasting-Plan).</p>`
+      ? `<p class="demo-daten-load-status__meta">Register <strong>Fortschritt</strong> zeigt den IST/SOLL-Vergleich auf Basis der Phase-1-Planung.</p>`
       : "";
   return `<div class="demo-daten-load-status__inner">
     <p class="demo-daten-load-status__title">${esc(progress.title || "Demo-Daten werden geladen…")}</p>
@@ -1879,392 +2036,3 @@ async function loadDemoUnitsSequential(demoUnits) {
   return { results, progress };
 }
 
-function fortschrittYearLabel() {
-  if (fortschrittYearAll) {
-    const years = window._rcPlanningYears || [2026, 2027, 2028, 2029];
-    return "Alle (" + years[0] + "\u2013" + years[years.length - 1] + ")";
-  }
-  return String(fortschrittYear);
-}
-
-function readFortschrittYearSelect() {
-  const yearEl = document.getElementById("fortschrittYear");
-  if (!yearEl) return;
-  fortschrittYearAll = yearEl.value === "all";
-  if (!fortschrittYearAll) {
-    fortschrittYear = parseInt(yearEl.value, 10) || fortschrittYear;
-  }
-}
-
-function renderFortschrittYearBlock(year, plan, comparison) {
-  const kpiCount = comparison?.kpis?.length || 0;
-  const msCount = plan?.milestoneCount || 0;
-  return `<details class="ft-year-section" open>
-    <summary class="ft-year-section__head"><strong>Jahr ${year}</strong>
-      <span class="ft-year-section__meta">${kpiCount} KPIs · ${msCount} Meilensteine</span>
-    </summary>
-    <div class="ft-year-section__body">
-      <div class="card">
-        ${fortschrittSectionHeader("IST vs. SOLL – Kennzahlen", "Kennzahlen – Klicken für Erklärung", FORTSCHRITT_TIPS.kennzahlen)}
-        ${renderFortschrittKpiCards(comparison)}
-      </div>
-      <div class="card">
-        ${fortschrittSectionHeader("Skill-Lücken (IST vs. Plan)", "Skill-Lücken – Klicken für Erklärung", FORTSCHRITT_TIPS.skillGaps)}
-        ${renderFortschrittSkillGaps(comparison?.skillGaps)}
-      </div>
-      <div class="card">
-        ${fortschrittSectionHeader(`Plan-Meilensteine ${year}`, "Plan-Meilensteine – Klicken für Erklärung", FORTSCHRITT_TIPS.meilensteine)}
-        ${renderFortschrittMilestones(plan?.milestones)}
-      </div>
-    </div>
-  </details>`;
-}
-
-function renderFortschrittSnapshotAllYears(data, unit) {
-  const p1 = data.phase1 || {};
-  const stichtag = p1.stichtag ? `Stichtag: ${p1.stichtag}` : "Kein Stichtag";
-  const planTitle = data.planMeta?.bereich ? data.planMeta.bereich : "Kein Plan";
-  const demoTag = data.demo?.active
-    ? ' · <span style="color:#b7791f;font-weight:600">Demo-Daten aktiv</span>'
-    : "";
-  const byYear = data.byYear || [];
-  const yearBlocks = byYear.map((row) => renderFortschrittYearBlock(row.year, row.plan, row.comparison)).join("");
-
-  return `
-    <div class="fortschritt-meta card">
-      ${fortschrittSectionHeader("Kontext & Datenstand", "Kontext – Klicken für Erklärung", FORTSCHRITT_TIPS.kontext)}
-      <div><strong>Unit:</strong> ${esc(unit)} · <strong>Jahr:</strong> ${esc(fortschrittYearLabel())}</div>
-      <div class="fortschritt-meta-sub">${esc(stichtag)} · Plan: ${esc(planTitle)} · ${data.totalMilestones || 0} Meilensteine gesamt${demoTag}</div>
-    </div>
-
-    <div class="fortschritt-two-col">
-      <div class="card">
-        ${fortschrittSectionHeader("Portfolio-Umsatzmix (IST)", "Portfolio-Umsatzmix – Klicken für Erklärung", FORTSCHRITT_TIPS.portfolio)}
-        <p class="fortschritt-hint">Gesamt: ${formatUmsatzTeur(p1.portfolio?.totalTeur || 0)} · ${p1.portfolio?.count || 0} Positionen</p>
-        ${renderFortschrittPortfolioBars(p1.portfolio?.mix, p1.portfolio?.totalTeur)}
-      </div>
-      <div class="card">
-        ${fortschrittSectionHeader("Organisation & Skills (IST)", "Organisation & Skills – Klicken für Erklärung", FORTSCHRITT_TIPS.orgSkills)}
-        <ul class="fortschritt-facts">
-          <li>Headcount: <b>${p1.organisation?.headcount ?? "–"}</b></li>
-          <li>Mitarbeiter Skill-Matrix: <b>${p1.skills?.employeeCount ?? 0}</b></li>
-          <li>Zertifizierungsquote: <b>${p1.skills?.zertifiziertQuote != null ? p1.skills.zertifiziertQuote + "%" : "–"}</b></li>
-        </ul>
-      </div>
-    </div>
-
-    ${yearBlocks || '<div class="card"><p class="fortschritt-empty">Keine Plan-Daten für die gewählten Jahre vorhanden.</p></div>'}`;
-}
-
-function renderFortschrittSnapshotDetails(data, unit) {
-  const p1 = data.phase1 || {};
-  const plan = data.plan || {};
-  const stichtag = p1.stichtag ? `Stichtag: ${p1.stichtag}` : "Kein Stichtag";
-  const planTitle = data.planMeta?.bereich ? data.planMeta.bereich : "Kein Plan";
-  const demoTag = data.demo?.active
-    ? ' · <span style="color:#b7791f;font-weight:600">Demo-Daten aktiv</span>'
-    : "";
-
-  return `
-    <div class="fortschritt-meta card">
-      ${fortschrittSectionHeader("Kontext & Datenstand", "Kontext – Klicken für Erklärung", FORTSCHRITT_TIPS.kontext)}
-      <div><strong>Unit:</strong> ${esc(unit)} · <strong>Jahr:</strong> ${esc(fortschrittYearLabel())}</div>
-      <div class="fortschritt-meta-sub">${esc(stichtag)} · Plan: ${esc(planTitle)} · ${plan.milestoneCount || 0} Meilensteine${demoTag}</div>
-    </div>
-
-    <div class="card">
-      ${fortschrittSectionHeader("IST vs. SOLL – Kennzahlen", "Kennzahlen – Klicken für Erklärung", FORTSCHRITT_TIPS.kennzahlen)}
-      ${renderFortschrittKpiCards(data.comparison)}
-    </div>
-
-    <div class="fortschritt-two-col">
-      <div class="card">
-        ${fortschrittSectionHeader("Portfolio-Umsatzmix (IST)", "Portfolio-Umsatzmix – Klicken für Erklärung", FORTSCHRITT_TIPS.portfolio)}
-        <p class="fortschritt-hint">Gesamt: ${formatUmsatzTeur(p1.portfolio?.totalTeur || 0)} · ${p1.portfolio?.count || 0} Positionen</p>
-        ${renderFortschrittPortfolioBars(p1.portfolio?.mix, p1.portfolio?.totalTeur)}
-      </div>
-      <div class="card">
-        ${fortschrittSectionHeader("Organisation & Skills (IST)", "Organisation & Skills – Klicken für Erklärung", FORTSCHRITT_TIPS.orgSkills)}
-        <ul class="fortschritt-facts">
-          <li>Headcount: <b>${p1.organisation?.headcount ?? "–"}</b>${plan.zielHeadcount != null ? ` (Ziel ${plan.zielHeadcount})` : ""}</li>
-          <li>Mitarbeiter Skill-Matrix: <b>${p1.skills?.employeeCount ?? 0}</b></li>
-          <li>Zertifizierungsquote: <b>${p1.skills?.zertifiziertQuote != null ? p1.skills.zertifiziertQuote + "%" : "–"}</b></li>
-        </ul>
-      </div>
-    </div>
-
-    <div class="card">
-      ${fortschrittSectionHeader("Skill-Lücken (IST vs. Plan)", "Skill-Lücken – Klicken für Erklärung", FORTSCHRITT_TIPS.skillGaps)}
-      ${renderFortschrittSkillGaps(data.comparison?.skillGaps)}
-    </div>
-
-    <div class="card">
-      ${fortschrittSectionHeader(`Plan-Meilensteine ${fortschrittYear}`, "Plan-Meilensteine – Klicken für Erklärung", FORTSCHRITT_TIPS.meilensteine)}
-      ${renderFortschrittMilestones(plan.milestones)}
-    </div>`;
-}
-
-async function loadGesamtfortschrittDashboard() {
-  const unit = fortschrittUnit();
-  const allUnits = isFortschrittAllUnitsMode();
-  const root = document.getElementById("gesamtfortschrittContent");
-  if (!root) return;
-
-  const emptyMsg =
-    '<div class="card"><p class="fortschritt-empty">Bitte im <strong>Filter</strong> oben eine Unit wählen oder „Alle Units“ (Admin), um den Zeitstrahl anzuzeigen.</p></div>';
-
-  if (!unit && !allUnits) {
-    root.innerHTML = emptyMsg;
-    initFortschrittTipPopovers();
-    return;
-  }
-
-  root.innerHTML = '<div class="card"><p class="fortschritt-empty">Lade Zeitstrahl…</p></div>';
-
-  try {
-    const timelineData = await loadFortschrittTimeline();
-    root.innerHTML = timelineData ? renderFortschrittTimeline(timelineData, allUnits) : emptyMsg;
-    initFortschrittTipPopovers();
-  } catch (error) {
-    root.innerHTML = `<div class="card"><p class="fortschritt-empty" style="color:var(--rc-red)">${esc(error.message || "Zeitstrahl laden fehlgeschlagen")}</p></div>`;
-    initFortschrittTipPopovers();
-  }
-}
-
-async function loadFortschrittDashboard() {
-  const unit = fortschrittUnit();
-  readFortschrittYearSelect();
-
-  const root = document.getElementById("fortschrittContent");
-  if (!root) return;
-
-  const _yr = (window._rcPlanningYears||[2026,2029]);
-  const _yrRange = _yr[0] + "–" + _yr.slice(-1)[0];
-  const emptyDetailsMsg =
-    '<div class="card"><p class="fortschritt-empty">Bitte im <strong>Filter</strong> oben eine konkrete Unit wählen (nicht „Alle Units“), um IST/SOLL-Details zu vergleichen.<br><span style="font-size:.78rem;color:var(--rc-muted)">Den Zeitstrahl ' + _yrRange + ' finden Sie im Register <strong>Gesamtfortschritt</strong>. Demo-Daten pflegen Admins im Admin-Bereich unter dem Register <strong>Demo-Daten</strong>.</span></p></div>';
-
-  if (!unit) {
-    root.innerHTML = emptyDetailsMsg;
-    initFortschrittTipPopovers();
-    return;
-  }
-
-  root.innerHTML = '<div class="card"><p class="fortschritt-empty">Lade Vergleichsdaten…</p></div>';
-
-  try {
-    const yearQuery = fortschrittYearAll ? "all" : String(fortschrittYear);
-    const data = await api(
-      `/api/dashboard/snapshot?unit=${encodeURIComponent(unit)}&year=${encodeURIComponent(yearQuery)}`
-    );
-    fortschrittSnapshot = data;
-    root.innerHTML = data.allYears
-      ? renderFortschrittSnapshotAllYears(data, unit)
-      : renderFortschrittSnapshotDetails(data, unit);
-    initFortschrittTipPopovers();
-  } catch (error) {
-    root.innerHTML = `<div class="card"><p class="fortschritt-empty" style="color:var(--rc-red)">${esc(error.message || "Laden fehlgeschlagen")}</p></div>`;
-    initFortschrittTipPopovers();
-  }
-}
-
-async function loadFortschrittDemoDataAll() {
-  if (!isAdminDemoBulkEnabled()) return;
-  if (!isDemoAllUnitsOverviewMode()) {
-    toast('Bitte im Filter oben „Alle Units“ wählen, um Demo-Daten für alle Standard-Units zu laden.', "#e74c3c", 5000);
-    document.getElementById("headerUnitSwitcher")?.scrollIntoView?.({ behavior: "smooth", block: "nearest" });
-    return;
-  }
-  if (
-    !confirm(
-      "Demo-Daten für alle Standard-Units laden?\n\nSAP Infrastructure, SAP Engineers, SAP Integration, SAP Architecture\n\nBestehende Demo-Einträge dieser Units werden ersetzt."
-    )
-  ) {
-    return;
-  }
-  try {
-    const demoUnits = await fetchDemoUnitNames();
-    const { progress } = await loadDemoUnitsSequential(demoUnits);
-    const failed = progress.some((row) => row.status === "error");
-    await finalizeDemoLoadPanelFromStatus(
-      failed ? "Demo-Daten teilweise geladen" : "Demo-Daten geladen · Phase 1 + Phase 2 · Alle Units",
-      progress
-    );
-    await afterDemoDataChanged({ filterMode: "all" });
-    if (failed) {
-      toast("Einige Demo-Daten konnten nicht geladen werden.", "#e74c3c", 5000);
-    }
-  } catch (error) {
-    if (demoLoadPanelState?.units?.length) {
-      await finalizeDemoLoadPanelFromStatus("Demo-Laden fehlgeschlagen", demoLoadPanelState.units);
-    }
-    toast(error.message || "Demo laden fehlgeschlagen.", "#e74c3c", 4000);
-  }
-}
-
-async function removeFortschrittDemoDataAll() {
-  if (!isAdminDemoBulkEnabled()) return;
-  if (
-    !confirm(
-      "Alle Demo-Daten für die Standard-Units entfernen?\n\nEchte Erfassungen und Planungen bleiben erhalten."
-    )
-  ) {
-    return;
-  }
-  try {
-    await api("/api/demo/remove?allUnits=true", { method: "DELETE" });
-    clearDemoLoadPanel();
-    await afterDemoDataChanged({
-      filterMode: "all",
-      showFortschritt: false,
-    });
-  } catch (error) {
-    toast(error.message || "Demo entfernen fehlgeschlagen.", "#e74c3c", 4000);
-  }
-}
-
-async function loadFortschrittDemoData() {
-  const unit = fortschrittUnit();
-  if (!unit) {
-    if (isAdminDemoBulkEnabled()) {
-      toast(
-        "Im Filter ist „Alle Units“ aktiv. Nutzen Sie „Demo alle Units laden“ oder wählen Sie eine konkrete Unit.",
-        "#e74c3c",
-        5000
-      );
-    } else {
-      toast("Bitte zuerst eine Unit im Filter wählen.", "#e74c3c", 4000);
-    }
-    return;
-  }
-  if (!confirm(`Demo-Daten für „${unit}“ laden? Bestehende Demo-Einträge dieser Unit werden ersetzt.`)) return;
-  setDemoLoadProgress(`Lade Demo-Daten für „${unit}"…`, [{ unit, status: "loading" }]);
-  try {
-    const result = await api("/api/demo/load", {
-      method: "POST",
-      body: JSON.stringify({ unit }),
-    });
-    await finalizeDemoLoadPanelFromStatus(`Demo-Daten geladen · Phase 1 + Phase 2 · ${unit}`, [
-      {
-        unit,
-        status: "done",
-        ...result,
-        entryCount: result.phase1DemoEntries ?? result.entryCount ?? 0,
-        phase1DemoEntries: result.phase1DemoEntries ?? result.entryCount ?? 0,
-      },
-    ]);
-    await afterDemoDataChanged({ filterMode: "unit", unit });
-  } catch (error) {
-    await finalizeDemoLoadPanelFromStatus(`Demo-Laden fehlgeschlagen · ${unit}`, [
-      { unit, status: "error", error: error.message || "Fehler" },
-    ]);
-    toast(error.message || "Demo laden fehlgeschlagen.", "#e74c3c", 4000);
-  }
-}
-
-async function removeFortschrittDemoData() {
-  const unit = fortschrittUnit();
-  if (!unit) {
-    toast("Bitte zuerst eine Unit wählen.", "#e74c3c", 4000);
-    return;
-  }
-  if (!confirm(`Alle Demo-Daten für „${unit}“ entfernen? Echte Erfassungen bleiben erhalten.`)) return;
-  try {
-    await api(`/api/demo/remove?unit=${encodeURIComponent(unit)}`, { method: "DELETE" });
-    clearDemoLoadPanel();
-    await afterDemoDataChanged({
-      filterMode: "unit",
-      unit,
-      showFortschritt: false,
-    });
-  } catch (error) {
-    toast(error.message || "Demo entfernen fehlgeschlagen.", "#e74c3c", 4000);
-  }
-}
-
-function initDemoDatenPage() {
-  if (!demoDatenInitDone) {
-    demoDatenInitDone = true;
-    document.getElementById("btnFortschrittDemoLoad")?.addEventListener("click", () => loadFortschrittDemoData());
-    document.getElementById("btnFortschrittDemoLoadAll")?.addEventListener("click", () => loadFortschrittDemoDataAll());
-    document.getElementById("btnFortschrittDemoRemove")?.addEventListener("click", () => removeFortschrittDemoData());
-    document.getElementById("btnFortschrittDemoRemoveAll")?.addEventListener("click", () => removeFortschrittDemoDataAll());
-  }
-  updateFortschrittDemoControls();
-  void refreshFortschrittDemoStatus();
-}
-
-function renderDemoDatenPage() {
-  initDemoDatenPage();
-}
-
-async function prepareGesamtfortschrittView() {
-  if (!gesamtfortschrittInitDone) {
-    gesamtfortschrittInitDone = true;
-    document.getElementById("btnGesamtfortschrittReload")?.addEventListener("click", () => void prepareGesamtfortschrittView());
-  }
-  initFortschrittTipPopovers();
-  await refreshEntries();
-  await loadGesamtfortschrittDashboard();
-}
-
-function renderGesamtfortschrittDashboard() {
-  void prepareGesamtfortschrittView();
-}
-
-async function populateFortschrittYearSelect() {
-  const sel = document.getElementById("fortschrittYear");
-  if (!sel) return;
-  const prev = sel.value;
-  try {
-    const cfg = typeof loadPlanningYears === "function"
-      ? await loadPlanningYears()
-      : await fetch("/api/config/planning-years", { credentials: "include" }).then(r => r.json());
-    const years = cfg?.years || [2026, 2027, 2028, 2029];
-    window._rcPlanningYears = years;
-    sel.innerHTML = "";
-    const allOpt = document.createElement("option");
-    allOpt.value = "all";
-    allOpt.textContent = "Alle Jahre (" + years[0] + "\u2013" + years[years.length - 1] + ")";
-    sel.appendChild(allOpt);
-    years.forEach(y => {
-      const o = document.createElement("option");
-      o.value = y; o.textContent = y;
-      sel.appendChild(o);
-    });
-    if (prev && [...sel.options].some((o) => o.value === prev)) {
-      sel.value = prev;
-    } else {
-      sel.value = "all";
-    }
-    readFortschrittYearSelect();
-  } catch (_e) {
-    if (!sel.children.length) {
-      const allOpt = document.createElement("option");
-      allOpt.value = "all";
-      allOpt.textContent = "Alle Jahre";
-      sel.appendChild(allOpt);
-      [2026, 2027, 2028, 2029].forEach(y => {
-        const o = document.createElement("option");
-        o.value = y; o.textContent = y; sel.appendChild(o);
-      });
-    }
-  }
-}
-
-async function prepareFortschrittView() {
-  if (!fortschrittInitDone) {
-    fortschrittInitDone = true;
-    await populateFortschrittYearSelect();
-    const yearEl = document.getElementById("fortschrittYear");
-    if (yearEl) yearEl.addEventListener("change", () => void prepareFortschrittView());
-    document.getElementById("btnFortschrittReload")?.addEventListener("click", () => void prepareFortschrittView());
-  }
-  await refreshEntries();
-  await ensureFortschrittViewUnit();
-  await loadFortschrittDashboard();
-  await refreshFortschrittDemoStatus();
-}
-
-function renderFortschrittDashboard() {
-  void prepareFortschrittView();
-}

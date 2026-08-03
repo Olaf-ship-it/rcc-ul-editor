@@ -12,6 +12,9 @@ let skillPersonalnummerRows = [];
 let unitContextPanelFetchGen = 0;
 let headerUnitSwitcherBound = false;
 let superAdminViewUnit = "all";
+let baselineLocked = false;
+let baselineLockedAt = null;
+let baselineLockedBy = null;
 let userUnits = [];
 let masterUnitsCache = [];
 let unitLeadCandidatesCache = [];
@@ -57,21 +60,34 @@ function captureElementsSnapshot(container) {
 
 function setSaveButtonVisualState(btn, state) {
   if (!btn) return;
+  const defaultLabel = btn.dataset.saveLabelDefault || SAVE_BTN_LABEL_DEFAULT;
+  const nextLabel = state === "saved" ? SAVE_BTN_LABEL_SUCCESS : defaultLabel;
+  const nextDirty = state === "dirty";
+  const nextSuccess = state === "saved";
+  if (
+    btn._saveVisualState === state &&
+    state !== "saved" &&
+    btn.classList.contains("btn-save-dirty") === nextDirty &&
+    btn.classList.contains("btn-save-success") === nextSuccess &&
+    btn.textContent === nextLabel
+  ) {
+    return;
+  }
+  btn._saveVisualState = state;
   btn.classList.remove("btn-save-dirty", "btn-save-success");
   clearTimeout(btn._saveSuccessTimer);
-  const defaultLabel = btn.dataset.saveLabelDefault || SAVE_BTN_LABEL_DEFAULT;
   if (state === "dirty") {
     btn.classList.add("btn-save-dirty");
-    btn.textContent = defaultLabel;
+    if (btn.textContent !== nextLabel) btn.textContent = nextLabel;
   } else if (state === "saved") {
     btn.classList.add("btn-save-success");
-    btn.textContent = SAVE_BTN_LABEL_SUCCESS;
+    if (btn.textContent !== nextLabel) btn.textContent = nextLabel;
     btn._saveSuccessTimer = setTimeout(() => {
       if (btn._saveTracker) btn._saveTracker.commitBaseline(false);
       else setSaveButtonVisualState(btn, "default");
     }, 3500);
-  } else {
-    btn.textContent = defaultLabel;
+  } else if (btn.textContent !== nextLabel) {
+    btn.textContent = nextLabel;
   }
 }
 
@@ -133,7 +149,17 @@ function initFormSaveButtonTracker(root, options = {}) {
     c.addEventListener("change", update);
   });
   if (watchContainers.length) {
-    const mo = new MutationObserver(() => update());
+    const mo = new MutationObserver((records) => {
+      const onlyIgnored = records.every((record) => {
+        const nodes = [record.target, record.target.parentElement].filter(Boolean);
+        return nodes.some((node) => {
+          if (node.closest?.(".org-form-save-btn, .btn-save-dirty, .btn-save-success")) return true;
+          if (node.closest?.(".org-gliederung-charts, .org-pie-chart-wrap")) return true;
+          return false;
+        });
+      });
+      if (!onlyIgnored) update();
+    });
     watchContainers.forEach((c) => {
       if (c) mo.observe(c, { childList: true, subtree: true });
     });
@@ -169,6 +195,7 @@ function initAllSaveButtonTrackers() {
   });
   initFormSaveButtonTracker(document.getElementById("organisationForm"), {
     watchContainers: [
+      document.getElementById("orgSectionStichtag"),
       document.getElementById("org_gliederung_rows"),
       document.getElementById("org_rollen_rows"),
     ],
@@ -370,15 +397,111 @@ function isSkillRowEditing(row) {
 
 function isTechSkillPayloadEmpty(data) {
   if (!data) return true;
-  return !data.kategorie && data.level == null && !data.levelCustom;
+  const hasLevel =
+    (data.level != null && data.level !== "") || !!(data.levelCustom || "").trim();
+  if (hasLevel) return false;
+  if ((data.technologie || "").trim()) return false;
+  if ((data.bemerkungen || data.bemerkung || "").trim()) return false;
+  return true;
 }
 
 function isSoftSkillPayloadEmpty(data) {
   if (!data) return true;
-  return !data.kategorie && data.level == null && !data.levelCustom;
+  const hasLevel =
+    (data.level != null && data.level !== "") || !!(data.levelCustom || "").trim();
+  if (hasLevel) return false;
+  if ((data.kompetenz || "").trim()) return false;
+  if ((data.bemerkungen || data.bemerkung || "").trim()) return false;
+  return true;
+}
+
+function getTechSkillCatalog() {
+  return (SKILL_CATEGORIES || [])
+    .map((c) => ({
+      id: Number(c.id),
+      name: c.name,
+      beschreibung: c.beschreibung || "",
+      beispielTechnologien: c.beispielTechnologien || "",
+    }))
+    .filter((c) => Number.isInteger(c.id) && c.id > 0);
+}
+
+function getSoftSkillCatalog() {
+  return (SOFT_SKILL_CATEGORIES || [])
+    .map((c) => ({
+      id: Number(c.id),
+      name: c.name,
+      beschreibung: c.beschreibung || "",
+      beispielKompetenzen: c.beispielKompetenzen || "",
+    }))
+    .filter((c) => Number.isInteger(c.id) && c.id > 0);
+}
+
+function isCatalogSkillData(data, kind) {
+  const id = skillItemCategoryId(data);
+  if (!Number.isInteger(id) || id <= 0) return false;
+  const catalog = kind === "soft" ? getSoftSkillCatalog() : getTechSkillCatalog();
+  return catalog.some((c) => c.id === id);
+}
+
+function isSkillCatalogRow(row) {
+  const id = Number(row?.dataset?.catalogCategoryId);
+  return Number.isInteger(id) && id > 0;
+}
+
+function buildTechSkillMatrixFromSaved(skills) {
+  const saved = enrichTechSkillList(skills);
+  const catalog = getTechSkillCatalog();
+  const savedByCatId = new Map();
+  const extras = [];
+
+  saved.forEach((s) => {
+    const enriched = enrichTechSkillItemClient(s);
+    const id = skillItemCategoryId(enriched);
+    if (Number.isInteger(id) && id > 0 && catalog.some((c) => c.id === id)) {
+      if (!savedByCatId.has(id)) savedByCatId.set(id, enriched);
+      else extras.push(enriched);
+    } else if (!isTechSkillPayloadEmpty(enriched)) {
+      extras.push(enriched);
+    }
+  });
+
+  const matrix = catalog.map(
+    (cat) => savedByCatId.get(cat.id) || { kategorie_id: cat.id, kategorie: cat.name }
+  );
+  return [...matrix, ...extras];
+}
+
+function buildSoftSkillMatrixFromSaved(softSkills) {
+  const saved = enrichSoftSkillList(softSkills);
+  const catalog = getSoftSkillCatalog();
+  const savedByCatId = new Map();
+  const extras = [];
+
+  saved.forEach((s) => {
+    const enriched = enrichSoftSkillItemClient(s);
+    const id = skillItemCategoryId(enriched);
+    if (Number.isInteger(id) && id > 0 && catalog.some((c) => c.id === id)) {
+      if (!savedByCatId.has(id)) savedByCatId.set(id, enriched);
+      else extras.push(enriched);
+    } else if (!isSoftSkillPayloadEmpty(enriched)) {
+      extras.push(enriched);
+    }
+  });
+
+  const matrix = catalog.map(
+    (cat) => savedByCatId.get(cat.id) || { kategorie_id: cat.id, kategorie: cat.name }
+  );
+  return [...matrix, ...extras];
 }
 
 function readSkillCategoryFromRow(row, kind) {
+  const catalogId = Number(row?.dataset?.catalogCategoryId);
+  if (Number.isInteger(catalogId) && catalogId > 0) {
+    const cat =
+      kind === "soft" ? getSoftCategoryById(catalogId) : getCategoryById(catalogId);
+    return { kategorie_id: catalogId, kategorie: cat?.name || "" };
+  }
   const isSoft = kind === "soft";
   const sel = row.querySelector(isSoft ? ".ss-kategorie" : ".sk-kategorie");
   const other = row.querySelector(isSoft ? ".ss-kategorie-other" : ".sk-kategorie-other");
@@ -605,10 +728,28 @@ function isLevelFieldEmpty(row, levelClass, levelOtherClass) {
   return false;
 }
 
+function clearTechCatalogSkillRow(row) {
+  const catId = Number(row.dataset.catalogCategoryId);
+  const cat = getCategoryById(catId);
+  renderTechSkillRowView(row, { kategorie_id: catId, kategorie: cat?.name || "" });
+  refreshSkillInfoPanel();
+}
+
+function clearSoftCatalogSkillRow(row) {
+  const catId = Number(row.dataset.catalogCategoryId);
+  const cat = getSoftCategoryById(catId);
+  renderSoftSkillRowView(row, { kategorie_id: catId, kategorie: cat?.name || "" });
+  refreshSkillInfoPanel();
+}
+
 function commitTechSkillRow(row, options = {}) {
   if (!row) return "Zeile nicht gefunden.";
   const data = readTechSkillPayloadFromForm(row);
   if (isTechSkillPayloadEmpty(data)) {
+    if (isSkillCatalogRow(row)) {
+      clearTechCatalogSkillRow(row);
+      return null;
+    }
     if (options.allowEmpty) {
       row.remove();
       updateSkillAssessmentListEmptyState("tech");
@@ -618,7 +759,10 @@ function commitTechSkillRow(row, options = {}) {
     return "Bitte Kategorie und Level ausfüllen.";
   }
   setSkillKind("tech");
-  if (isSelectOrOtherEmpty(row, ".sk-kategorie", ".sk-kategorie-other")) {
+  if (
+    !isSkillCatalogRow(row) &&
+    isSelectOrOtherEmpty(row, ".sk-kategorie", ".sk-kategorie-other")
+  ) {
     return "Bitte Skill-Kategorie ausfüllen.";
   }
   if (isLevelFieldEmpty(row, ".sk-level", ".sk-level-other")) {
@@ -635,6 +779,10 @@ function commitSoftSkillRow(row, options = {}) {
   if (!row) return "Zeile nicht gefunden.";
   const data = readSoftSkillPayloadFromForm(row);
   if (isSoftSkillPayloadEmpty(data)) {
+    if (isSkillCatalogRow(row)) {
+      clearSoftCatalogSkillRow(row);
+      return null;
+    }
     if (options.allowEmpty) {
       row.remove();
       updateSkillAssessmentListEmptyState("soft");
@@ -644,7 +792,10 @@ function commitSoftSkillRow(row, options = {}) {
     return "Bitte Kategorie und Level ausfüllen.";
   }
   setSkillKind("soft");
-  if (isSelectOrOtherEmpty(row, ".ss-kategorie", ".ss-kategorie-other")) {
+  if (
+    !isSkillCatalogRow(row) &&
+    isSelectOrOtherEmpty(row, ".ss-kategorie", ".ss-kategorie-other")
+  ) {
     return "Bitte Soft-Skill-Kategorie ausfüllen.";
   }
   if (isLevelFieldEmpty(row, ".ss-level", ".ss-level-other")) {
@@ -1485,16 +1636,10 @@ function refreshSuperAdminViews() {
   renderOverview();
   renderExportStats();
   if (isAdmin) renderAdminUsers();
-  if (document.getElementById("page-gesamtfortschritt")?.classList.contains("active")) {
-    renderGesamtfortschrittDashboard();
-  }
-  if (document.getElementById("page-gesamtfortschritt-new")?.classList.contains("active") && typeof initGesamtfortschrittNew === "function") {
+  if (document.getElementById("page-gesamtfortschritt")?.classList.contains("active") && typeof initGesamtfortschrittNew === "function") {
     initGesamtfortschrittNew();
   }
-  if (document.getElementById("page-fortschritt")?.classList.contains("active")) {
-    renderFortschrittDashboard();
-  }
-  if (document.getElementById("page-fortschritt-new")?.classList.contains("active") && typeof initFortschrittNew === "function") {
+  if (document.getElementById("page-fortschritt")?.classList.contains("active") && typeof initFortschrittNew === "function") {
     initFortschrittNew();
   }
   if (isDemoDatenViewActive()) {
@@ -1516,16 +1661,10 @@ function setSuperAdminViewUnit(unit) {
   renderOverview();
   renderExportStats();
   if (isAdmin) renderAdminUsers();
-  if (document.getElementById("page-gesamtfortschritt")?.classList.contains("active")) {
-    renderGesamtfortschrittDashboard();
-  }
-  if (document.getElementById("page-gesamtfortschritt-new")?.classList.contains("active") && typeof initGesamtfortschrittNew === "function") {
+  if (document.getElementById("page-gesamtfortschritt")?.classList.contains("active") && typeof initGesamtfortschrittNew === "function") {
     initGesamtfortschrittNew();
   }
-  if (document.getElementById("page-fortschritt")?.classList.contains("active")) {
-    renderFortschrittDashboard();
-  }
-  if (document.getElementById("page-fortschritt-new")?.classList.contains("active") && typeof initFortschrittNew === "function") {
+  if (document.getElementById("page-fortschritt")?.classList.contains("active") && typeof initFortschrittNew === "function") {
     initFortschrittNew();
   }
   if (isDemoDatenViewActive()) {
@@ -1534,6 +1673,7 @@ function setSuperAdminViewUnit(unit) {
     updateFortschrittDemoControls();
   }
   refreshPresenceTracking();
+  void loadBaselineStatus(getSaveUnit());
 }
 
 function requireSaveUnit() {
@@ -1555,9 +1695,116 @@ async function refreshEntries() {
   renderSkillEmployeeNav();
 }
 
+function isPhase1BaselineLocked() {
+  return baselineLocked && !isAdmin;
+}
+
+async function loadBaselineStatus(unit) {
+  const u = String(unit || getSaveUnit() || "").trim();
+  if (!u) {
+    baselineLocked = false;
+    baselineLockedAt = null;
+    baselineLockedBy = null;
+    applyPhase1BaselineUI();
+    return;
+  }
+  try {
+    const data = await api("/api/units/" + encodeURIComponent(u) + "/baseline-status");
+    baselineLocked = Boolean(data.locked);
+    baselineLockedAt = data.lockedAt || null;
+    baselineLockedBy = data.lockedBy || null;
+  } catch (_e) {
+    baselineLocked = false;
+    baselineLockedAt = null;
+    baselineLockedBy = null;
+  }
+  applyPhase1BaselineUI();
+}
+
+function renderBaselineKickoffBar() {
+  const bar = document.getElementById("baselineKickoffBar");
+  const inner = document.getElementById("baselineKickoffBarInner");
+  if (!bar || !inner) return;
+  const unit = getSaveUnit();
+  const onPhase1 =
+    document.getElementById("page-portfolio")?.classList.contains("active") ||
+    document.getElementById("page-organisation")?.classList.contains("active") ||
+    document.getElementById("page-skills")?.classList.contains("active");
+  if (!unit || !onPhase1 || isMitarbeiter) {
+    bar.style.display = "none";
+    return;
+  }
+  bar.style.display = "";
+  if (baselineLocked) {
+    const when = baselineLockedAt ? new Date(baselineLockedAt).toLocaleDateString("de-DE") : "";
+    inner.innerHTML =
+      "<p style='margin:0 0 .5rem'><strong>Ausgangslage fixiert (Kick-off)</strong>" +
+      (when ? " · seit " + when : "") +
+      ". Änderungen nur noch für Admins. Jahresupdates → <a href='/backcasting/?tab=jahresabschluss'>Phase 2 · Jahresabschluss</a>.</p>" +
+      (isAdmin
+        ? "<button type='button' class='btn btn-outline btn-sm' id='btnBaselineUnlock'>Baseline entsperren (Admin)</button>"
+        : "");
+  } else {
+    inner.innerHTML =
+      "<p style='margin:0 0 .5rem'>Nach Abschluss der Statusaufnahme die <strong>Ausgangslage fixieren</strong>. Danach sind Portfolio, Organisation und Skills schreibgeschützt; Jahres-IST erfassen Sie im <a href='/backcasting/?tab=jahresabschluss'>Jahresabschluss</a>.</p>" +
+      "<button type='button' class='btn btn-primary btn-sm' id='btnBaselineLock'>Baseline fixieren</button>";
+  }
+  document.getElementById("btnBaselineLock")?.addEventListener("click", () => void lockBaselineForUnit());
+  document.getElementById("btnBaselineUnlock")?.addEventListener("click", () => void unlockBaselineForUnit());
+}
+
+function applyPhase1BaselineUI() {
+  const locked = isPhase1BaselineLocked();
+  document.body.classList.toggle("phase1-baseline-locked", locked);
+  ["page-portfolio", "page-organisation", "page-skills"].forEach((pageId) => {
+    const page = document.getElementById(pageId);
+    if (!page) return;
+    page.querySelectorAll("input, textarea, select").forEach((el) => {
+      if (el.closest("#baselineKickoffBar")) return;
+      el.disabled = locked;
+      el.classList.toggle("field-readonly", locked);
+    });
+    page.querySelectorAll("button[type='submit'], .btn-primary, .btn-danger").forEach((el) => {
+      if (el.closest("#baselineKickoffBar")) return;
+      if (el.classList.contains("tab")) return;
+      el.disabled = locked;
+    });
+  });
+  renderBaselineKickoffBar();
+}
+
+async function lockBaselineForUnit() {
+  const unit = getSaveUnit();
+  if (!unit) return;
+  if (!window.confirm("Ausgangslage für " + unit + " fixieren? Danach keine Änderungen mehr (außer Admin).")) return;
+  try {
+    await api("/api/units/" + encodeURIComponent(unit) + "/baseline/lock", { method: "POST" });
+    await loadBaselineStatus(unit);
+    toast("Baseline fixiert.");
+  } catch (e) {
+    toast(e.message || "Fixieren fehlgeschlagen.");
+  }
+}
+
+async function unlockBaselineForUnit() {
+  const unit = getSaveUnit();
+  if (!unit || !isAdmin) return;
+  if (!window.confirm("Baseline für " + unit + " entsperren (Admin)?")) return;
+  try {
+    await api("/api/units/" + encodeURIComponent(unit) + "/baseline/unlock", { method: "POST" });
+    await loadBaselineStatus(unit);
+    toast("Baseline entsperrt.");
+  } catch (e) {
+    toast(e.message || "Entsperren fehlgeschlagen.");
+  }
+}
+
 async function saveEntry(type, entry) {
   if (isMitarbeiter && type !== "skill") {
     throw new Error("Kein Zugriff.");
+  }
+  if ((type === "portfolio" || type === "organisation" || type === "skill") && isPhase1BaselineLocked()) {
+    throw new Error("Ausgangslage ist fixiert. Bitte Jahresabschluss in Phase 2 nutzen.");
   }
   if (isMitarbeiter && type === "skill" && entry.id && currentSkillEntryId && entry.id !== currentSkillEntryId) {
     throw new Error("Sie duerfen nur Ihr eigenes Skill-Profil bearbeiten.");
@@ -1649,8 +1896,81 @@ function getActiveAppPage() {
 }
 
 const PHASE1_TAB_PAGES = ["portfolio", "organisation", "skills", "overview", "export"];
-const PHASE3_TAB_PAGES = ["fortschritt-new", "gesamtfortschritt", "gesamtfortschritt-new", "fortschritt", "fortschritt-erlaeuterung"];
+const PHASE3_TAB_PAGES = ["fortschritt", "gesamtfortschritt", "fortschritt-erlaeuterung"];
+const APP_NAV_PAGES = [...PHASE1_TAB_PAGES, ...PHASE3_TAB_PAGES, "admin"];
+
+function normalizeAppPage(page) {
+  if (page === "gesamtfortschritt-new") return "gesamtfortschritt";
+  if (page === "fortschritt-new") return "fortschritt";
+  return page;
+}
+const LS_APP_PAGE = "rcAppActivePage";
 const ADMIN_SUBTAB_MODES = ["users", "skills", "roles", "leitplanken", "permissions", "org", "demo", "settings"];
+
+function isAllowedAppPage(page) {
+  if (!page || !APP_NAV_PAGES.includes(page)) return false;
+  if (isMitarbeiter) return page === "skills";
+  if (page === "admin") return isAdmin;
+  if (isPhase3AppPage(page)) return canAccessPhase3Area();
+  return PHASE1_TAB_PAGES.includes(page);
+}
+
+function readPersistedAppPage() {
+  try {
+    const page = normalizeAppPage(sessionStorage.getItem(LS_APP_PAGE) || "");
+    return isAllowedAppPage(page) ? page : "";
+  } catch (_e) {
+    return "";
+  }
+}
+
+function writePersistedAppPage(page) {
+  if (!isAllowedAppPage(page)) return;
+  try {
+    sessionStorage.setItem(LS_APP_PAGE, page);
+  } catch (_e) {
+    /* ignore */
+  }
+}
+
+function clearPersistedAppPage() {
+  try {
+    sessionStorage.removeItem(LS_APP_PAGE);
+  } catch (_e) {
+    /* ignore */
+  }
+}
+
+function runAppPageSideEffects(page) {
+  if (page === "overview") renderOverview();
+  if (page === "export") renderExportStats();
+  if (page === "admin") void initAdminPage();
+  if (page === "gesamtfortschritt" && typeof initGesamtfortschrittNew === "function") initGesamtfortschrittNew();
+  if (page === "fortschritt" && typeof initFortschrittNew === "function") initFortschrittNew();
+  if (page === "fortschritt-erlaeuterung") renderFortschrittErlaeuterungPage();
+  if (page === "portfolio") {
+    renderPortfolio();
+    void refreshUnitContextPanels();
+  }
+  if (page === "organisation") {
+    renderOrganisation();
+    void refreshUnitContextPanels();
+  }
+  if (page === "skills") {
+    loadSkillPersonalnummerLookup().then(() => {
+      renderSkillEmployeeNav();
+      updateSkillDeleteButton();
+    });
+  }
+}
+
+function restorePersistedAppPage() {
+  const page = readPersistedAppPage();
+  if (!page) return false;
+  switchTab(page);
+  runAppPageSideEffects(page);
+  return true;
+}
 
 function resolvePresenceContext() {
   if (isMitarbeiter) return "phase1";
@@ -2810,6 +3130,7 @@ async function doLogout(){
   try { await api("/api/auth/logout", { method: "POST" }); } catch (_e) {}
   currentUnit='';currentName='';currentEmail='';isAdmin=false;isSuperAdmin=false;isMitarbeiter=false;userModules={ backcasting: false, fortschritt: false };currentSkillEntryId=null;currentPersonalnummer='';superAdminViewUnit='all';userUnits=[];
   rcViewUnitPersist?.clearPersistedViewUnit?.();
+  clearPersistedAppPage();
   document.body.classList.remove("mitarbeiter-mode");
   entryStore = { portfolio: [], organisation: [], skill: [] };
   if (!wasMitarbeiter) {
@@ -2821,7 +3142,7 @@ async function doLogout(){
 
 function getDirectNavPageFromQuery() {
   if (isMitarbeiter) return "";
-  const page = new URLSearchParams(window.location.search).get("page");
+  const page = normalizeAppPage(new URLSearchParams(window.location.search).get("page") || "");
   if ((page === "admin" || page === "demo-daten") && isAdmin) return "admin";
   if (PHASE3_TAB_PAGES.includes(page) && canAccessPhase3Area()) return page;
   return "";
@@ -2865,6 +3186,8 @@ async function showApp(options = {}){
   }
   await Promise.all(bootTasks);
 
+  if (!isMitarbeiter) void loadBaselineStatus(getSaveUnit());
+
   if (fromLogin) {
     resetAppViewToDefaults();
     await renderHeaderUnitSwitcher();
@@ -2882,7 +3205,10 @@ async function showApp(options = {}){
   }
 
   collapseAllCollapsibleSections(document.getElementById("appMain"));
-  applyPageFromQuery({ skipFortschritt: fromLogin });
+  const navigatedFromUrl = applyPageFromQuery({ skipFortschritt: fromLogin });
+  if (!fromLogin && !navigatedFromUrl) {
+    restorePersistedAppPage();
+  }
 
   if (!lightBoot) {
     if (isAdmin) void initAdminPage();
@@ -2892,15 +3218,15 @@ async function showApp(options = {}){
 }
 
 function applyPageFromQuery(options = {}) {
-  if (isMitarbeiter) return;
-  const page = new URLSearchParams(window.location.search).get("page");
+  if (isMitarbeiter) return false;
+  const page = normalizeAppPage(new URLSearchParams(window.location.search).get("page") || "");
   if (page === "admin" && isAdmin) {
     const adminTab = getAdminTabFromQuery();
     if (adminTab) adminSubtab = adminTab;
     switchTab("admin");
     initAdminPage();
     clearAppPageQueryFromUrl();
-    return;
+    return true;
   }
   if (options.skipFortschritt) {
     if (window.history && window.history.replaceState) {
@@ -2912,24 +3238,30 @@ function applyPageFromQuery(options = {}) {
         window.history.replaceState({}, "", qs ? `/?${qs}` : "/");
       }
     }
-    return;
+    return false;
   }
   if (page === "demo-daten") {
-    if (!canAccessDemoDaten()) return;
+    if (!canAccessDemoDaten()) return false;
     adminSubtab = "demo";
     switchTab("admin");
     initAdminPage();
     clearAppPageQueryFromUrl();
-    return;
+    return true;
   }
   if (PHASE3_TAB_PAGES.includes(page)) {
-    if (!canAccessPhase3Area()) return;
+    if (!canAccessPhase3Area()) return false;
     switchTab(page);
-    if (page === "gesamtfortschritt") renderGesamtfortschrittDashboard();
-    else if (page === "fortschritt") renderFortschrittDashboard();
-    else renderFortschrittErlaeuterungPage();
+    runAppPageSideEffects(page);
     clearAppPageQueryFromUrl();
+    return true;
   }
+  if (PHASE1_TAB_PAGES.includes(page)) {
+    switchTab(page);
+    runAppPageSideEffects(page);
+    clearAppPageQueryFromUrl();
+    return true;
+  }
+  return false;
 }
 
 async function bootSession() {
@@ -2994,7 +3326,7 @@ function bindAppModuleNavClicks() {
     if (!appMain || appMain.style.display === "none") return;
     if (isMitarbeiter || !canAccessPhase3Area()) return;
     e.preventDefault();
-    switchTab("fortschritt-new");
+    switchTab("fortschritt");
     if (typeof initFortschrittNew === "function") initFortschrittNew();
   });
   document.getElementById("launcherPhase1")?.addEventListener("click", (e) => {
@@ -3024,28 +3356,7 @@ document.querySelectorAll("#tabs .tab").forEach((t) => {
   if (isMitarbeiter && t.dataset.page !== "skills") return;
   const p = t.dataset.page;
   switchTab(p);
-  if (p === "overview") renderOverview();
-  if (p === "export") renderExportStats();
-  if (p === "admin") initAdminPage();
-  if (p === "gesamtfortschritt") renderGesamtfortschrittDashboard();
-  if (p === "gesamtfortschritt-new" && typeof initGesamtfortschrittNew === "function") initGesamtfortschrittNew();
-  if (p === "fortschritt") renderFortschrittDashboard();
-  if (p === "fortschritt-new" && typeof initFortschrittNew === "function") initFortschrittNew();
-  if (p === "fortschritt-erlaeuterung") renderFortschrittErlaeuterungPage();
-  if (p === "portfolio") {
-    renderPortfolio();
-    refreshUnitContextPanels();
-  }
-  if (p === "organisation") {
-    renderOrganisation();
-    refreshUnitContextPanels();
-  }
-  if (p === "skills") {
-    loadSkillPersonalnummerLookup().then(() => {
-      renderSkillEmployeeNav();
-      updateSkillDeleteButton();
-    });
-  }
+  runAppPageSideEffects(p);
 });
 });
 
@@ -3069,15 +3380,11 @@ function updateAppModuleNavActive(page) {
       subtitleEl.textContent = "Demo-Datensätze für IST/SOLL-Tests je Unit";
     } else if (onPhase3) {
       if (page === "gesamtfortschritt") {
-        subtitleEl.textContent = "Zeitstrahl " + planningYearRange() + " \u00b7 Umsatz, Headcount & Zertifizierung";
-      } else if (page === "gesamtfortschritt-new") {
-        subtitleEl.textContent = "Zeitstrahl " + planningYearRange() + " \u00b7 Phase-1-basiert (Planung NEW)";
-      } else if (page === "fortschritt-new") {
-        subtitleEl.textContent = "Phase-1-basierter Fortschritt \u00b7 IST vs. SOLL (Planung NEW)";
+        subtitleEl.textContent = "Zeitstrahl " + planningYearRange() + " \u00b7 Phase-1-basiert (Umsatz, Headcount & Zertifizierung)";
+      } else if (page === "fortschritt") {
+        subtitleEl.textContent = "IST vs. SOLL \u00b7 Phase-1-basiert (Backcasting-Planung)";
       } else if (page === "fortschritt-erlaeuterung") {
         subtitleEl.textContent = "Methodik & Feldzuordnung Phase 1 ↔ Phase 2";
-      } else {
-        subtitleEl.textContent = "Detailfortschritt \u00b7 IST vs. SOLL je Unit und Jahr";
       }
     } else if (page === "admin") {
       subtitleEl.textContent = "Benutzer, Kataloge, Leitplanken und Organigramm";
@@ -3096,9 +3403,11 @@ function switchTab(p){
   document.querySelectorAll("#appMain .page").forEach((pg) => pg.classList.toggle("active", pg.id === "page-" + p));
   updateMainTabsBar(p);
   updateAppModuleNavActive(p);
+  writePersistedAppPage(p);
   const page = document.getElementById("page-" + p);
   if (page && prevPage !== p) collapseAllCollapsibleSections(page);
   refreshPresenceTracking();
+  if (PHASE1_TAB_PAGES.includes(p)) renderBaselineKickoffBar();
 }
 
 // ===== PORTFOLIO =====
@@ -3511,9 +3820,10 @@ function renderOrgPieChart(container, slices, opts) {
 function collectOrgGliederungChartRows() {
   const rows = [];
   document.querySelectorAll("#org_gliederung_rows .org-gliederung-row").forEach((r) => {
-    const bereich = readSelectWithOther(r, ".org-gli-select", ".org-gli-other") || "Ohne Bezeichnung";
+    const bereich = getOrgGliederungRowBereichLabel(r) || "Ohne Bezeichnung";
     const hcRaw = r.querySelector(".org-gli-hc")?.value;
-    const hc = hcRaw === "" ? null : parseInt(hcRaw, 10);
+    const hcParsed = hcRaw === "" ? null : parseInt(hcRaw, 10);
+    const hc = Number.isFinite(hcParsed) ? Math.max(0, hcParsed) : null;
     const umsatzTeur = readTeurInputValue(r.querySelector(".org-gli-umsatz-teur"));
     const umsatzText = r.querySelector(".org-gli-umsatz")?.value.trim() || "";
     const umsatzEur =
@@ -3611,6 +3921,8 @@ function updateOrgGliederungSectionVisibility() {
 }
 
 function getOrgGliederungRowBereichLabel(row) {
+  const textEl = row.querySelector(".org-gli-bereich");
+  if (textEl) return String(textEl.value || "").trim();
   return readSelectWithOther(row, ".org-gli-select", ".org-gli-other");
 }
 
@@ -3650,12 +3962,7 @@ function bindOrgGliederungRow(row, opts = {}) {
     if (e.target.closest(".row-remove-btn")) return;
     toggleOrgGliederungRow(row);
   });
-  row.querySelector(".org-gli-select")?.addEventListener("change", () => {
-    syncOrgSonstigesInRow(row, "org-gli");
-    updateOrgGliederungRowSummary(row);
-    renderOrgGliederungCharts();
-  });
-  row.querySelector(".org-gli-other")?.addEventListener("input", () => {
+  row.querySelector(".org-gli-bereich")?.addEventListener("input", () => {
     updateOrgGliederungRowSummary(row);
     renderOrgGliederungCharts();
   });
@@ -3664,18 +3971,14 @@ function bindOrgGliederungRow(row, opts = {}) {
     row.remove();
     renderOrgGliederungCharts();
   });
-  syncOrgSonstigesInRow(row, "org-gli");
 }
 
 function addOrgGliederungRow(data) {
   const d = enrichOrgGliederungUmsatz(data || {});
-  const bereichR = resolveOrgSelect(d.bereich, ORG_TECH_BEREICHE);
+  const bereichText = String(d.bereich || "").trim();
   const container = document.getElementById("org_gliederung_rows");
   if (!container) return;
-  const hasBereich =
-    !!String(d.bereich || "").trim() ||
-    (!!bereichR.value && bereichR.value !== SELECT_SONSTIGES) ||
-    (bereichR.value === SELECT_SONSTIGES && !!String(bereichR.other || "").trim());
+  const hasBereich = !!bereichText;
   const row = document.createElement("div");
   row.className = "skill-assessment-row org-gliederung-row";
   row.innerHTML = `
@@ -3695,9 +3998,8 @@ function addOrgGliederungRow(data) {
     <div class="org-gli-body">
       <div class="skill-assessment-grid">
         <div class="span2">
-          <div class="org-gli-field-label">Kategorie / Bereich</div>
-          <select class="org-gli-select">${buildOrgSelectOptions(ORG_TECH_BEREICHE, bereichR.value)}</select>
-          <input type="text" class="org-gli-other sk-sonstiges-input${bereichR.value === SELECT_SONSTIGES ? " visible" : ""}" placeholder="Bereich manuell eingeben" value="${escAttr(bereichR.other)}">
+          <label>Bezeichnung</label>
+          <input type="text" class="org-gli-bereich" placeholder="${escAttr("z. B. Development & Automation")}" value="${escAttr(bereichText)}">
         </div>
         <div class="span2"><label>Beschreibung / Erlaeuterung</label>
           <textarea class="org-gli-beschreibung" style="min-height:45px">${esc(d.beschreibung || "")}</textarea></div>
@@ -3845,7 +4147,7 @@ function getOrganisationFormData() {
   const gliederungen = [];
   if (hat === "ja") {
     document.querySelectorAll("#org_gliederung_rows .org-gliederung-row").forEach((r) => {
-      const bereich = readSelectWithOther(r, ".org-gli-select", ".org-gli-other");
+      const bereich = getOrgGliederungRowBereichLabel(r);
       const beschreibung = r.querySelector(".org-gli-beschreibung")?.value.trim() || "";
       const hcRaw = r.querySelector(".org-gli-hc")?.value;
       const umsatzText = r.querySelector(".org-gli-umsatz")?.value.trim() || "";
@@ -3858,7 +4160,11 @@ function getOrganisationFormData() {
           id: rowId,
           bereich,
           beschreibung,
-          headcount: hcRaw === "" ? null : parseInt(hcRaw, 10),
+          headcount: (() => {
+            if (hcRaw === "") return null;
+            const parsed = parseInt(hcRaw, 10);
+            return Number.isFinite(parsed) ? Math.max(0, parsed) : null;
+          })(),
           umsatz_teur: umsatzTeur,
           umsatz: umsatzText,
         })
@@ -3893,7 +4199,9 @@ function validateOrganisationForm() {
   const stichtag = document.getElementById("org_stichtag");
   if (!stichtag?.value) {
     toast("Bitte einen Stichtag für die Statusaufnahme angeben.", "#e74c3c", 4000);
+    document.getElementById("orgSectionStichtag")?.setAttribute("open", "");
     stichtag?.focus();
+    stichtag?.scrollIntoView?.({ behavior: "smooth", block: "nearest" });
     return false;
   }
   const hat = document.getElementById("org_hat_gliederung");
@@ -3910,7 +4218,14 @@ function validateOrganisationForm() {
     }
     for (const g of data.gliederungen) {
       if (!g.bereich) {
-        toast("Bitte fuer jeden organisatorischen Bereich eine Bezeichnung waehlen oder eingeben.", "#e74c3c", 4000);
+        toast("Bitte fuer jeden organisatorischen Bereich eine Bezeichnung eingeben.", "#e74c3c", 4000);
+        const emptyRow = [...document.querySelectorAll("#org_gliederung_rows .org-gliederung-row")].find(
+          (r) => !getOrgGliederungRowBereichLabel(r)
+        );
+        if (emptyRow) {
+          setOrgGliederungRowOpen(emptyRow, true);
+          emptyRow.querySelector(".org-gli-bereich")?.focus();
+        }
         return false;
       }
     }
@@ -4201,7 +4516,7 @@ function renderSkillInfo(kategorie, level) {
       html += `<div class="info-hint" style="margin-top:.5rem"><strong>Typische Aufgaben (Level ${def.level}):</strong><br>${esc(def.typischeAufgaben)}</div>`;
     }
   }
-  html += `<div class="info-hint" style="margin-top:.5rem">Erfassen Sie pro Mitarbeiter alle relevanten Skills als eigene Zeilen.</div>`;
+  html += `<div class="info-hint" style="margin-top:.5rem">Alle Katalog-Kategorien sind als Zeilen sichtbar – Level und Details pro relevantem Skill erfassen. Zusätzliche Einträge über „Sonstiger Fachskill“.</div>`;
   box.innerHTML = html;
 }
 
@@ -4249,7 +4564,7 @@ function renderSoftSkillInfo(kategorie, level) {
       html += `<div class="info-hint" style="margin-top:.5rem"><strong>Verhaltens-Indikatoren (Level ${def.level}):</strong><br>${esc(def.verhaltensIndikatoren)}</div>`;
     }
   }
-  html += `<div class="info-hint" style="margin-top:.5rem">Erfassen Sie pro Mitarbeiter alle relevanten Soft Skills als eigene Zeilen.</div>`;
+  html += `<div class="info-hint" style="margin-top:.5rem">Alle Katalog-Kategorien sind als Zeilen sichtbar – Level und Details pro relevantem Soft Skill erfassen. Zusätzliche Einträge über „Sonstiger Soft Skill“.</div>`;
   box.innerHTML = html;
 }
 
@@ -4290,27 +4605,89 @@ function bindSoftSkillRowEditEvents(row) {
   });
 }
 
+function applyTechCatalogRowDataset(row, data) {
+  const d = enrichTechSkillItemClient(data || {});
+  if (isCatalogSkillData(d, "tech")) {
+    row.dataset.catalogCategoryId = String(skillItemCategoryId(d));
+  } else {
+    delete row.dataset.catalogCategoryId;
+  }
+}
+
+function applySoftCatalogRowDataset(row, data) {
+  const d = enrichSoftSkillItemClient(data || {});
+  if (isCatalogSkillData(d, "soft")) {
+    row.dataset.catalogCategoryId = String(skillItemCategoryId(d));
+  } else {
+    delete row.dataset.catalogCategoryId;
+  }
+}
+
 function renderTechSkillRowView(row, data) {
   const d = enrichTechSkillItemClient(data || {});
+  applyTechCatalogRowDataset(row, d);
   storeTechSkillPayloadOnRow(row, d);
-  row.className = "skill-assessment-row skill-assessment-row--view";
+  const empty = isTechSkillPayloadEmpty(d);
+  const isCatalog = isSkillCatalogRow(row);
+  let rowClass = "skill-assessment-row skill-assessment-row--view";
+  if (isCatalog) rowClass += " skill-assessment-row--catalog";
+  if (isCatalog && empty) rowClass += " skill-assessment-row--unset";
+  row.className = rowClass;
+  const metaClass = isCatalog && empty ? "skill-list-item__meta skill-list-item--unset" : "skill-list-item__meta";
+  const metaText = isCatalog && empty ? "Noch nicht erfasst" : formatTechSkillListMeta(d);
+  const editLabel = isCatalog && empty ? "Erfassen" : "Bearbeiten";
+  const deleteBtn =
+    isCatalog && empty
+      ? ""
+      : '<button type="button" class="btn btn-sm btn-danger btn-outline sk-row-delete">Löschen</button>';
   row.innerHTML = `
-    <div class="skill-list-item">
+    <div class="skill-list-item${isCatalog && empty ? " skill-list-item--unset" : ""}">
       <div class="skill-list-item__main">
         <div class="skill-list-item__title">${esc(formatTechSkillListTitle(d))}</div>
-        <div class="skill-list-item__meta">${esc(formatTechSkillListMeta(d))}</div>
+        <div class="${metaClass}">${esc(metaText)}</div>
       </div>
       <div class="skill-list-item__actions">
-        <button type="button" class="btn btn-sm btn-outline sk-row-edit">Bearbeiten</button>
-        <button type="button" class="btn btn-sm btn-danger btn-outline sk-row-delete">Löschen</button>
+        <button type="button" class="btn btn-sm btn-outline sk-row-edit">${esc(editLabel)}</button>
+        ${deleteBtn}
       </div>
     </div>`;
 }
 
-function renderTechSkillRowEdit(row, data) {
+function renderTechSkillRowEdit(row, data, options = {}) {
   const d = data || {};
-  const catR = resolveCategorySelect(d.kategorie, d.kategorie_id);
+  const catalogFixed = options.catalogFixed ?? isSkillCatalogRow(row);
   const lvlR = resolveLevelSelect(d.level, d.levelCustom);
+  row.className = "skill-assessment-row skill-assessment-row--editing";
+  if (catalogFixed) {
+    const catId = skillItemCategoryId(d) || Number(row.dataset.catalogCategoryId);
+    const cat = getCategoryById(catId);
+    const safeName = cat?.name || d.kategorie || "";
+    row.dataset.catalogCategoryId = String(catId);
+    row.innerHTML = `
+    <div class="skill-assessment-grid">
+      <div class="span2"><label>Skill-Kategorie</label>
+        <div class="skill-catalog-label">${esc(safeName)}</div>
+        <input type="hidden" class="sk-kategorie" value="${escAttr(String(catId))}">
+      </div>
+      <div class="span2"><label>Weitere Details</label>
+        <input type="text" class="sk-technologie" placeholder="Weitere Details" value="${escAttr(d.technologie)}"></div>
+      <div><label>Level</label>
+        <select class="sk-level">${buildLevelOptions(d.level, d.levelCustom)}</select>
+        <input type="text" class="sk-level-other sk-sonstiges-input${lvlR.value === SELECT_SONSTIGES ? " visible" : ""}" placeholder="z.B. 3 oder eigene Level-Bezeichnung" value="${escAttr(lvlR.other)}">
+      </div>
+      <div class="span2"><label>Bemerkungen</label>
+        <textarea class="sk-bemerkung" style="min-height:45px">${esc(d.bemerkung || d.bemerkungen || "")}</textarea></div>
+    </div>
+    <div class="skill-assessment-row-actions">
+      <button type="button" class="btn btn-sm btn-primary sk-row-save">Übernehmen</button>
+      <button type="button" class="btn btn-sm btn-outline sk-row-cancel">Abbrechen</button>
+    </div>`;
+    bindTechSkillRowEditEvents(row);
+    const tech = row.querySelector(".sk-technologie");
+    if (cat && tech) tech.placeholder = cat.beispielTechnologien;
+    return;
+  }
+  const catR = resolveCategorySelect(d.kategorie, d.kategorie_id);
   row.className = "skill-assessment-row skill-assessment-row--editing";
   row.innerHTML = `
     <div class="skill-assessment-grid">
@@ -4342,13 +4719,33 @@ function renderTechSkillRowEdit(row, data) {
 function enterTechSkillRowEdit(row) {
   const data = readTechSkillPayloadFromRow(row);
   row.dataset.skillPayloadBackup = row.dataset.skillPayload || "";
-  renderTechSkillRowEdit(row, data);
+  renderTechSkillRowEdit(row, data, { catalogFixed: isSkillCatalogRow(row) });
   setSkillKind("tech");
   refreshSkillInfoPanel();
-  row.querySelector(".sk-kategorie")?.focus();
+  (row.querySelector(".sk-kategorie") || row.querySelector(".sk-level"))?.focus();
 }
 
 function cancelTechSkillRowEdit(row) {
+  if (isSkillCatalogRow(row)) {
+    let data = {};
+    try {
+      if (row.dataset.skillPayloadBackup) {
+        data = JSON.parse(row.dataset.skillPayloadBackup);
+      } else {
+        const catId = Number(row.dataset.catalogCategoryId);
+        const cat = getCategoryById(catId);
+        data = { kategorie_id: catId, kategorie: cat?.name || "" };
+      }
+    } catch (_e) {
+      const catId = Number(row.dataset.catalogCategoryId);
+      const cat = getCategoryById(catId);
+      data = { kategorie_id: catId, kategorie: cat?.name || "" };
+    }
+    renderTechSkillRowView(row, data);
+    delete row.dataset.skillPayloadBackup;
+    refreshSkillInfoPanel();
+    return;
+  }
   const hadBackup = row.dataset.skillPayloadBackup != null && row.dataset.skillPayloadBackup !== "";
   if (!hadBackup) {
     row.remove();
@@ -4367,6 +4764,14 @@ function cancelTechSkillRowEdit(row) {
 }
 
 function deleteTechSkillRow(row) {
+  if (isSkillCatalogRow(row)) {
+    const data = readTechSkillPayloadFromRow(row);
+    if (isTechSkillPayloadEmpty(data)) return;
+    const title = formatTechSkillListTitle(data);
+    if (!confirm(`Bewertung für „${title}“ wirklich entfernen?`)) return;
+    clearTechCatalogSkillRow(row);
+    return;
+  }
   const title = formatTechSkillListTitle(readTechSkillPayloadFromRow(row));
   if (!confirm(`Fachskill „${title}“ wirklich löschen?`)) return;
   row.remove();
@@ -4376,12 +4781,17 @@ function deleteTechSkillRow(row) {
 
 function addSkillAssessmentRow(data, options = {}) {
   const editing = options.editing !== false;
+  const catalogFixed = options.catalogFixed ?? isCatalogSkillData(data, "tech");
   const container = document.getElementById("sk_assessment_rows");
   const row = document.createElement("li");
   row.className = "skill-assessment-row";
+  if (catalogFixed) {
+    const id = skillItemCategoryId(data);
+    if (Number.isInteger(id) && id > 0) row.dataset.catalogCategoryId = String(id);
+  }
   if (editing) {
-    renderTechSkillRowEdit(row, data || {});
-    row.dataset.skillPayloadBackup = data ? JSON.stringify(data) : "";
+    renderTechSkillRowEdit(row, data || {}, { catalogFixed });
+    row.dataset.skillPayloadBackup = data && !isTechSkillPayloadEmpty(data) ? JSON.stringify(data) : "";
   } else {
     renderTechSkillRowView(row, data || {});
   }
@@ -4390,7 +4800,7 @@ function addSkillAssessmentRow(data, options = {}) {
   if (editing) {
     setSkillKind("tech");
     refreshSkillInfoPanel();
-    row.querySelector(".sk-kategorie")?.focus();
+    (row.querySelector(".sk-kategorie") || row.querySelector(".sk-level"))?.focus();
   }
   return row;
 }
@@ -4423,32 +4833,81 @@ function getSkillAssessmentData() {
 function setSkillAssessmentData(skills) {
   const container = document.getElementById("sk_assessment_rows");
   container.innerHTML = "";
-  enrichTechSkillList(skills).forEach((s) => addSkillAssessmentRow(s, { editing: false }));
+  buildTechSkillMatrixFromSaved(skills).forEach((s) =>
+    addSkillAssessmentRow(s, {
+      editing: false,
+      catalogFixed: isCatalogSkillData(s, "tech"),
+    })
+  );
   updateSkillAssessmentListEmptyState("tech");
   if (currentSkillKind === "tech") refreshSkillInfoPanel();
 }
 
 function renderSoftSkillRowView(row, data) {
   const d = enrichSoftSkillItemClient(data || {});
+  applySoftCatalogRowDataset(row, d);
   storeSoftSkillPayloadOnRow(row, d);
-  row.className = "skill-assessment-row skill-assessment-row--view";
+  const empty = isSoftSkillPayloadEmpty(d);
+  const isCatalog = isSkillCatalogRow(row);
+  let rowClass = "skill-assessment-row skill-assessment-row--view";
+  if (isCatalog) rowClass += " skill-assessment-row--catalog";
+  if (isCatalog && empty) rowClass += " skill-assessment-row--unset";
+  row.className = rowClass;
+  const metaClass = isCatalog && empty ? "skill-list-item__meta skill-list-item--unset" : "skill-list-item__meta";
+  const metaText = isCatalog && empty ? "Noch nicht erfasst" : formatSoftSkillListMeta(d);
+  const editLabel = isCatalog && empty ? "Erfassen" : "Bearbeiten";
+  const deleteBtn =
+    isCatalog && empty
+      ? ""
+      : '<button type="button" class="btn btn-sm btn-danger btn-outline ss-row-delete">Löschen</button>';
   row.innerHTML = `
-    <div class="skill-list-item">
+    <div class="skill-list-item${isCatalog && empty ? " skill-list-item--unset" : ""}">
       <div class="skill-list-item__main">
         <div class="skill-list-item__title">${esc(formatSoftSkillListTitle(d))}</div>
-        <div class="skill-list-item__meta">${esc(formatSoftSkillListMeta(d))}</div>
+        <div class="${metaClass}">${esc(metaText)}</div>
       </div>
       <div class="skill-list-item__actions">
-        <button type="button" class="btn btn-sm btn-outline ss-row-edit">Bearbeiten</button>
-        <button type="button" class="btn btn-sm btn-danger btn-outline ss-row-delete">Löschen</button>
+        <button type="button" class="btn btn-sm btn-outline ss-row-edit">${esc(editLabel)}</button>
+        ${deleteBtn}
       </div>
     </div>`;
 }
 
-function renderSoftSkillRowEdit(row, data) {
+function renderSoftSkillRowEdit(row, data, options = {}) {
   const d = data || {};
-  const catR = resolveSoftCategorySelect(d.kategorie, d.kategorie_id);
+  const catalogFixed = options.catalogFixed ?? isSkillCatalogRow(row);
   const lvlR = resolveSoftLevelSelect(d.level, d.levelCustom);
+  row.className = "skill-assessment-row skill-assessment-row--editing";
+  if (catalogFixed) {
+    const catId = skillItemCategoryId(d) || Number(row.dataset.catalogCategoryId);
+    const cat = getSoftCategoryById(catId);
+    const safeName = cat?.name || d.kategorie || "";
+    row.dataset.catalogCategoryId = String(catId);
+    row.innerHTML = `
+    <div class="skill-assessment-grid">
+      <div class="span2"><label>Soft Skill Kategorie</label>
+        <div class="skill-catalog-label">${esc(safeName)}</div>
+        <input type="hidden" class="ss-kategorie" value="${escAttr(String(catId))}">
+      </div>
+      <div class="span2"><label>Weitere Details</label>
+        <input type="text" class="ss-kompetenz" placeholder="Weitere Details" value="${escAttr(d.kompetenz)}"></div>
+      <div><label>Level</label>
+        <select class="ss-level">${buildSoftLevelOptions(d.level, d.levelCustom)}</select>
+        <input type="text" class="ss-level-other sk-sonstiges-input${lvlR.value === SELECT_SONSTIGES ? " visible" : ""}" placeholder="z.B. 3 oder eigene Level-Bezeichnung" value="${escAttr(lvlR.other)}">
+      </div>
+      <div class="span2"><label>Bemerkungen</label>
+        <textarea class="ss-bemerkung" style="min-height:45px">${esc(d.bemerkung || d.bemerkungen || "")}</textarea></div>
+    </div>
+    <div class="skill-assessment-row-actions">
+      <button type="button" class="btn btn-sm btn-primary ss-row-save">Übernehmen</button>
+      <button type="button" class="btn btn-sm btn-outline ss-row-cancel">Abbrechen</button>
+    </div>`;
+    bindSoftSkillRowEditEvents(row);
+    const komp = row.querySelector(".ss-kompetenz");
+    if (cat && komp) komp.placeholder = cat.beispielKompetenzen;
+    return;
+  }
+  const catR = resolveSoftCategorySelect(d.kategorie, d.kategorie_id);
   row.className = "skill-assessment-row skill-assessment-row--editing";
   row.innerHTML = `
     <div class="skill-assessment-grid">
@@ -4480,13 +4939,33 @@ function renderSoftSkillRowEdit(row, data) {
 function enterSoftSkillRowEdit(row) {
   const data = readSoftSkillPayloadFromRow(row);
   row.dataset.skillPayloadBackup = row.dataset.skillPayload || "";
-  renderSoftSkillRowEdit(row, data);
+  renderSoftSkillRowEdit(row, data, { catalogFixed: isSkillCatalogRow(row) });
   setSkillKind("soft");
   refreshSkillInfoPanel();
-  row.querySelector(".ss-kategorie")?.focus();
+  (row.querySelector(".ss-kategorie") || row.querySelector(".ss-level"))?.focus();
 }
 
 function cancelSoftSkillRowEdit(row) {
+  if (isSkillCatalogRow(row)) {
+    let data = {};
+    try {
+      if (row.dataset.skillPayloadBackup) {
+        data = JSON.parse(row.dataset.skillPayloadBackup);
+      } else {
+        const catId = Number(row.dataset.catalogCategoryId);
+        const cat = getSoftCategoryById(catId);
+        data = { kategorie_id: catId, kategorie: cat?.name || "" };
+      }
+    } catch (_e) {
+      const catId = Number(row.dataset.catalogCategoryId);
+      const cat = getSoftCategoryById(catId);
+      data = { kategorie_id: catId, kategorie: cat?.name || "" };
+    }
+    renderSoftSkillRowView(row, data);
+    delete row.dataset.skillPayloadBackup;
+    refreshSkillInfoPanel();
+    return;
+  }
   const hadBackup = row.dataset.skillPayloadBackup != null && row.dataset.skillPayloadBackup !== "";
   if (!hadBackup) {
     row.remove();
@@ -4505,6 +4984,14 @@ function cancelSoftSkillRowEdit(row) {
 }
 
 function deleteSoftSkillRow(row) {
+  if (isSkillCatalogRow(row)) {
+    const data = readSoftSkillPayloadFromRow(row);
+    if (isSoftSkillPayloadEmpty(data)) return;
+    const title = formatSoftSkillListTitle(data);
+    if (!confirm(`Bewertung für „${title}“ wirklich entfernen?`)) return;
+    clearSoftCatalogSkillRow(row);
+    return;
+  }
   const title = formatSoftSkillListTitle(readSoftSkillPayloadFromRow(row));
   if (!confirm(`Soft Skill „${title}“ wirklich löschen?`)) return;
   row.remove();
@@ -4514,12 +5001,18 @@ function deleteSoftSkillRow(row) {
 
 function addSoftSkillAssessmentRow(data, options = {}) {
   const editing = options.editing !== false;
+  const catalogFixed = options.catalogFixed ?? isCatalogSkillData(data, "soft");
   const container = document.getElementById("ss_assessment_rows");
   const row = document.createElement("li");
   row.className = "skill-assessment-row";
+  if (catalogFixed) {
+    const id = skillItemCategoryId(data);
+    if (Number.isInteger(id) && id > 0) row.dataset.catalogCategoryId = String(id);
+  }
   if (editing) {
-    renderSoftSkillRowEdit(row, data || {});
-    row.dataset.skillPayloadBackup = data ? JSON.stringify(data) : "";
+    renderSoftSkillRowEdit(row, data || {}, { catalogFixed });
+    row.dataset.skillPayloadBackup =
+      data && !isSoftSkillPayloadEmpty(data) ? JSON.stringify(data) : "";
   } else {
     renderSoftSkillRowView(row, data || {});
   }
@@ -4528,7 +5021,7 @@ function addSoftSkillAssessmentRow(data, options = {}) {
   if (editing) {
     setSkillKind("soft");
     refreshSkillInfoPanel();
-    row.querySelector(".ss-kategorie")?.focus();
+    (row.querySelector(".ss-kategorie") || row.querySelector(".ss-level"))?.focus();
   }
   return row;
 }
@@ -4559,7 +5052,12 @@ function getSoftSkillAssessmentData() {
 function setSoftSkillAssessmentData(softSkills) {
   const container = document.getElementById("ss_assessment_rows");
   container.innerHTML = "";
-  enrichSoftSkillList(softSkills).forEach((s) => addSoftSkillAssessmentRow(s, { editing: false }));
+  buildSoftSkillMatrixFromSaved(softSkills).forEach((s) =>
+    addSoftSkillAssessmentRow(s, {
+      editing: false,
+      catalogFixed: isCatalogSkillData(s, "soft"),
+    })
+  );
   updateSkillAssessmentListEmptyState("soft");
   if (currentSkillKind === "soft") refreshSkillInfoPanel();
 }
@@ -4758,6 +5256,7 @@ function renderSkillEmployeeNav(highlightId) {
 
 async function newSkillEmployee() {
   await ensureSkillEmployeeCatalogsLoaded();
+  await loadSkillCategoriesFromApi();
   resetSkillForm();
   document.getElementById("btnSkillCancel").style.display = "none";
   updateSkillDeleteButton();
@@ -4910,16 +5409,16 @@ function getAll(){
   ];
 }
 function renderOverview(){
-  const all=getAll();const fT=document.getElementById('ov_filterType').value;const fW=document.getElementById('ov_filterWS').value;
+  const all=getAll();const fT=document.getElementById('ov_filterType').value;
   const fS=document.getElementById('ov_filterSearch').value.toLowerCase();
   const showUnitCol = isSuperAdminViewAll();
   const head = document.getElementById('overviewHead');
   if (head) {
     head.innerHTML = showUnitCol
-      ? '<tr><th>Unit</th><th>Typ</th><th>WS</th><th>Kategorie/Name</th><th>Ampel</th><th>Detail</th><th>Aktionen</th></tr>'
-      : '<tr><th>Typ</th><th>WS</th><th>Kategorie/Name</th><th>Ampel</th><th>Detail</th><th>Aktionen</th></tr>';
+      ? '<tr><th>Unit</th><th>Typ</th><th>Kategorie/Name</th><th>Ampel</th><th>Detail</th><th>Aktionen</th></tr>'
+      : '<tr><th>Typ</th><th>Kategorie/Name</th><th>Ampel</th><th>Detail</th><th>Aktionen</th></tr>';
   }
-  const f=all.filter(e=>{if(fT&&e._type!==fT)return false;if(fW&&e.workstream!==fW)return false;
+  const f=all.filter(e=>{if(fT&&e._type!==fT)return false;
     if(fS&&!JSON.stringify(e).toLowerCase().includes(fS))return false;return true});
   const pc=all.filter(e=>e._type==='portfolio').length,oc=all.filter(e=>e._type==='organisation').length,skc=all.filter(e=>e._type==='skill').length;
   document.getElementById('overviewStats').innerHTML=`
@@ -4943,10 +5442,10 @@ function renderOverview(){
       d=esc(skillEmployeeCatalogSummary(e))+(nSkills||nSoft?` | ${skillOverviewDetail(e)}`:isLegacySkillEntry(e)?' | Legacy':'');
     }
     const unitCell = showUnitCol ? `<td><strong>${esc(e.unit || '–')}</strong></td>` : '';
-    return`<tr>${unitCell}<td>${tl[e._type]}</td><td>${esc(e.workstream||'–')}</td><td>${esc(k)}</td><td>${a}</td><td style="max-width:220px">${d}</td>
+    return`<tr>${unitCell}<td>${tl[e._type]}</td><td>${esc(k)}</td><td>${a}</td><td style="max-width:220px">${d}</td>
     <td style="white-space:nowrap"><button class="btn btn-sm btn-outline" onclick="editEntry('${e._type}','${e.id}')">✏️</button> <button class="btn btn-sm btn-danger" onclick="deleteEntry('${e._type}','${e.id}')">🗑️</button></td></tr>`}).join('');
 }
-['ov_filterType','ov_filterWS'].forEach(id=>document.getElementById(id).addEventListener('change',renderOverview));
+document.getElementById('ov_filterType').addEventListener('change',renderOverview);
 document.getElementById('ov_filterSearch').addEventListener('input',renderOverview);
 
 function switchSuperAdminViewForEntry(entry) {
@@ -4961,16 +5460,10 @@ function switchSuperAdminViewForEntry(entry) {
   renderOverview();
   renderExportStats();
   if (isAdmin) renderAdminUsers();
-  if (document.getElementById("page-gesamtfortschritt")?.classList.contains("active")) {
-    renderGesamtfortschrittDashboard();
-  }
-  if (document.getElementById("page-gesamtfortschritt-new")?.classList.contains("active") && typeof initGesamtfortschrittNew === "function") {
+  if (document.getElementById("page-gesamtfortschritt")?.classList.contains("active") && typeof initGesamtfortschrittNew === "function") {
     initGesamtfortschrittNew();
   }
-  if (document.getElementById("page-fortschritt")?.classList.contains("active")) {
-    renderFortschrittDashboard();
-  }
-  if (document.getElementById("page-fortschritt-new")?.classList.contains("active") && typeof initFortschrittNew === "function") {
+  if (document.getElementById("page-fortschritt")?.classList.contains("active") && typeof initFortschrittNew === "function") {
     initFortschrittNew();
   }
   if (isDemoDatenViewActive()) {
@@ -7094,9 +7587,10 @@ function refreshOpenSkillCategorySelects() {
   document
     .querySelectorAll("#sk_assessment_rows .skill-assessment-row--editing")
     .forEach((row) => {
+      if (isSkillCatalogRow(row)) return;
       const data = readTechSkillPayloadFromForm(row);
       const sel = row.querySelector(".sk-kategorie");
-      if (!sel) return;
+      if (!sel || sel.tagName !== "SELECT") return;
       sel.innerHTML = buildCategoryOptions(data.kategorie, data.kategorie_id);
       const resolved = resolveCategorySelect(data.kategorie, data.kategorie_id);
       sel.value = resolved.value;
@@ -7107,9 +7601,10 @@ function refreshOpenSkillCategorySelects() {
   document
     .querySelectorAll("#ss_assessment_rows .skill-assessment-row--editing")
     .forEach((row) => {
+      if (isSkillCatalogRow(row)) return;
       const data = readSoftSkillPayloadFromForm(row);
       const sel = row.querySelector(".ss-kategorie");
-      if (!sel) return;
+      if (!sel || sel.tagName !== "SELECT") return;
       sel.innerHTML = buildSoftCategoryOptions(data.kategorie, data.kategorie_id);
       const resolved = resolveSoftCategorySelect(data.kategorie, data.kategorie_id);
       sel.value = resolved.value;
@@ -7781,12 +8276,12 @@ document.getElementById("btnOrgGliederungAdd")?.addEventListener("click", () => 
   renderOrgGliederungCharts();
 });
 document.getElementById("org_gliederung_section")?.addEventListener("input", (e) => {
-  if (e.target.matches(".org-gli-hc, .org-gli-umsatz-teur, .org-gli-umsatz, .org-gli-other, .org-gli-beschreibung")) {
+  if (e.target.matches(".org-gli-hc, .org-gli-umsatz-teur, .org-gli-umsatz, .org-gli-bereich, .org-gli-beschreibung")) {
     renderOrgGliederungCharts();
   }
 });
 document.getElementById("org_gliederung_section")?.addEventListener("change", (e) => {
-  if (e.target.matches(".org-gli-select")) renderOrgGliederungCharts();
+  if (e.target.matches(".org-gli-bereich")) renderOrgGliederungCharts();
 });
 document.getElementById("btnOrgRolleAdd")?.addEventListener("click", () => {
   const section = document.getElementById("orgSectionRollen");

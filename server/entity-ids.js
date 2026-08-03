@@ -306,12 +306,14 @@ function employeeSkillRows(emp) {
       level: Number.isFinite(Number(s.level)) ? Number(s.level) : null,
       skillItemId: s.skillItemId || null,
       kategorie_id: s.kategorie_id != null ? Number(s.kategorie_id) : null,
+      bemerkungen: String(s.bemerkungen || s.bemerkung || "").trim(),
     })),
     softSkills: soft.map((s) => ({
       kind: "soft",
       kategorie: String(s.kategorie || "Sonstiges").trim(),
       level: Number.isFinite(Number(s.level)) ? Number(s.level) : null,
       kategorie_id: s.kategorie_id != null ? Number(s.kategorie_id) : null,
+      bemerkungen: String(s.bemerkungen || s.bemerkung || "").trim(),
     })),
   };
 }

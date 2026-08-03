@@ -43,6 +43,7 @@
     return (list || []).map((g) => ({
       ...g,
       id: g?.id && String(g.id).trim() ? String(g.id).trim() : newGuidelineId(),
+      jahre: g?.jahre && typeof g.jahre === "object" ? g.jahre : {},
     }));
   }
 
@@ -202,6 +203,11 @@
 
   function mapHeader(h) {
     const c = h.toLowerCase().trim();
+    // Pro-Jahr-Spalten: "Ziel 2026" / "Quartal 2026" -> {year, sub}
+    const zy = c.match(/^ziel\s+(\d{4})$/);
+    if (zy) return { year: zy[1], sub: "ziel" };
+    const qy = c.match(/^quartal\s+(\d{4})$/);
+    if (qy) return { year: qy[1], sub: "quartal" };
     if (c.startsWith("workstream")) return "workstream";
     if (c.startsWith("vorgabe")) return "kategorie";
     if (c.startsWith("zieljahr")) return "zieljahr";
@@ -234,9 +240,19 @@
         const head = rows[0].map(mapHeader);
         const out = [];
         for (let i = 1; i < rows.length; i++) {
-          const o = { id: newGuidelineId() };
+          const o = { id: newGuidelineId(), jahre: {} };
           rows[i].forEach((v, j) => {
-            if (head[j]) o[head[j]] = v.trim();
+            const hkey = head[j];
+            if (!hkey) return;
+            const val = v.trim();
+            if (typeof hkey === "object" && hkey.year) {
+              // Leere Zelle: keinen Phantom-Eintrag (mit fabriziertem Q1) anlegen.
+              if (!val) return;
+              if (!o.jahre[hkey.year]) o.jahre[hkey.year] = { ziel: "", quartal: "" };
+              o.jahre[hkey.year][hkey.sub] = val;
+            } else {
+              o[hkey] = val;
+            }
           });
           if (o.workstream && o.kategorie) {
             let p = (o.prioritaet || "").toUpperCase().trim();
@@ -275,6 +291,19 @@
     updateGuideStatusLabels();
   }
 
+  // Planjahre für die Pro-Jahr-Spalten: window._rcPlanningYears (Haupt-App) ->
+  // globaler YEARS (Backcasting-App) -> Fallback. Immer ein Array aus Zahlen.
+  function gpPlanningYears() {
+    var src = null;
+    if (Array.isArray(window._rcPlanningYears) && window._rcPlanningYears.length) {
+      src = window._rcPlanningYears;
+    } else if (typeof YEARS !== "undefined" && Array.isArray(YEARS) && YEARS.length) {
+      src = YEARS;
+    }
+    if (!src) src = [2026, 2027, 2028, 2029];
+    return src.map(function (y) { return Number(y); }).filter(function (y) { return !isNaN(y); });
+  }
+
   function guidelineEmpty() {
     return {
       id: newGuidelineId(),
@@ -290,6 +319,7 @@
       abhaengigkeiten: "",
       begruendung: "",
       auswirkungen: "",
+      jahre: {},
     };
   }
 
@@ -330,8 +360,20 @@
     if (document.getElementById("lpTable") && typeof renderLeitplanken === "function") {
       renderLeitplanken();
     }
-    const wsSel = document.getElementById("planWsTop")?.value || "";
-    if (wsSel && typeof updateWsHeader === "function") updateWsHeader(wsSel);
+  }
+
+  // Pro-Jahr-Zelle (Ziel-Text oder Quartal) einer Leitplanke setzen.
+  function gpYearInput(id, year, field, val) {
+    const i = findGuidelineIndex(id);
+    if (i < 0) return;
+    const y = String(year);
+    if (!guidelines[i].jahre || typeof guidelines[i].jahre !== "object") guidelines[i].jahre = {};
+    if (!guidelines[i].jahre[y]) guidelines[i].jahre[y] = { ziel: "", quartal: "Q1" };
+    guidelines[i].jahre[y][field] = val;
+    markGuidelinesDirty();
+    if (document.getElementById("lpTable") && typeof renderLeitplanken === "function") {
+      renderLeitplanken();
+    }
   }
 
   function renderGuidelineEditor() {
@@ -357,6 +399,22 @@
       ["auswirkungen", "text"],
     ];
 
+    const years = gpPlanningYears();
+
+    // Jahres-Spalten dynamisch in die (statische) Kopfzeile einfügen – vor "Aktion".
+    const headRow = document.querySelector("#gpTable thead tr");
+    if (headRow) {
+      headRow.querySelectorAll("th.gp-year-col").forEach((th) => th.remove());
+      const aktionTh = headRow.querySelector("th:last-child");
+      years.forEach((y) => {
+        const th = document.createElement("th");
+        th.className = "gp-year-col";
+        th.textContent = String(y);
+        if (aktionTh) headRow.insertBefore(th, aktionTh);
+        else headRow.appendChild(th);
+      });
+    }
+
     guidelines.forEach((g) => {
       if (wsF && (g.workstream || "") !== wsF) return;
       if (q) {
@@ -373,6 +431,9 @@
           g.abhaengigkeiten,
           g.begruendung,
           g.auswirkungen,
+          Object.values(g.jahre || {})
+            .map((cell) => (cell && cell.ziel) || "")
+            .join(" "),
         ]
           .map((x) => String(x ?? "").toLowerCase())
           .join(" | ");
@@ -399,17 +460,17 @@
             (v === "N" ? " selected" : "") +
             ">N</option></select></td>";
         } else if (t === "quartal") {
+          const qVal = v || "";
           h +=
             "<td><select onchange=\"gpInput('" +
             gid +
             "','" +
             k +
             "',this.value)\">" +
-            '<option value="">' +
-            "</option>" +
+            '<option value=""' + (qVal === "" ? " selected" : "") + "></option>" +
             ["Q1", "Q2", "Q3", "Q4"]
               .map(function (q) {
-                return "<option" + (v === q ? " selected" : "") + ">" + q + "</option>";
+                return "<option" + (qVal === q ? " selected" : "") + ">" + q + "</option>";
               })
               .join("") +
             "</select></td>";
@@ -442,6 +503,35 @@
               '\',this.value)"></td>';
           }
         }
+      });
+      // Pro-Jahr-Zellen: Ziel-Text + Quartal (Q1–Q4)
+      const jahre = g.jahre || {};
+      years.forEach((y) => {
+        const cell = jahre[y] || jahre[String(y)] || {};
+        const zielVal = cell.ziel || "";
+        const qVal = cell.quartal || "Q1";
+        h +=
+          '<td class="gp-year-cell">' +
+          "<textarea class=\"gp-year-ziel\" oninput=\"gpYearInput('" +
+          gid +
+          "'," +
+          y +
+          ",'ziel',this.value)\" placeholder=\"Ziel " +
+          y +
+          '">' +
+          esc(zielVal) +
+          "</textarea>" +
+          "<select class=\"gp-year-q\" onchange=\"gpYearInput('" +
+          gid +
+          "'," +
+          y +
+          ",'quartal',this.value)\">" +
+          ["Q1", "Q2", "Q3", "Q4"]
+            .map(function (qq) {
+              return "<option" + (qVal === qq ? " selected" : "") + ">" + qq + "</option>";
+            })
+            .join("") +
+          "</select></td>";
       });
       h +=
         '<td class="no-print" style="white-space:nowrap">' +
@@ -511,14 +601,27 @@
       "zielwert", "zieljahr", "zielquartal", "verantwortlich",
       "abhaengigkeiten", "begruendung", "auswirkungen",
     ];
-    const rows = [cols.join(";")];
+    const years = gpPlanningYears();
+    const header = cols.slice();
+    years.forEach(function (y) {
+      header.push("Ziel " + y);
+      header.push("Quartal " + y);
+    });
+    const csvCell = function (v) {
+      return '"' + String(v == null ? "" : v).replace(/"/g, '""') + '"';
+    };
+    const rows = [header.map(csvCell).join(";")];
     (guidelines || []).forEach(function (g) {
-      rows.push(
-        cols.map(function (c) {
-          var v = g && g[c] != null ? String(g[c]) : "";
-          return '"' + v.replace(/"/g, '""') + '"';
-        }).join(";")
-      );
+      const line = cols.map(function (c) {
+        return csvCell(g && g[c] != null ? g[c] : "");
+      });
+      const jahre = (g && g.jahre) || {};
+      years.forEach(function (y) {
+        const cell = jahre[y] || jahre[String(y)] || {};
+        line.push(csvCell(cell.ziel || ""));
+        line.push(csvCell(cell.quartal || ""));
+      });
+      rows.push(line.join(";"));
     });
     dlFile("leitplanken.csv", "\ufeff" + rows.join("\n"), "text/csv");
     bcToast("Leitplanken-CSV exportiert");
@@ -556,6 +659,7 @@
   window.dupGuidelineRow = dupGuidelineRow;
   window.delGuidelineRow = delGuidelineRow;
   window.gpInput = gpInput;
+  window.gpYearInput = gpYearInput;
   window.renderGuidelineEditor = renderGuidelineEditor;
   window.saveGuidelinesAndRefresh = saveGuidelinesAndRefresh;
   window.initAdminLeitplanken = initAdminLeitplanken;

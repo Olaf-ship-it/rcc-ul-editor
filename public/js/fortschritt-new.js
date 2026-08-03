@@ -1,6 +1,6 @@
 /**
- * Fortschritt NEW -- Phase-1-basierter IST/SOLL-Vergleich
- * Nutzt p1Year-Meilensteine aus "Planung NEW" (Phase 2)
+ * Fortschritt -- Phase-1-basierter IST/SOLL-Vergleich
+ * Nutzt p1Year-Meilensteine aus der Backcasting-Planung (Phase 2)
  */
 
 let _fnYear = new Date().getFullYear();
@@ -40,7 +40,7 @@ const FN_ORG_COLORS = [
 const FN_TOP_AREAS = [
   { key: "portfolio", label: "Portfolio", icon: "\ud83d\udcbc" },
   { key: "organisation", label: "Organisation", icon: "\ud83c\udfe2", sections: FN_ORG_SECTIONS },
-  { key: "mitarbeiter", label: "Mitarbeiter-Entwicklung", icon: "\ud83d\udc64" },
+  { key: "mitarbeiter", label: "Skills", icon: "\ud83d\udc64" },
 ];
 
 function fnEsc(s) {
@@ -180,7 +180,7 @@ function fnExpandItemToMilestoneCards(item, areaKey, planYear) {
       card.sollAnzahl = sollAnzahl;
       card.status = sollAnzahl != null ? fnStatusFromDeltaPct(rolleDeltaPct) : "neutral";
     } else if (areaKey === "mitarbeiter") {
-      var sollMinMa = fnParseNum(ms.ziel_skill_level_min);
+      var sollMinMa = fnResolvedSkillSollLevel(ms);
       var gapMa = item.istAvg != null && sollMinMa != null ? item.istAvg - sollMinMa : null;
       card.istAvg = item.istAvg;
       card.skillCount = item.skillCount;
@@ -352,6 +352,9 @@ function fnGroupPortfolioDisplayItems(items) {
         subcategory: item.subcategory,
         label: baseLabel,
         category: item.category,
+        phase1Id: item.phase1Id || null,
+        itemId: item.itemId || null,
+        entityRef: item.entityRef || null,
         istTeur: item.istTeur,
         sollTeur: item.sollTeur,
         status: item.status,
@@ -360,6 +363,10 @@ function fnGroupPortfolioDisplayItems(items) {
         allYearMilestones: item.allYearMilestones || null,
       };
     }
+    if (!map[k].phase1Id && item.phase1Id) map[k].phase1Id = item.phase1Id;
+    if (!map[k].itemId && item.itemId) map[k].itemId = item.itemId;
+    if (!map[k].entityRef && item.entityRef) map[k].entityRef = item.entityRef;
+    if (!map[k].category && item.category) map[k].category = item.category;
     (item.milestones || []).forEach(function (ms) {
       var row = Object.assign({}, ms);
       if (item.planYear) row._planYear = item.planYear;
@@ -377,53 +384,142 @@ function fnGroupPortfolioDisplayItems(items) {
   return Object.values(map);
 }
 
-function renderFnPortfolioCategoryChart(sectionDef, timeline) {
+function fnPortfolioProductColor(index) {
+  return FN_ORG_COLORS[index % FN_ORG_COLORS.length];
+}
+
+function fnPortfolioProductKey(item) {
+  if (!item) return "";
+  if (item.entityRef && item.entityRef.id) return "portfolio||" + item.entityRef.id;
+  if (item.phase1Id) return "portfolio||" + item.phase1Id;
+  if (item.itemId) return "portfolio||" + item.itemId;
+  var cat = item.category || "";
+  var sub = item.subcategory || item.label || "";
+  return "portfolio||" + cat + "||" + sub;
+}
+
+function fnPortfolioIstValuesFromByYear(data, item, years) {
+  var key = fnPortfolioProductKey(item);
+  var result = years.map(function () { return null; });
+  if (!data || !data.byYear) return result;
+  data.byYear.forEach(function (row) {
+    var yi = years.findIndex(function (y) { return Number(y) === Number(row.year); });
+    if (yi < 0) return;
+    ((row.p1Plan && row.p1Plan.portfolio) || []).forEach(function (pi) {
+      if (fnPortfolioProductKey(pi) === key && pi.istTeur != null && Number.isFinite(pi.istTeur)) {
+        result[yi] = pi.istTeur;
+      }
+    });
+  });
+  return result;
+}
+
+function fnPortfolioIstValuesForItem(item, years, lookup, data) {
+  var result = years.map(function () { return null; });
+  var key = fnPortfolioProductKey(item);
+  var row = lookup && lookup[key];
+  if (row && row.istByYear && row.istByYear.length) {
+    years.forEach(function (_y, yi) {
+      if (yi < row.istByYear.length && row.istByYear[yi] != null && Number.isFinite(row.istByYear[yi])) {
+        result[yi] = row.istByYear[yi];
+      }
+    });
+  }
+  fnPortfolioIstValuesFromByYear(data, item, years).forEach(function (v, yi) {
+    if (v != null) result[yi] = v;
+  });
+  if (!_fnYearAll && item.istTeur != null && Number.isFinite(item.istTeur)) {
+    years.forEach(function (y, yi) {
+      if (Number(y) === Number(_fnYear) && result[yi] == null) {
+        result[yi] = item.istTeur;
+      }
+    });
+  }
+  return result;
+}
+
+function fnBuildPortfolioProductSollByYear(item, years) {
+  return (years || []).map(function (year) {
+    var sum = 0;
+    var has = false;
+    fnItemMilestonesForChart(item).forEach(function (m) {
+      var y = Number(m._planYear != null ? m._planYear : m.jahr);
+      if (y !== Number(year)) return;
+      var v = fnParseNum(m.ziel_umsatz_teur);
+      if (v != null) {
+        sum += v;
+        has = true;
+      }
+    });
+    return has ? Math.round(sum * 10) / 10 : 0;
+  });
+}
+
+function fnBuildPortfolioCategoryTotals(displayItems, years, istLookup, data) {
+  var soll = years.map(function () { return 0; });
+  var ist = years.map(function () { return null; });
+  (displayItems || []).forEach(function (item) {
+    var s = fnBuildPortfolioProductSollByYear(item, years);
+    var i = fnPortfolioIstValuesForItem(item, years, istLookup, data);
+    s.forEach(function (v, yi) {
+      if (v > 0) soll[yi] += v;
+    });
+    i.forEach(function (v, yi) {
+      if (v != null && Number.isFinite(v)) {
+        ist[yi] = (ist[yi] || 0) + v;
+      }
+    });
+  });
+  soll = soll.map(function (v) { return v > 0 ? Math.round(v * 10) / 10 : 0; });
+  ist = ist.map(function (v) { return v != null ? Math.round(v * 10) / 10 : null; });
+  return { soll: soll, ist: ist };
+}
+
+function renderFnPortfolioCategoryChart(sectionDef, timeline, displayItems, data) {
   if (!timeline || !timeline.hasData) {
     return '<p class="p1f-category-dashboard__empty">Keine Plan-Meilensteine f\u00fcr diese Kategorie.</p>';
   }
   var color = FN_PORTFOLIO_COLORS[sectionDef.key] || "#334155";
   var years = timeline.years || [];
-  var quarters = timeline.quarters || [];
-  var sollByQuarter = timeline.sollByQuarter || [];
+  var istLookup = (data && data.portfolioProductIstByYear) || {};
+  var totals = fnBuildPortfolioCategoryTotals(displayItems, years, istLookup, data);
   var lastSoll = null;
   var lastSollYear = null;
-  for (var i = sollByQuarter.length - 1; i >= 0; i -= 1) {
-    if (sollByQuarter[i] != null) {
-      lastSoll = sollByQuarter[i];
-      lastSollYear = quarters[i] ? quarters[i].year : null;
+  for (var i = totals.soll.length - 1; i >= 0; i -= 1) {
+    if (totals.soll[i] > 0) {
+      lastSoll = totals.soll[i];
+      lastSollYear = years[i] || null;
       break;
-    }
-  }
-  if (lastSoll == null) {
-    for (var j = (timeline.soll || []).length - 1; j >= 0; j -= 1) {
-      if (timeline.soll[j] != null) {
-        lastSoll = timeline.soll[j];
-        lastSollYear = years[j] || null;
-        break;
-      }
     }
   }
   var delta = lastSoll != null && timeline.istStart != null ? timeline.istStart - lastSoll : null;
   var chartHtml = "";
-  if (typeof renderFortschrittQuarterChartSvg === "function") {
-    chartHtml = renderFortschrittQuarterChartSvg(
+  if (typeof renderFortschrittSollIstYearChartSvg === "function") {
+    chartHtml = renderFortschrittSollIstYearChartSvg(
       {
-        label: sectionDef.label + " \u00b7 Umsatz (TEUR)",
+        label: sectionDef.label + " \u00b7 SOLL vs. IST (TEUR)",
         unit: timeline.unit || "TEUR",
         yAxisLabel: timeline.yAxisLabel || "Umsatz (TEUR)",
-        xAxisLabel: timeline.xAxisLabel || "Zeit",
+        xAxisLabel: timeline.xAxisLabel || "Jahr",
       },
-      quarters,
-      [{ color: color, soll: sollByQuarter, ist: timeline.istByQuarter || [] }]
+      years,
+      totals.soll,
+      totals.ist,
+      { sollColor: color }
     );
   }
+  var legend = "";
+  (displayItems || []).forEach(function (item, index) {
+    legend += '<span class="p1f-category-dashboard__legend-item">';
+    legend += '<span class="p1f-category-dashboard__swatch" style="background:' + fnPortfolioProductColor(index) + '"></span>';
+    legend += fnEsc(item.label || item.subcategory);
+    legend += "</span>";
+  });
   var html = '<div class="p1f-category-dashboard">';
-  html += '<h4 class="p1f-category-dashboard__title">' + fnEsc(sectionDef.label) + ' \u00b7 Umsatz \u00fcber alle Jahre</h4>';
+  html += '<h4 class="p1f-category-dashboard__title">' + fnEsc(sectionDef.label) + ' \u00b7 SOLL vs. IST je Jahr</h4>';
+  html += '<p class="p1f-category-dashboard__hint">Pro Jahr zwei S\u00e4ulen: SOLL (Plan) und IST (Jahresabschluss).</p>';
   html += '<div class="p1f-category-dashboard__wrap">' + chartHtml + "</div>";
-  html += '<div class="p1f-category-dashboard__legend">';
-  html += '<span class="p1f-category-dashboard__legend-item"><span class="p1f-category-dashboard__swatch p1f-category-dashboard__swatch--soll" style="background:' + color + '"></span>SOLL Planung NEW</span>';
-  html += '<span class="p1f-category-dashboard__legend-item"><span class="p1f-category-dashboard__swatch p1f-category-dashboard__swatch--ist" style="color:' + color + ';border-color:' + color + '"></span>IST projiziert</span>';
-  html += '</div>';
+  if (legend) html += '<div class="p1f-category-dashboard__legend p1f-category-dashboard__legend--products">' + legend + "</div>";
   html += '<div class="p1f-category-dashboard__kpis">';
   html += '<span>IST heute <b>' + fnFormatNum(timeline.istStart) + ' TEUR</b></span>';
   if (lastSoll != null) {
@@ -458,23 +554,28 @@ function renderFnPortfolioItemSubcat(item, sectionDef, data) {
     if (item.delta != null) html += " \u00b7 \u0394 " + (item.delta > 0 ? "+" : "") + fnFormatNum(item.delta) + " TEUR";
     html += "</div>";
   }
-  var itemSeries = fnBuildItemQuarterSeries(item, fnPlanningYearsFromData(data));
-  if (itemSeries.hasData) {
+  var years = fnPlanningYearsFromData(data);
+  var istLookup = (data && data.portfolioProductIstByYear) || {};
+  var sollByYear = fnBuildPortfolioProductSollByYear(item, years);
+  var istByYear = fnPortfolioIstValuesForItem(item, years, istLookup, data);
+  var hasYearCompare = sollByYear.some(function (v) { return v > 0; })
+    || istByYear.some(function (v) { return v != null && Number.isFinite(v); });
+  if (hasYearCompare && typeof renderFortschrittSollIstYearChartSvg === "function") {
     var itemColor = (sectionDef && FN_PORTFOLIO_COLORS[sectionDef.key]) || "#64748b";
-    var itemChartHtml = "";
-    if (typeof renderFortschrittQuarterChartSvg === "function") {
-      itemChartHtml = renderFortschrittQuarterChartSvg(
-        {
-          label: (item.label || item.subcategory) + " \u00b7 Umsatz (TEUR)",
-          unit: "TEUR",
-          yAxisLabel: "Umsatz (TEUR)",
-          xAxisLabel: "Zeit",
-        },
-        itemSeries.quarters,
-        [{ color: itemColor, soll: itemSeries.sollByQuarter, ist: [] }]
-      );
-    }
-    html += '<div class="p1f-item-chart">' + itemChartHtml + "</div>";
+    html += '<div class="p1f-item-chart">';
+    html += renderFortschrittSollIstYearChartSvg(
+      {
+        label: (item.label || item.subcategory) + " \u00b7 SOLL vs. IST (TEUR)",
+        unit: "TEUR",
+        yAxisLabel: "Umsatz (TEUR)",
+        xAxisLabel: "Jahr",
+      },
+      years,
+      sollByYear,
+      istByYear,
+      { sollColor: itemColor }
+    );
+    html += "</div>";
   }
   var chartMilestones = fnSortMilestonesChronologically(fnItemMilestonesForChart(item));
   if (chartMilestones.length) {
@@ -600,13 +701,13 @@ function renderFnGliederungCard(item) {
   if (item.planYear) html += '<span class="p1f-card__year">' + fnEsc(item.planYear) + '</span>';
   html += '</div>';
   html += '<div class="p1f-card__values">';
-  if (item.sollHc != null) {
-    html += '<span>IST <b>' + fnFormatNum(item.istHc) + ' HC</b></span>';
-    html += '<span>SOLL <b>' + fnFormatNum(item.sollHc) + ' HC</b></span>';
+  if (item.istHc != null || item.sollHc != null) {
+    if (item.istHc != null) html += '<span>IST <b>' + fnFormatNum(item.istHc) + ' HC</b></span>';
+    if (item.sollHc != null) html += '<span>SOLL <b>' + fnFormatNum(item.sollHc) + ' HC</b></span>';
   }
-  if (item.sollTeur != null) {
-    html += '<span>IST <b>' + fnFormatNum(item.istTeur) + ' TEUR</b></span>';
-    html += '<span>SOLL <b>' + fnFormatNum(item.sollTeur) + ' TEUR</b></span>';
+  if (item.istTeur != null || item.sollTeur != null) {
+    if (item.istTeur != null) html += '<span>IST <b>' + fnFormatNum(item.istTeur) + ' TEUR</b></span>';
+    if (item.sollTeur != null) html += '<span>SOLL <b>' + fnFormatNum(item.sollTeur) + ' TEUR</b></span>';
   }
   html += '</div>';
   if (item.sollHc != null) html += renderFnBar(item.istHc, item.sollHc, item.status);
@@ -713,12 +814,77 @@ function fnOrgTimelineSpec(timelineKey) {
 
 function fnOrgSectionChartSpecs(sectionKey) {
   if (sectionKey === "gliederungen") {
-    return [
-      { timelineKey: "gliederungen", title: "Headcount" },
-      { timelineKey: "gliederungenUmsatz", title: "Umsatz (TEUR)" },
-    ];
+    return [{ timelineKey: "gliederungenCombined", combined: true }];
   }
   return [{ timelineKey: sectionKey, title: null }];
+}
+
+function fnMergeGliederungenTimelines(hcTimeline, teurTimeline) {
+  var years = (hcTimeline && hcTimeline.years) || (teurTimeline && teurTimeline.years) || [];
+  if (!years.length) years = window._rcPlanningYears || [2026, 2027, 2028, 2029, 2030];
+  var keyMap = {};
+  var milestoneCount = 0;
+
+  function ensureSeg(seg) {
+    var k = seg.key || seg.label || "?";
+    if (!keyMap[k]) {
+      keyMap[k] = {
+        key: k,
+        label: seg.label || k,
+        hcValues: years.map(function () { return null; }),
+        teurValues: years.map(function () { return null; }),
+        istHc: null,
+        istTeur: null,
+      };
+    }
+    return keyMap[k];
+  }
+
+  function absorb(timeline, kind) {
+    if (!timeline) return;
+    milestoneCount = Math.max(milestoneCount, timeline.milestoneCount || 0);
+    (timeline.segments || []).forEach(function (seg) {
+      var row = ensureSeg(seg);
+      if (seg.label) row.label = seg.label;
+      (seg.values || []).forEach(function (v, yi) {
+        if (v == null || v <= 0) return;
+        if (kind === "hc") row.hcValues[yi] = v;
+        else row.teurValues[yi] = v;
+      });
+      if (kind === "hc" && seg.istValue != null && seg.istValue > 0) row.istHc = seg.istValue;
+      if (kind === "teur" && seg.istValue != null && seg.istValue > 0) row.istTeur = seg.istValue;
+    });
+  }
+
+  absorb(hcTimeline, "hc");
+  absorb(teurTimeline, "teur");
+
+  var segments = Object.keys(keyMap).map(function (k) { return keyMap[k]; }).filter(function (seg) {
+    return seg.hcValues.some(function (v) { return v != null && v > 0; })
+      || seg.teurValues.some(function (v) { return v != null && v > 0; })
+      || (seg.istHc != null && seg.istHc > 0)
+      || (seg.istTeur != null && seg.istTeur > 0);
+  }).sort(function (a, b) { return String(a.label).localeCompare(String(b.label), "de"); });
+
+  var hasSoll = segments.some(function (seg) {
+    return seg.hcValues.some(function (v) { return v != null && v > 0; })
+      || seg.teurValues.some(function (v) { return v != null && v > 0; });
+  });
+  var istFallback = !hasSoll && milestoneCount > 0 && segments.length > 0;
+  var hasIstReference = segments.some(function (seg) {
+    return (seg.istHc != null && seg.istHc > 0) || (seg.istTeur != null && seg.istTeur > 0);
+  });
+
+  return {
+    key: "gliederungenCombined",
+    years: years.slice(),
+    segments: segments,
+    milestoneCount: milestoneCount,
+    hasData: hasSoll || istFallback,
+    hasIstReference: hasIstReference,
+    istFallback: istFallback,
+    combined: true,
+  };
 }
 
 function fnBuildOrgTimelineFromByYear(data, timelineKey) {
@@ -731,17 +897,23 @@ function fnBuildOrgTimelineFromByYear(data, timelineKey) {
 
   function absorb(items, yearIdx) {
     (items || []).forEach(function (item) {
-      var val = item[spec.valueField];
-      if (val == null || val <= 0) {
-        val = item[spec.istValueField];
-        if (val != null && val > 0) usedIstFallback = true;
-      }
-      if (val == null || val <= 0) return;
       var label = item.label || item.subcategory || "?";
       var key = (item.entityRef && item.entityRef.id) || label;
       if (!segmentMap[key]) {
-        segmentMap[key] = { key: key, label: label, values: years.map(function () { return null; }) };
+        segmentMap[key] = { key: key, label: label, values: years.map(function () { return null; }), istValue: null };
       }
+      var istVal = item[spec.istValueField];
+      if (istVal != null && istVal > 0) {
+        segmentMap[key].istValue = istVal;
+      }
+      var val = item[spec.valueField];
+      if (val == null || val <= 0) {
+        if (segmentMap[key].istValue != null) {
+          val = segmentMap[key].istValue;
+          if (val != null && val > 0) usedIstFallback = true;
+        }
+      }
+      if (val == null || val <= 0) return;
       var cur = segmentMap[key].values[yearIdx];
       if (spec.combine === "sum") {
         segmentMap[key].values[yearIdx] = (cur || 0) + val;
@@ -778,7 +950,10 @@ function fnBuildOrgTimelineFromByYear(data, timelineKey) {
     totals: totals,
     milestoneCount: milestoneCount,
     hasData: totals.some(function (t) { return t > 0; }),
-    istFallback: usedIstFallback,
+    hasIstReference: segments.some(function (seg) { return seg.istValue != null && seg.istValue > 0; }),
+    istFallback: usedIstFallback && !segments.some(function (seg) {
+      return seg.values.some(function (v, yi) { return v != null && v > 0 && seg.istValue != null && seg.istValue !== v; });
+    }),
     unit: spec.unit,
     yAxisLabel: usedIstFallback ? spec.istYAxisLabel : spec.yAxisLabel,
     xAxisLabel: "Jahr",
@@ -786,6 +961,11 @@ function fnBuildOrgTimelineFromByYear(data, timelineKey) {
 }
 
 function fnResolveOrgSectionTimeline(data, timelineKey) {
+  if (timelineKey === "gliederungenCombined") {
+    var hc = fnResolveOrgSectionTimeline(data, "gliederungen");
+    var teur = fnResolveOrgSectionTimeline(data, "gliederungenUmsatz");
+    return fnMergeGliederungenTimelines(hc, teur);
+  }
   var apiTimeline = data && data.orgSectionTimelines ? data.orgSectionTimelines[timelineKey] : null;
   if (apiTimeline && apiTimeline.hasData) return apiTimeline;
   var built = fnBuildOrgTimelineFromByYear(data || {}, timelineKey);
@@ -795,6 +975,10 @@ function fnResolveOrgSectionTimeline(data, timelineKey) {
 
 function renderFnOrgSectionCharts(sectionDef, data) {
   var specs = fnOrgSectionChartSpecs(sectionDef.key);
+  if (specs.length === 1 && specs[0].combined) {
+    var combined = fnResolveOrgSectionTimeline(data, specs[0].timelineKey);
+    return renderFnOrgCombinedChart(sectionDef, combined);
+  }
   var rows = specs.map(function (chartSpec) {
     return {
       chartSpec: chartSpec,
@@ -816,6 +1000,187 @@ function renderFnOrgSectionCharts(sectionDef, data) {
     .join("");
 }
 
+function fnCombinedTotalIst(segments, metric) {
+  var sum = 0;
+  var has = false;
+  (segments || []).forEach(function (seg) {
+    var v = metric === "hc" ? seg.istHc : seg.istTeur;
+    if (v != null && Number.isFinite(v) && v > 0) {
+      sum += v;
+      has = true;
+    }
+  });
+  return has ? Math.round(sum * 10) / 10 : null;
+}
+
+function fnCombinedSegmentsToStacked(segments, metric) {
+  return (segments || []).map(function (seg, i) {
+    var values = metric === "hc" ? seg.hcValues : seg.teurValues;
+    return {
+      label: seg.label,
+      color: FN_ORG_COLORS[i % FN_ORG_COLORS.length],
+      values: (values || []).map(function (v) { return v != null && v > 0 ? v : 0; }),
+    };
+  }).filter(function (seg) {
+    return seg.values.some(function (v) { return v > 0; });
+  });
+}
+
+function fnCombinedSegmentsToLineSeries(segments, years, metric, showIst) {
+  return (segments || []).map(function (seg, i) {
+    var raw = metric === "hc" ? seg.hcValues : seg.teurValues;
+    var istVal = metric === "hc" ? seg.istHc : seg.istTeur;
+    var soll = (raw || []).map(function (v) { return v != null && v > 0 ? v : null; });
+    var ist = showIst && istVal != null && istVal > 0
+      ? years.map(function () { return istVal; })
+      : years.map(function () { return null; });
+    return {
+      label: seg.label,
+      color: FN_ORG_COLORS[i % FN_ORG_COLORS.length],
+      soll: soll,
+      ist: ist,
+    };
+  }).filter(function (row) {
+    return row.soll.some(function (v) { return v != null; })
+      || row.ist.some(function (v) { return v != null; });
+  });
+}
+
+function fnOrgSegmentLegendHtml(segments) {
+  var legend = "";
+  (segments || []).forEach(function (seg, i) {
+    var color = FN_ORG_COLORS[i % FN_ORG_COLORS.length];
+    legend += '<span class="p1f-org-chart__legend-item">';
+    legend += '<span class="p1f-org-chart__swatch" style="background:' + color + '"></span>';
+    legend += fnEsc(seg.label);
+    legend += "</span>";
+  });
+  return legend;
+}
+
+function fnBindOrgChartViewToggles() {
+  document.querySelectorAll(".p1f-org-chart--combined[data-org-chart]").forEach(function (root) {
+    if (root.dataset.bound === "1") return;
+    root.dataset.bound = "1";
+    root.querySelectorAll(".p1f-org-chart__view-btn").forEach(function (btn) {
+      btn.addEventListener("click", function () {
+        var view = btn.getAttribute("data-view");
+        root.querySelectorAll(".p1f-org-chart__view-btn").forEach(function (b) {
+          b.classList.toggle("is-active", b === btn);
+          b.setAttribute("aria-selected", b === btn ? "true" : "false");
+        });
+        root.querySelectorAll(".p1f-org-chart__panel").forEach(function (panel) {
+          var active = panel.getAttribute("data-panel") === view;
+          panel.classList.toggle("is-active", active);
+          panel.hidden = !active;
+        });
+        var noteBars = root.querySelector(".p1f-org-chart__note--bars");
+        var noteLines = root.querySelector(".p1f-org-chart__note--lines");
+        if (noteBars) noteBars.hidden = view !== "bars";
+        if (noteLines) noteLines.hidden = view !== "lines";
+      });
+    });
+  });
+}
+
+function renderFnOrgCombinedChart(sectionDef, timeline) {
+  if (!timeline || !timeline.hasData) {
+    return '<p class="p1f-org-chart__empty">Keine Plan-Meilensteine f\u00fcr ' + fnEsc(sectionDef.label) + ".</p>";
+  }
+  var years = timeline.years || [];
+  var segments = timeline.segments || [];
+  var showIst = timeline.hasIstReference && !timeline.istFallback;
+  var hcStacked = fnCombinedSegmentsToStacked(segments, "hc");
+  var teurStacked = fnCombinedSegmentsToStacked(segments, "teur");
+  var hcLines = fnCombinedSegmentsToLineSeries(segments, years, "hc", showIst);
+  var teurLines = fnCombinedSegmentsToLineSeries(segments, years, "teur", showIst);
+
+  function stackedBlock(title, unit, yLabel, stackedSegs, metric) {
+    if (!stackedSegs.length || typeof renderFortschrittStackedYearChartSvg !== "function") {
+      return '<p class="p1f-org-chart__empty">' + fnEsc(title) + ": keine Werte.</p>";
+    }
+    var istTotal = showIst ? fnCombinedTotalIst(segments, metric) : null;
+    return (
+      '<div class="p1f-org-chart__metric">' +
+      '<h5 class="p1f-org-chart__metric-title">' + fnEsc(title) + "</h5>" +
+      '<div class="p1f-org-chart__wrap">' +
+      renderFortschrittStackedYearChartSvg(
+        {
+          label: title,
+          unit: unit,
+          yAxisLabel: yLabel,
+          xAxisLabel: "Jahr",
+          showIstMarkers: false,
+          showIstTotal: istTotal != null,
+          istTotalValue: istTotal,
+        },
+        years,
+        stackedSegs
+      ) +
+      "</div></div>"
+    );
+  }
+
+  function lineBlock(title, unit, series) {
+    if (!series.length || typeof renderFortschrittTimelineSvg !== "function") {
+      return '<p class="p1f-org-chart__empty">' + fnEsc(title) + ": keine Werte.</p>";
+    }
+    return (
+      '<div class="p1f-org-chart__metric">' +
+      '<h5 class="p1f-org-chart__metric-title">' + fnEsc(title) + "</h5>" +
+      '<div class="p1f-org-chart__wrap p1f-org-chart__wrap--wide">' +
+      renderFortschrittTimelineSvg({ label: title, unit: unit }, years, series) +
+      "</div></div>"
+    );
+  }
+
+  var barsPanel =
+    '<div class="p1f-org-chart__metrics">' +
+    stackedBlock("Headcount (SOLL je Bereich)", "HC", "Headcount (SOLL)", hcStacked, "hc") +
+    stackedBlock("Umsatz (SOLL je Bereich)", "TEUR", "Umsatz (TEUR)", teurStacked, "teur") +
+    "</div>";
+
+  var linesPanel =
+    '<div class="p1f-org-chart__metrics">' +
+    lineBlock("Headcount \u00b7 Entwicklung", "HC", hcLines) +
+    lineBlock("Umsatz \u00b7 Entwicklung", "TEUR", teurLines) +
+    "</div>";
+
+  if (showIst && typeof renderFortschrittTimelineStyleLegend === "function") {
+    linesPanel +=
+      '<div class="p1f-org-chart__line-legend">' +
+      renderFortschrittTimelineStyleLegend(FN_ORG_COLORS[0], "p1f-org-chart__line-legend-inner") +
+      "</div>";
+  }
+
+  var legend = fnOrgSegmentLegendHtml(segments);
+  if (showIst) {
+    legend += '<span class="p1f-org-chart__legend-item p1f-org-chart__legend-item--ist">';
+    legend += '<span class="p1f-org-chart__swatch p1f-org-chart__swatch--ist"></span>';
+    legend += "IST gesamt (Jahresabschluss)";
+    legend += "</span>";
+  }
+
+  var html = '<div class="p1f-org-chart p1f-org-chart--combined" data-org-chart="gliederungen">';
+  html += '<div class="p1f-org-chart__headrow">';
+  html += '<h4 class="p1f-org-chart__title">' + fnEsc(sectionDef.label) + " \u00fcber alle Jahre</h4>";
+  html += '<div class="p1f-org-chart__view-toggle" role="tablist" aria-label="Diagrammansicht">';
+  html += '<button type="button" class="p1f-org-chart__view-btn is-active" data-view="bars" role="tab" aria-selected="true">S\u00e4ulen</button>';
+  html += '<button type="button" class="p1f-org-chart__view-btn" data-view="lines" role="tab" aria-selected="false">Entwicklung</button>';
+  html += "</div></div>";
+  if (timeline.istFallback) {
+    html += '<p class="p1f-org-chart__note">Keine SOLL-Werte in Meilensteinen \u2013 Anzeige aus Phase-1-IST.</p>';
+  } else {
+    html += '<p class="p1f-org-chart__note p1f-org-chart__note--bars">Gestapelte S\u00e4ulen = SOLL je Bereich. Eine gestrichelte Linie = <strong>IST gesamt</strong> (Summe aller Bereiche). Je Bereich \u2192 Ansicht Entwicklung.</p>';
+    html += '<p class="p1f-org-chart__note p1f-org-chart__note--lines" hidden>Je Bereich eine Linie (SOLL). Gestrichelt = IST je Bereich.</p>';
+  }
+  html += '<div class="p1f-org-chart__panel is-active" data-panel="bars">' + barsPanel + "</div>";
+  html += '<div class="p1f-org-chart__panel" data-panel="lines" hidden>' + linesPanel + "</div>";
+  if (legend) html += '<div class="p1f-org-chart__legend p1f-org-chart__legend--segments">' + legend + "</div>";
+  html += "</div>";
+  return html;
+}
+
 function renderFnOrgSectionChart(sectionDef, timeline) {
   if (!timeline || !timeline.hasData) {
     return '<p class="p1f-org-chart__empty">Keine Plan-Meilensteine f\u00fcr ' + fnEsc(sectionDef.label) + ".</p>";
@@ -829,6 +1194,7 @@ function renderFnOrgSectionChart(sectionDef, timeline) {
         unit: timeline.unit || "",
         yAxisLabel: timeline.yAxisLabel || "",
         xAxisLabel: timeline.xAxisLabel || "Jahr",
+        showIstMarkers: false,
       },
       colored.years || [],
       colored.segments || []
@@ -841,10 +1207,18 @@ function renderFnOrgSectionChart(sectionDef, timeline) {
     legend += fnEsc(seg.label);
     legend += "</span>";
   });
+  if (timeline.hasIstReference && !timeline.istFallback) {
+    legend += '<span class="p1f-org-chart__legend-item p1f-org-chart__legend-item--ist">';
+    legend += '<span class="p1f-org-chart__swatch p1f-org-chart__swatch--ist"></span>';
+    legend += "IST \u2192 Tabelle";
+    legend += "</span>";
+  }
   var html = '<div class="p1f-org-chart">';
   html += '<h4 class="p1f-org-chart__title">' + fnEsc(sectionDef.label) + " \u00fcber alle Jahre</h4>";
   if (timeline.istFallback) {
     html += '<p class="p1f-org-chart__note">Keine SOLL-Werte in Meilensteinen \u2013 Anzeige aus Phase-1-IST (konstant \u00fcber alle Jahre).</p>';
+  } else if (timeline.hasIstReference) {
+    html += '<p class="p1f-org-chart__note">S\u00e4ulen = SOLL aus Planung. IST-Vergleich in der Tabelle unten.</p>';
   }
   html += '<div class="p1f-org-chart__wrap">' + chartHtml + "</div>";
   if (legend) html += '<div class="p1f-org-chart__legend">' + legend + "</div>";
@@ -925,18 +1299,118 @@ function fnMaSkillPlanRowLabel(ms) {
   return kat || detail || "?";
 }
 
+function fnGetFortschrittSkillCatalog(kind) {
+  var cats =
+    kind === "soft"
+      ? typeof SOFT_SKILL_CATEGORIES !== "undefined"
+        ? SOFT_SKILL_CATEGORIES
+        : []
+      : typeof SKILL_CATEGORIES !== "undefined"
+        ? SKILL_CATEGORIES
+        : [];
+  return (cats || [])
+    .map(function (c) {
+      return { id: Number(c.id), name: String(c.name || "").trim() };
+    })
+    .filter(function (c) {
+      return Number.isInteger(c.id) && c.id > 0 && c.name;
+    });
+}
+
+function fnCatalogSkillKey(kind, catId) {
+  return (kind === "soft" ? "soft" : "tech") + ":id:" + catId;
+}
+
+function fnResolveMilestoneCatalogKey(m, kind) {
+  if (!m || m.skillPlanKind !== kind) return null;
+  if (m.kategorie_id != null) {
+    var id = Number(m.kategorie_id);
+    if (Number.isInteger(id) && id > 0) return fnCatalogSkillKey(kind, id);
+  }
+  var kat = String(m.kategorie || "").trim();
+  if (!kat) return null;
+  var catalog = fnGetFortschrittSkillCatalog(kind);
+  var cat = catalog.find(function (c) {
+    return c.name === kat;
+  });
+  return cat ? fnCatalogSkillKey(kind, cat.id) : null;
+}
+
+function fnSortHeatmapRows(rows, kind) {
+  var catalog = fnGetFortschrittSkillCatalog(kind);
+  var order = {};
+  catalog.forEach(function (cat, index) {
+    order[fnCatalogSkillKey(kind, cat.id)] = index;
+  });
+  return (rows || []).slice().sort(function (a, b) {
+    var ao = Object.prototype.hasOwnProperty.call(order, a.key) ? order[a.key] : 10000;
+    var bo = Object.prototype.hasOwnProperty.call(order, b.key) ? order[b.key] : 10000;
+    if (ao !== bo) return ao - bo;
+    return String(a.label || "").localeCompare(String(b.label || ""), "de");
+  });
+}
+
+function fnFindIstLevelForCatalog(employeeRow, kind, cat) {
+  if (!employeeRow || !cat) return null;
+  if (kind === "soft") {
+    var matchSoft = (employeeRow.softSkills || []).find(function (s) {
+      if (s.kategorie_id != null) return Number(s.kategorie_id) === cat.id;
+      return String(s.kategorie || "").trim() === cat.name;
+    });
+    return matchSoft && matchSoft.level != null ? Number(matchSoft.level) : null;
+  }
+  var matchTech = (employeeRow.skills || []).find(function (s) {
+    if (s.kategorie_id != null) return Number(s.kategorie_id) === cat.id;
+    return String(s.kategorie || "").trim() === cat.name;
+  });
+  return matchTech && matchTech.level != null ? Number(matchTech.level) : null;
+}
+
+function fnCountHeatmapPlannedRows(heatmaps) {
+  var n = 0;
+  ["tech", "soft"].forEach(function (kind) {
+    var hm = heatmaps && heatmaps[kind];
+    if (!hm || !hm.rows) return;
+    hm.rows.forEach(function (_row, ri) {
+      var cells = (hm.cells && hm.cells[ri]) || [];
+      if (cells.some(function (c) { return c && c.level != null; })) n += 1;
+    });
+  });
+  return n;
+}
+
+function fnIsSkillLevelExplicit(ms) {
+  if (!ms) return false;
+  if (ms.skill_level_explicit === true) return true;
+  var n = Number(ms.ziel_skill_level_min);
+  return Number.isFinite(n) && n >= 2 && n <= 5;
+}
+
+function fnResolvedSkillSollLevel(ms) {
+  if (!fnIsSkillLevelExplicit(ms)) return null;
+  var n = fnParseNum(ms.ziel_skill_level_min);
+  return n != null && Number.isFinite(n) ? n : null;
+}
+
 function fnBuildEmployeeSkillYearHeatmapKind(milestones, kind, years) {
   var yearList = (years || []).map(function (y) { return Number(y); });
   var rowMap = {};
   var levelMap = {};
 
+  fnGetFortschrittSkillCatalog(kind).forEach(function (cat) {
+    var key = fnCatalogSkillKey(kind, cat.id);
+    rowMap[key] = { key: key, label: cat.name, catalogId: cat.id };
+  });
+
   (milestones || []).forEach(function (m) {
     if (!m || m.skillPlanKind !== kind) return;
-    var level = m.ziel_skill_level_min != null ? Number(m.ziel_skill_level_min) : null;
+    var level = fnResolvedSkillSollLevel(m);
     if (!Number.isFinite(level) || level < 1 || level > 5) return;
-    var key = fnMaSkillPlanRowKey(m);
+    var key = fnResolveMilestoneCatalogKey(m, kind) || fnMaSkillPlanRowKey(m);
     if (!key) return;
-    if (!rowMap[key]) rowMap[key] = { key: key, label: fnMaSkillPlanRowLabel(m) };
+    if (!rowMap[key]) {
+      rowMap[key] = { key: key, label: fnMaSkillPlanRowLabel(m) };
+    }
     var year = m.jahr != null ? Number(m.jahr) : null;
     if (year == null || yearList.indexOf(year) < 0) return;
     if (!levelMap[key]) levelMap[key] = {};
@@ -944,9 +1418,10 @@ function fnBuildEmployeeSkillYearHeatmapKind(milestones, kind, years) {
     if (existing == null || level > existing) levelMap[key][year] = level;
   });
 
-  var rows = Object.keys(rowMap).map(function (k) { return rowMap[k]; }).sort(function (a, b) {
-    return String(a.label).localeCompare(String(b.label), "de");
-  });
+  var rows = fnSortHeatmapRows(
+    Object.keys(rowMap).map(function (k) { return rowMap[k]; }),
+    kind
+  );
   var columns = yearList.map(function (y) { return { key: y, label: String(y) }; });
   var cells = rows.map(function (row) {
     return columns.map(function (col) {
@@ -972,20 +1447,29 @@ function fnBuildEmployeeSkillYearHeatmap(item, years) {
 }
 
 function fnCollectAllYearsMitarbeiter(data) {
-  var byEmployee = {};
+  var merged = [];
   (data.byYear || []).forEach(function (row) {
     ((row.p1Plan && row.p1Plan.mitarbeiter) || []).forEach(function (item) {
-      var key = item.skillEntryId || item.label || item.subcategory || "?";
-      if (!byEmployee[key]) {
-        byEmployee[key] = Object.assign({}, item, {
+      var bucket = null;
+      for (var i = 0; i < merged.length; i++) {
+        if (fnEmployeeItemsMatch(merged[i], item)) {
+          bucket = merged[i];
+          break;
+        }
+      }
+      if (!bucket) {
+        bucket = Object.assign({}, item, {
           skillComparisons: [],
           allYearMilestones: [],
           milestones: [],
         });
+        merged.push(bucket);
       }
-      var bucket = byEmployee[key];
       (item.skillComparisons || []).forEach(function (sc) {
-        bucket.skillComparisons.push(sc);
+        var exists = bucket.skillComparisons.some(function (x) {
+          return x.skillKey === sc.skillKey && x.milestoneId === sc.milestoneId;
+        });
+        if (!exists) bucket.skillComparisons.push(sc);
       });
       (item.allYearMilestones || item.milestones || []).forEach(function (m) {
         var exists = bucket.allYearMilestones.some(function (x) {
@@ -993,9 +1477,18 @@ function fnCollectAllYearsMitarbeiter(data) {
         });
         if (!exists) bucket.allYearMilestones.push(m);
       });
+      if (!bucket.skillEntryId && item.skillEntryId) bucket.skillEntryId = item.skillEntryId;
+      if (!bucket.label && item.label) bucket.label = item.label;
+      if ((item.plannedSkillCount || 0) > (bucket.plannedSkillCount || 0)) {
+        bucket.plannedSkillCount = item.plannedSkillCount;
+        bucket.status = item.status || bucket.status;
+      }
     });
   });
-  return Object.keys(byEmployee).map(function (k) { return byEmployee[k]; });
+  return merged.map(function (item) {
+    if (!item.milestones || !item.milestones.length) item.milestones = item.allYearMilestones || [];
+    return item;
+  });
 }
 
 function fnStatusFromSkillGap(gap) {
@@ -1032,7 +1525,97 @@ function fnFindEmployeeIstSkillLevelClient(employeeRow, ms) {
 function fnEmployeeSkillCategoryKeyClient(ms) {
   if (!ms) return "unknown";
   var kind = ms.skillPlanKind === "soft" ? "soft" : "tech";
-  return kind + ":" + String(ms.kategorie || "Sonstiges").trim();
+  if (ms.kategorie_id != null) {
+    var id = Number(ms.kategorie_id);
+    if (Number.isInteger(id) && id > 0) return fnCatalogSkillKey(kind, id);
+  }
+  var kat = String(ms.kategorie || "").trim();
+  if (kat) {
+    var catalog = fnGetFortschrittSkillCatalog(kind);
+    var cat = catalog.find(function (c) { return c.name === kat; });
+    if (cat) return fnCatalogSkillKey(kind, cat.id);
+  }
+  return kind + ":" + (kat || "Sonstiges");
+}
+
+function fnNormalizeComparisonKey(sc) {
+  var kind = sc.skillPlanKind === "soft" ? "soft" : "tech";
+  if (sc.kategorie_id != null) {
+    var id = Number(sc.kategorie_id);
+    if (Number.isInteger(id) && id > 0) return fnCatalogSkillKey(kind, id);
+  }
+  var kat = String(sc.kategorie || "").trim();
+  if (kat) {
+    var catalog = fnGetFortschrittSkillCatalog(kind);
+    var cat = catalog.find(function (c) { return c.name === kat; });
+    if (cat) return fnCatalogSkillKey(kind, cat.id);
+  }
+  return sc.skillKey || fnEmployeeSkillCategoryKeyClient(sc);
+}
+
+function fnSeedCatalogHeatmapColumns(columnMap, kind) {
+  fnGetFortschrittSkillCatalog(kind).forEach(function (cat) {
+    var key = fnCatalogSkillKey(kind, cat.id);
+    if (!columnMap[key]) {
+      columnMap[key] = {
+        key: key,
+        label: cat.name,
+        kind: kind === "soft" ? "soft" : "tech",
+        catalogId: cat.id,
+      };
+    }
+  });
+}
+
+function fnFindComparisonForCatalog(skillComparisons, kind, cat) {
+  return (skillComparisons || []).find(function (sc) {
+    if (sc.skillPlanKind && sc.skillPlanKind !== kind) return false;
+    if (sc.kategorie_id != null && Number(sc.kategorie_id) === cat.id) return true;
+    if (String(sc.kategorie || "").trim() === cat.name) return true;
+    return fnNormalizeComparisonKey(sc) === fnCatalogSkillKey(kind, cat.id);
+  });
+}
+
+function fnSortHeatmapColumns(columns) {
+  var techOrder = {};
+  var softOrder = {};
+  fnGetFortschrittSkillCatalog("tech").forEach(function (cat, index) {
+    techOrder[fnCatalogSkillKey("tech", cat.id)] = index;
+  });
+  fnGetFortschrittSkillCatalog("soft").forEach(function (cat, index) {
+    softOrder[fnCatalogSkillKey("soft", cat.id)] = index;
+  });
+  return (columns || []).slice().sort(function (a, b) {
+    var orderA = a.kind === "soft" ? softOrder[a.key] : techOrder[a.key];
+    var orderB = b.kind === "soft" ? softOrder[b.key] : techOrder[b.key];
+    var rankA = orderA != null ? orderA : 10000;
+    var rankB = orderB != null ? orderB : 10000;
+    if (a.kind !== b.kind) {
+      return a.kind === "tech" ? -1 : 1;
+    }
+    if (rankA !== rankB) return rankA - rankB;
+    var ka = String(a.label).localeCompare(String(b.label), "de");
+    if (ka !== 0) return ka;
+    return String(a.kind).localeCompare(String(b.kind));
+  });
+}
+
+function fnFillCatalogIstCells(cellMap, employeeRow) {
+  ["tech", "soft"].forEach(function (kind) {
+    fnGetFortschrittSkillCatalog(kind).forEach(function (cat) {
+      var key = fnCatalogSkillKey(kind, cat.id);
+      if (cellMap[key]) return;
+      var ist = fnFindIstLevelForCatalog(employeeRow, kind, cat);
+      if (ist != null) {
+        cellMap[key] = {
+          istLevel: ist,
+          sollLevel: null,
+          gap: null,
+          status: "neutral",
+        };
+      }
+    });
+  });
 }
 
 function fnBuildSkillComparisonsFromMilestones(item, employeeRow) {
@@ -1044,7 +1627,7 @@ function fnBuildSkillComparisonsFromMilestones(item, employeeRow) {
   var legacy = milestones.filter(function (m) { return m && !m.skillPlanKind; });
 
   skillPlans.forEach(function (m) {
-    var sollLevel = m.ziel_skill_level_min != null ? Number(m.ziel_skill_level_min) : null;
+    var sollLevel = fnResolvedSkillSollLevel(m);
     var istLevel = fnFindEmployeeIstSkillLevelClient(employeeRow, m);
     var gap = istLevel != null && sollLevel != null && Number.isFinite(sollLevel)
       ? istLevel - sollLevel
@@ -1053,6 +1636,7 @@ function fnBuildSkillComparisonsFromMilestones(item, employeeRow) {
       skillKey: fnEmployeeSkillCategoryKeyClient(m),
       skillPlanKind: m.skillPlanKind,
       kategorie: String(m.kategorie || "").trim(),
+      kategorie_id: m.kategorie_id != null ? Number(m.kategorie_id) : null,
       technologie: String(m.technologie || "").trim(),
       kompetenz: String(m.kompetenz || "").trim(),
       istLevel: istLevel,
@@ -1068,10 +1652,8 @@ function fnBuildSkillComparisonsFromMilestones(item, employeeRow) {
   if (!skillPlans.length && legacy.length) {
     var sollMin = null;
     legacy.forEach(function (m) {
-      if (m.ziel_skill_level_min != null) {
-        var v = Number(m.ziel_skill_level_min);
-        if (Number.isFinite(v)) sollMin = sollMin == null ? v : Math.max(sollMin, v);
-      }
+      var v = fnResolvedSkillSollLevel(m);
+      if (v != null) sollMin = sollMin == null ? v : Math.max(sollMin, v);
     });
     var istAvg = employeeRow && employeeRow.avgLevel != null
       ? employeeRow.avgLevel
@@ -1123,11 +1705,55 @@ function fnNormalizeMitarbeiterItem(item, phase1) {
   });
 }
 
+function fnHasPhase1Skills(phase1) {
+  if (!phase1 || !phase1.skills) return false;
+  if (phase1.skills.employees && phase1.skills.employees.length) return true;
+  if (phase1.skills.avgSkillByCategory && phase1.skills.avgSkillByCategory.length) return true;
+  return false;
+}
+
+function fnBootstrapMitarbeiterFromPhase1(phase1, items) {
+  var list = (items || []).slice();
+  var employees = (phase1 && phase1.skills && phase1.skills.employees) || [];
+  if (!employees.length) return list;
+  employees.forEach(function (emp) {
+    var existing = list.find(function (item) {
+      return fnEmployeeItemsMatch(item, { skillEntryId: emp.skillEntryId, label: emp.name, subcategory: emp.name });
+    });
+    if (existing) {
+      if (!existing.skillEntryId && emp.skillEntryId) existing.skillEntryId = emp.skillEntryId;
+      if (!existing.label) existing.label = emp.name;
+      if (!existing.subcategory) existing.subcategory = emp.name;
+      if (existing.skillCount == null && emp.skillCount != null) existing.skillCount = emp.skillCount;
+      if (existing.istAvg == null && emp.avgLevel != null) existing.istAvg = emp.avgLevel;
+      return;
+    }
+    list.push({
+      subcategory: emp.name,
+      label: emp.name,
+      skillEntryId: emp.skillEntryId,
+      istAvg: emp.avgLevel,
+      skillCount: emp.skillCount,
+      zertifiziert: emp.zertifiziert,
+      status: "neutral",
+      criticalGapCount: 0,
+      plannedSkillCount: 0,
+      skillComparisons: [],
+      milestones: [],
+    });
+  });
+  return list;
+}
+
 function fnNormalizeMitarbeiterList(items, phase1) {
   return (items || []).map(function (item) {
     return fnNormalizeMitarbeiterItem(item, phase1);
   }).filter(function (item) {
-    return (item.skillComparisons && item.skillComparisons.length) || (item.milestones && item.milestones.length);
+    if (item.skillComparisons && item.skillComparisons.length) return true;
+    if (item.milestones && item.milestones.length) return true;
+    if (item.allYearMilestones && item.allYearMilestones.length) return true;
+    if (item.skillEntryId || (item.skillCount != null && item.skillCount > 0)) return true;
+    return false;
   });
 }
 
@@ -1152,6 +1778,12 @@ function fnResolveMitarbeiterDashboardData(data) {
     mitarbeiter = (data.p1Plan && data.p1Plan.mitarbeiter) || [];
   }
 
+  if (data.mitarbeiterPlanAllYears && data.mitarbeiterPlanAllYears.length) {
+    mitarbeiter = mitarbeiter.concat(data.mitarbeiterPlanAllYears);
+  }
+
+  mitarbeiter = fnBootstrapMitarbeiterFromPhase1(phase1, mitarbeiter);
+  mitarbeiter = fnMergeMitarbeiterItems(mitarbeiter);
   mitarbeiter = fnNormalizeMitarbeiterList(mitarbeiter, phase1);
   return { mitarbeiter: mitarbeiter, phase1: phase1, years: years };
 }
@@ -1165,6 +1797,77 @@ function fnFilterMaItems(mitarbeiter, filters) {
   });
 }
 
+function fnEmployeeNameKeys(name) {
+  var raw = String(name || "").trim().toLowerCase();
+  if (!raw) return [];
+  var keys = [raw];
+  var comma = raw.split(",").map(function (s) { return s.trim(); }).filter(Boolean);
+  if (comma.length === 2) {
+    keys.push(comma[1] + " " + comma[0]);
+    keys.push(comma[0] + ", " + comma[1]);
+  }
+  var parts = raw.split(/\s+/).filter(Boolean);
+  if (parts.length === 2) {
+    keys.push(parts[1] + ", " + parts[0]);
+    keys.push(parts[0] + " " + parts[1]);
+  }
+  return keys.filter(function (k, i, arr) { return arr.indexOf(k) === i; });
+}
+
+function fnEmployeeItemsMatch(a, b) {
+  if (!a || !b) return false;
+  if (a.skillEntryId && b.skillEntryId && a.skillEntryId === b.skillEntryId) return true;
+  var keysA = fnEmployeeNameKeys(a.label || a.subcategory);
+  var keysB = fnEmployeeNameKeys(b.label || b.subcategory);
+  if (!keysA.length || !keysB.length) return false;
+  return keysA.some(function (ka) { return keysB.indexOf(ka) >= 0; });
+}
+
+function fnMergeMitarbeiterItems(items) {
+  var out = [];
+  (items || []).forEach(function (item) {
+    var matchIdx = -1;
+    for (var i = 0; i < out.length; i++) {
+      if (fnEmployeeItemsMatch(out[i], item)) {
+        matchIdx = i;
+        break;
+      }
+    }
+    if (matchIdx < 0) {
+      out.push(Object.assign({}, item));
+      return;
+    }
+    var base = out[matchIdx];
+    var ms = (base.allYearMilestones || base.milestones || []).slice();
+    (item.allYearMilestones || item.milestones || []).forEach(function (m) {
+      var exists = ms.some(function (x) { return x.id && m.id && x.id === m.id; });
+      if (!exists) ms.push(m);
+    });
+    var sc = (base.skillComparisons || []).slice();
+    (item.skillComparisons || []).forEach(function (s) {
+      var exists = sc.some(function (x) {
+        return x.skillKey === s.skillKey && x.milestoneId === s.milestoneId;
+      });
+      if (!exists) sc.push(s);
+    });
+    var merged = Object.assign({}, base, item, {
+      skillEntryId: base.skillEntryId || item.skillEntryId,
+      label: base.label || item.label,
+      subcategory: base.subcategory || item.subcategory,
+      allYearMilestones: ms,
+      milestones: ms,
+      skillComparisons: sc.length ? sc : (base.skillComparisons || item.skillComparisons || []),
+    });
+    if ((item.plannedSkillCount || 0) > (base.plannedSkillCount || 0)) {
+      merged.plannedSkillCount = item.plannedSkillCount;
+      merged.status = item.status || merged.status;
+      merged.criticalGapCount = item.criticalGapCount != null ? item.criticalGapCount : merged.criticalGapCount;
+    }
+    out[matchIdx] = merged;
+  });
+  return out;
+}
+
 function fnFindEmployeePhase1Row(phase1, item) {
   var employees = phase1 && phase1.skills && phase1.skills.employees;
   if (!employees || !item) return null;
@@ -1172,34 +1875,37 @@ function fnFindEmployeePhase1Row(phase1, item) {
     var byId = employees.find(function (e) { return e.skillEntryId === item.skillEntryId; });
     if (byId) return byId;
   }
-  var label = String(item.label || item.subcategory || "").trim().toLowerCase();
-  if (!label) return null;
+  var labelKeys = fnEmployeeNameKeys(item.label || item.subcategory);
+  if (!labelKeys.length) return null;
   return employees.find(function (e) {
-    return String(e.name || "").trim().toLowerCase() === label;
+    var empKeys = fnEmployeeNameKeys(e.name);
+    return labelKeys.some(function (lk) { return empKeys.indexOf(lk) >= 0; });
   }) || null;
 }
 
 function renderFnMaEmployeeSkillHeatmaps(item, years) {
   var heatmaps = fnBuildEmployeeSkillYearHeatmap(item, years);
-  var hasTech = heatmaps.tech.hasData;
-  var hasSoft = heatmaps.soft.hasData;
-  var hasAny = hasTech || hasSoft;
+  var catalogTech = fnGetFortschrittSkillCatalog("tech");
+  var catalogSoft = fnGetFortschrittSkillCatalog("soft");
+  var yearList = (years || []).filter(function (y) { return y != null && y !== ""; });
+  var showYearTech = catalogTech.length > 0 && yearList.length > 0;
+  var showYearSoft = catalogSoft.length > 0 && yearList.length > 0;
   var html = '<div class="p1f-ma-skill-heatmaps">';
 
-  if (hasAny) {
+  if (showYearTech || showYearSoft) {
     html += '<div class="p1f-ma-skill-heatmaps__row">';
-    if (hasTech) {
+    if (showYearTech) {
       html += '<div class="p1f-ma-skill-heatmap-section" data-ma-kind="tech">';
-      html += '<h5 class="p1f-ma-skill-heatmap__title">Fachliche Skills</h5>';
+      html += '<h5 class="p1f-ma-skill-heatmap__title">Fachliche Skills \u00b7 SOLL je Jahr</h5>';
       html += '<div class="p1f-heatmap-wrap">';
       if (typeof renderFortschrittSkillLevelHeatmapSvg === "function") {
         html += renderFortschrittSkillLevelHeatmapSvg({ label: "Fachliche Skills" }, heatmaps.tech);
       }
       html += "</div></div>";
     }
-    if (hasSoft) {
+    if (showYearSoft) {
       html += '<div class="p1f-ma-skill-heatmap-section" data-ma-kind="soft">';
-      html += '<h5 class="p1f-ma-skill-heatmap__title">Soft Skills</h5>';
+      html += '<h5 class="p1f-ma-skill-heatmap__title">Soft Skills \u00b7 SOLL je Jahr</h5>';
       html += '<div class="p1f-heatmap-wrap">';
       if (typeof renderFortschrittSkillLevelHeatmapSvg === "function") {
         html += renderFortschrittSkillLevelHeatmapSvg({ label: "Soft Skills" }, heatmaps.soft);
@@ -1211,7 +1917,16 @@ function renderFnMaEmployeeSkillHeatmaps(item, years) {
       html += renderFortschrittSkillLevelLegend();
     }
   } else {
-    html += '<p class="bc-muted p1f-ma-skill-heatmap__empty">Keine Skill-Planungen vorhanden.</p>';
+    var phase1 = _fnMaDashboardData && _fnMaDashboardData.phase1;
+    var cmpHeatmap = fnBuildEmployeeSkillHeatmapFromItems([item], phase1);
+    if (cmpHeatmap && cmpHeatmap.hasData && typeof renderFortschrittSkillHeatmapSvg === "function") {
+      html += '<div class="p1f-ma-skill-heatmap-section">';
+      html += '<h5 class="p1f-ma-skill-heatmap__title">Skills \u00b7 IST vs. SOLL</h5>';
+      html += '<div class="p1f-heatmap-wrap">' + renderFortschrittSkillHeatmapSvg({ label: item.label || item.subcategory }, cmpHeatmap) + "</div>";
+      html += "</div>";
+    } else {
+      html += '<p class="bc-muted p1f-ma-skill-heatmap__empty">Keine Skill-Planungen vorhanden.</p>';
+    }
   }
 
   html += "</div>";
@@ -1241,16 +1956,93 @@ function renderFnMaOverviewTable(items) {
   );
 }
 
+function fnResolvePhase1SkillsView(data) {
+  var phase1 = (data && data.phase1) || null;
+  var skills = phase1 && phase1.skills ? phase1.skills : null;
+  var cats = (skills && skills.avgSkillByCategory) || [];
+  var employees = (skills && skills.employees) || [];
+  var zertQuote = skills && skills.zertifiziertQuote != null ? skills.zertifiziertQuote : null;
+  var employeeCount = skills && skills.employeeCount != null ? skills.employeeCount : null;
+
+  if (!cats.length && !employees.length && data && data.p1Ist && data.p1Ist.skills && data.p1Ist.skills.length) {
+    cats = data.p1Ist.skills.map(function (s) {
+      return { category: s.subcategory, avgLevel: s.avgLevel, count: s.count };
+    });
+  }
+
+  return { phase1: phase1, cats: cats, employees: employees, zertifiziertQuote: zertQuote, employeeCount: employeeCount };
+}
+
+function renderFnPhase1SkillsSummary(data) {
+  var view = fnResolvePhase1SkillsView(data);
+  if (!view.cats.length && !view.employees.length) return "";
+
+  var html = '<div class="p1f-heatmap" style="margin-bottom:.65rem">';
+  html += '<h4 class="p1f-heatmap__title">Skills \u00b7 IST-Stand (Phase 1)</h4>';
+  if (view.zertifiziertQuote != null) {
+    html += '<p class="p1f-heatmap__hint">Zertifizierungsquote: <b>' + fnFormatNum(view.zertifiziertQuote) + '%</b>';
+    if (view.employeeCount) html += ' \u00b7 ' + view.employeeCount + ' Mitarbeiter in der Skill-Matrix';
+    html += '</p>';
+  } else if (view.employeeCount) {
+    html += '<p class="p1f-heatmap__hint">' + view.employeeCount + ' Mitarbeiter in der Skill-Matrix</p>';
+  }
+  if (view.cats.length) {
+    html += '<ul class="fortschritt-facts" style="margin:.35rem 0 0">';
+    view.cats.forEach(function (s) {
+      html += '<li>' + fnEsc(s.category) + ': <b>\u00d8 Level ' + fnFormatNum(s.avgLevel) + '</b>';
+      var maCount = s.employeeCount != null ? s.employeeCount : s.count;
+      if (maCount != null) html += ' (' + fnFormatNum(maCount) + ' MA)';
+      html += '</li>';
+    });
+    html += '</ul>';
+  }
+  html += '</div>';
+  return html;
+}
+
+function renderFnMaEmployeeIstSkills(item, phase1) {
+  var emp = fnFindEmployeePhase1Row(phase1, item);
+  if (!emp) return "";
+  var tech = emp.skills || [];
+  var soft = emp.softSkills || [];
+  if (!tech.length && !soft.length) return "";
+
+  var html = '<div class="p1f-ma-ist">';
+  html += '<div class="p1f-ma-ist__head">Skills IST (Phase 1)</div>';
+  html += '<ul class="p1f-ma-skill-list">';
+  tech.forEach(function (s) {
+    var label = String(s.kategorie || "").trim();
+    if (s.technologie) label += (label ? " \u00b7 " : "") + String(s.technologie).trim();
+    html += '<li class="p1f-ma-skill"><span class="p1f-ma-skill__label">' + fnEsc(label || "Fach-Skill") + '</span>';
+    html += '<span class="p1f-ma-skill__level">Level ' + fnEsc(s.level != null ? s.level : "\u2013") + "</span></li>";
+  });
+  soft.forEach(function (s) {
+    var label = String(s.kategorie || s.competenz || "Soft Skill").trim();
+    html += '<li class="p1f-ma-skill"><span class="p1f-ma-skill__label">' + fnEsc(label) + '</span>';
+    html += '<span class="p1f-ma-skill__level">Level ' + fnEsc(s.level != null ? s.level : "\u2013") + "</span></li>";
+  });
+  html += "</ul></div>";
+  return html;
+}
+
 function renderFnMaEmployeeSubcat(item, years) {
   var statusCls = fnStatusClass(item.status);
   var heatmaps = fnBuildEmployeeSkillYearHeatmap(item, years);
-  var planned = heatmaps.tech.rows.length + heatmaps.soft.rows.length;
+  var planned = fnCountHeatmapPlannedRows(heatmaps);
+  var phase1 = _fnMaDashboardData && _fnMaDashboardData.phase1;
   var html = '<details class="p1f-subcat p1f-ma-subcat ' + statusCls + '" data-ma-subcat="' + fnEsc(item.skillEntryId || item.label || "") + '">';
   html += '<summary class="p1f-subcat__head">';
   html += '<span class="p1f-subcat__label">' + fnEsc(item.label || item.subcategory) + "</span>";
-  html += '<span class="p1f-subcat__count">' + planned + " Skills \u00b7 " + fnEsc(fnStatusLabel(item.status)) + "</span>";
+  html += '<span class="p1f-subcat__count">';
+  if (planned) {
+    html += planned + " Skills geplant \u00b7 ";
+  } else if (item.skillCount != null) {
+    html += fnFormatNum(item.skillCount) + " Skills IST \u00b7 ";
+  }
+  html += fnEsc(fnStatusLabel(item.status)) + "</span>";
   html += "</summary>";
   html += '<div class="p1f-subcat__body">';
+  html += renderFnMaEmployeeIstSkills(item, phase1);
   html += renderFnMaEmployeeSkillHeatmaps(item, years);
   html += "</div></details>";
   return html;
@@ -1259,14 +2051,20 @@ function renderFnMaEmployeeSubcat(item, years) {
 function renderFnMaFilters() {
   return (
     '<div class="p1f-ma-filters">' +
-    '<label class="p1f-ma-filters__search">Suche <input type="search" id="p1fMaFilterSearch" placeholder="Name\u2026" value="' + fnEsc(_fnMaFilterSearch) + '"></label>' +
-    '<label class="p1f-ma-filters__kind">Art ' +
-    '<select id="p1fMaFilterKind">' +
+    '<div class="p1f-ma-filters__field">' +
+    '<span class="p1f-ma-filters__label">Suche</span>' +
+    '<input type="search" class="p1f-ma-filters__control" id="p1fMaFilterSearch" placeholder="Name\u2026" value="' + fnEsc(_fnMaFilterSearch) + '">' +
+    "</div>" +
+    '<div class="p1f-ma-filters__field">' +
+    '<span class="p1f-ma-filters__label">Art</span>' +
+    '<select class="p1f-ma-filters__control" id="p1fMaFilterKind">' +
     '<option value="all"' + (_fnMaFilterKind === "all" ? " selected" : "") + ">Alle</option>" +
     '<option value="tech"' + (_fnMaFilterKind === "tech" ? " selected" : "") + ">Fach</option>" +
     '<option value="soft"' + (_fnMaFilterKind === "soft" ? " selected" : "") + ">Soft</option>" +
-    "</select></label>" +
-    '<label class="p1f-ma-filters__critical"><input type="checkbox" id="p1fMaFilterCritical"' + (_fnMaFilterCritical ? " checked" : "") + "> Nur kritische</label>" +
+    "</select></div>" +
+    '<label class="p1f-ma-filters__field p1f-ma-filters__field--check">' +
+    '<input type="checkbox" id="p1fMaFilterCritical"' + (_fnMaFilterCritical ? " checked" : "") + ">" +
+    '<span class="p1f-ma-filters__label">Nur kritische</span></label>' +
     "</div>"
   );
 }
@@ -1331,10 +2129,104 @@ function fnBindMitarbeiterFilters() {
   fnRefreshMaFilteredView();
 }
 
+function fnSkillComparisonColumnLabel(sc) {
+  var kat = String(sc.kategorie || "").trim();
+  var tech = String(sc.technologie || "").trim();
+  var komp = String(sc.kompetenz || "").trim();
+  if (kat && tech) return kat + " \u00b7 " + tech;
+  if (kat && komp) return kat + " \u00b7 " + komp;
+  return kat || tech || komp || "Skill";
+}
+
+function fnBuildEmployeeSkillHeatmapFromItems(mitarbeiterItems, phase1) {
+  var rows = [];
+  var columnMap = {};
+  var rowCellMaps = [];
+
+  fnSeedCatalogHeatmapColumns(columnMap, "tech");
+  fnSeedCatalogHeatmapColumns(columnMap, "soft");
+
+  (mitarbeiterItems || []).forEach(function (item) {
+    var skillComparisons = (item.skillComparisons || []).filter(function (sc) {
+      return sc && (sc.skillKey || sc.kategorie);
+    });
+    var employeeRow = fnFindEmployeePhase1Row(phase1, item);
+
+    rows.push({
+      skillEntryId: item.skillEntryId || null,
+      label: item.label || item.subcategory || "\u2013",
+    });
+    var cellMap = {};
+
+    skillComparisons.forEach(function (sc) {
+      var catKey = fnNormalizeComparisonKey(sc);
+      if (!columnMap[catKey]) {
+        columnMap[catKey] = {
+          key: catKey,
+          label: fnSkillComparisonColumnLabel(sc),
+          kind: sc.skillPlanKind === "soft" ? "soft" : "tech",
+        };
+      }
+      var existing = cellMap[catKey];
+      if (!existing) {
+        cellMap[catKey] = {
+          istLevel: sc.istLevel,
+          sollLevel: sc.sollLevel,
+          gap: sc.gap,
+          status: sc.status,
+        };
+        return;
+      }
+      if (sc.sollLevel != null && (existing.sollLevel == null || sc.sollLevel > existing.sollLevel)) {
+        existing.sollLevel = sc.sollLevel;
+      }
+      if (sc.gap != null && (existing.gap == null || sc.gap < existing.gap)) {
+        existing.istLevel = sc.istLevel;
+        existing.gap = sc.gap;
+        existing.status = sc.status;
+      }
+    });
+
+    fnFillCatalogIstCells(cellMap, employeeRow);
+    rowCellMaps.push(cellMap);
+  });
+
+  var columns = fnSortHeatmapColumns(
+    Object.keys(columnMap).map(function (k) { return columnMap[k]; })
+  );
+  var cells = rowCellMaps.map(function (cellMap) {
+    return columns.map(function (col) { return cellMap[col.key] || null; });
+  });
+
+  return {
+    rows: rows,
+    columns: columns,
+    cells: cells,
+    hasData: rows.length > 0 && columns.length > 0,
+  };
+}
+
+function renderFnMitarbeiterAreaEmpty(areaDef) {
+  var html = '<details class="p1f-area p1f-area--ma">';
+  html += '<summary class="p1f-area__head">';
+  html += '<span class="p1f-area__icon">' + areaDef.icon + "</span>";
+  html += '<span class="p1f-area__label">' + fnEsc(areaDef.label) + "</span>";
+  html += '<span class="p1f-area__count">Keine Daten</span>';
+  html += "</summary>";
+  html += '<div class="p1f-area__body p1f-area__body--ma">';
+  html += '<p class="fortschritt-empty" style="margin:0">Noch keine Skill-Daten in Phase&nbsp;1 und keine Mitarbeiter-Meilensteine in der Backcasting-Planung.</p>';
+  html += '<p class="bc-muted" style="margin:.5rem 0 0;font-size:.8rem">Skill-Matrix in Phase&nbsp;1 erfassen oder in Phase&nbsp;2 unter Planung Mitarbeiter-Tracks anlegen.</p>';
+  html += "</div></details>";
+  return html;
+}
+
 function renderFnMitarbeiterArea(data, areaDef) {
   var resolved = fnResolveMitarbeiterDashboardData(data);
   var mitarbeiter = resolved.mitarbeiter || [];
-  if (!mitarbeiter.length) return "";
+  var phase1Summary = renderFnPhase1SkillsSummary(data);
+  if (!mitarbeiter.length && !phase1Summary) {
+    return renderFnMitarbeiterAreaEmpty(areaDef);
+  }
 
   var years = resolved.years && resolved.years.length ? resolved.years : (data.years || []);
 
@@ -1348,21 +2240,38 @@ function renderFnMitarbeiterArea(data, areaDef) {
     var hm = fnBuildEmployeeSkillYearHeatmap(item, years);
     return n + hm.tech.rows.length + hm.soft.rows.length;
   }, 0);
+  if (!skillCount) {
+    skillCount = mitarbeiter.reduce(function (n, item) {
+      return n + (item.skillComparisons || []).length;
+    }, 0);
+  }
+  if (!skillCount) {
+    var skillsView = fnResolvePhase1SkillsView(data);
+    if (skillsView.employees.length) skillCount = skillsView.employees.length;
+    else if (skillsView.cats.length) skillCount = skillsView.cats.length;
+  }
 
   var html = '<details class="p1f-area p1f-area--ma">';
   html += '<summary class="p1f-area__head">';
   html += '<span class="p1f-area__icon">' + areaDef.icon + "</span>";
   html += '<span class="p1f-area__label">' + fnEsc(areaDef.label) + "</span>";
-  html += '<span class="p1f-area__count">' + mitarbeiter.length + " MA \u00b7 " + skillCount + " Skills geplant</span>";
+  var countLabel = mitarbeiter.length ? mitarbeiter.length + " MA \u00b7 " : "";
+  html += '<span class="p1f-area__count">' + countLabel + skillCount + " Skills</span>";
   html += "</summary>";
   html += '<div class="p1f-area__body p1f-area__body--ma">';
-  html += renderFnMaFilters();
-  html += renderFnMaOverviewTable(mitarbeiter);
-  html += '<div class="p1f-ma-employees">';
-  mitarbeiter.forEach(function (item) {
-    html += renderFnMaEmployeeSubcat(item, years);
-  });
-  html += "</div></div></details>";
+  html += phase1Summary;
+  if (mitarbeiter.length) {
+    html += renderFnMaFilters();
+    html += renderFnMaOverviewTable(mitarbeiter);
+    html += '<div class="p1f-ma-employees">';
+    mitarbeiter.forEach(function (item) {
+      html += renderFnMaEmployeeSubcat(item, years);
+    });
+    html += "</div>";
+  } else {
+    html += '<p class="bc-muted" style="margin:.35rem 0 0">Keine einzelnen Mitarbeiter-Pläne \u2013 nur Gesamt\u00fcbersicht oben.</p>';
+  }
+  html += "</div></details>";
   return html;
 }
 
@@ -1392,7 +2301,7 @@ function renderFnCategorySection(areaKey, sectionDef, items, data) {
   html += '</summary>';
   html += '<div class="p1f-org-section__body">';
   if (areaKey === "portfolio") {
-    html += renderFnPortfolioCategoryChart(sectionDef, timeline);
+    html += renderFnPortfolioCategoryChart(sectionDef, timeline, displayItems, data);
     if (displayItems.length) {
       html += '<div class="p1f-category-items">';
       displayItems.forEach(function (item) {
@@ -1569,7 +2478,7 @@ function renderFnDashboardPanel(unit, summary) {
   } else {
     html += '<span class="p1f-dashbar__empty">Keine Meilensteine</span>';
   }
-  html += '<span class="p1f-dashbar__filter"><select id="fortschrittNewYear"></select></span>';
+  html += '<span class="p1f-dashbar__filter"><select id="fortschrittYear"></select></span>';
   html += "</div>";
   return html;
 }
@@ -1618,6 +2527,15 @@ function renderFnIstOverview(p1Ist) {
     });
     html += '</ul></div>';
   }
+  if (p1Ist.skills && p1Ist.skills.length) {
+    html += '<div class="p1f-ist-section"><strong>Skills \u00b7 \u00d8 Level je Kategorie</strong><ul class="fortschritt-facts">';
+    p1Ist.skills.forEach(function (s) {
+      html += '<li>' + fnEsc(s.subcategory) + ': <b>\u00d8 ' + fnFormatNum(s.avgLevel);
+      if (s.count != null) html += ' (' + fnFormatNum(s.count) + ' MA)';
+      html += '</b></li>';
+    });
+    html += '</ul></div>';
+  }
 
   html += '</div></details>';
   return html;
@@ -1632,7 +2550,7 @@ function fnYearLabel() {
 }
 
 function readFnYearSelect() {
-  var yearEl = document.getElementById("fortschrittNewYear");
+  var yearEl = document.getElementById("fortschrittYear");
   if (!yearEl) return;
   _fnYearAll = yearEl.value === "all";
   if (!_fnYearAll) {
@@ -1684,12 +2602,26 @@ function renderFnDashboardAllYears(data, unit) {
   return html;
 }
 
+let _fnYearSnapshots = [];
+
+function fnRenderIstMissingBanner(data) {
+  if (!data || data.allYears) return "";
+  var meta = data.istMeta;
+  if (!meta || meta.source !== "missing") return "";
+  var year = data.year != null ? data.year : _fnYear;
+  var statusText = meta.yearSnapshotStatus === "draft" ? "Entwurf (nicht abgeschlossen)" : "nicht erfasst";
+  return '<div class="card" style="border-left:4px solid var(--rc-orange);margin-bottom:1rem"><p style="margin:0;font-size:.85rem"><strong>IST ' +
+    fnEsc(String(year)) + ":</strong> Jahresabschluss " + statusText +
+    '. <a href="/backcasting/?tab=jahresabschluss">Jetzt erfassen</a></p></div>';
+}
+
 function renderFnDashboard(data, unit) {
   if (data.allYears) {
     return renderFnDashboardAllYears(data, unit);
   }
 
   var html = '<div class="p1f-dashboard">';
+  html += fnRenderIstMissingBanner(data);
   html += renderFnDashboardPanel(unit, data.summary);
 
   var hasComparisons = false;
@@ -1733,10 +2665,11 @@ function renderFnDashboard(data, unit) {
 }
 
 function fnPopulateYearSelect() {
-  var sel = document.getElementById("fortschrittNewYear");
+  var sel = document.getElementById("fortschrittYear");
   if (!sel) return;
   var prev = sel.value;
   var years = window._rcPlanningYears || [2026, 2027, 2028, 2029];
+  var snapshots = _fnYearSnapshots.length ? _fnYearSnapshots : (_fnSnapshot && _fnSnapshot.yearSnapshots) || [];
   sel.innerHTML = "";
   var allOpt = document.createElement("option");
   allOpt.value = "all";
@@ -1745,7 +2678,11 @@ function fnPopulateYearSelect() {
   years.forEach(function (y) {
     var opt = document.createElement("option");
     opt.value = y;
-    opt.textContent = y;
+    var st = snapshots.find(function (s) { return Number(s.year) === Number(y); });
+    var suffix = " \u00b7 offen";
+    if (st && st.status === "closed") suffix = " \u00b7 abgeschlossen";
+    else if (st && st.status === "draft") suffix = " \u00b7 Entwurf";
+    opt.textContent = y + suffix;
     sel.appendChild(opt);
   });
   if (prev && Array.prototype.some.call(sel.options, function (o) { return o.value === prev; })) {
@@ -1758,7 +2695,7 @@ function fnPopulateYearSelect() {
 
 async function loadFortschrittNewDashboard() {
   var unit = typeof fortschrittUnit === "function" ? fortschrittUnit() : "";
-  var root = document.getElementById("fortschrittNewContent");
+  var root = document.getElementById("fortschrittContent");
   if (!root) return;
 
   readFnYearSelect();
@@ -1772,11 +2709,24 @@ async function loadFortschrittNewDashboard() {
   root.innerHTML = '<div class="card"><p class="fortschritt-empty">Lade Vergleichsdaten\u2026</p></div>';
 
   try {
+    if (typeof loadSkillCategoriesFromApi === "function") {
+      await loadSkillCategoriesFromApi();
+    }
+    if (unit) {
+      try {
+        var snapList = await api("/api/year-snapshots?unit=" + encodeURIComponent(unit));
+        _fnYearSnapshots = snapList.snapshots || [];
+      } catch (_e2) {
+        _fnYearSnapshots = [];
+      }
+    }
     var data = await api("/api/dashboard/p1-snapshot?unit=" + encodeURIComponent(unit) + "&year=" + encodeURIComponent(yearQuery));
     _fnSnapshot = data;
+    if (data.yearSnapshots) _fnYearSnapshots = data.yearSnapshots;
     root.innerHTML = renderFnDashboard(data, unit);
     fnPopulateYearSelect();
-    fnBindMitarbeiterFilters();
+    fnBindOrgChartViewToggles();
+    if (document.getElementById("p1fMaFilterSearch")) fnBindMitarbeiterFilters();
   } catch (e) {
     root.innerHTML = '<div class="card"><p class="fortschritt-empty" style="color:var(--rc-red)">' + fnEsc(e.message || "Laden fehlgeschlagen") + '</p></div>';
   }
@@ -1788,17 +2738,17 @@ async function initFortschrittNew() {
   }
   if (!_fnInitDone) {
     _fnInitDone = true;
-    var page = document.getElementById("page-fortschritt-new");
+    var page = document.getElementById("page-fortschritt");
     if (page) {
       page.addEventListener("change", function (e) {
-        if (e.target && e.target.id === "fortschrittNewYear") void loadFortschrittNewDashboard();
+        if (e.target && e.target.id === "fortschrittYear") void loadFortschrittNewDashboard();
       });
     }
   }
   void loadFortschrittNewDashboard();
 }
 
-/* ===== Gesamtfortschritt NEW (Timeline) ===== */
+/* ===== Gesamtfortschritt (Timeline, Phase-1-basiert) ===== */
 
 let _gfnInitDone = false;
 
@@ -1812,7 +2762,7 @@ async function loadP1Timeline() {
 async function loadGesamtfortschrittNewDashboard() {
   var unit = typeof fortschrittUnit === "function" ? fortschrittUnit() : "";
   var allUnits = typeof isFortschrittAllUnitsMode === "function" && isFortschrittAllUnitsMode();
-  var root = document.getElementById("gesamtfortschrittNewContent");
+  var root = document.getElementById("gesamtfortschrittContent");
   if (!root) return;
 
   var emptyMsg = '<div class="card"><p class="fortschritt-empty">Bitte im <strong>Filter</strong> oben eine Unit w\u00e4hlen oder \u201eAlle Units\u201c (Admin), um den Zeitstrahl anzuzeigen.</p></div>';
@@ -1840,7 +2790,7 @@ async function loadGesamtfortschrittNewDashboard() {
 function initGesamtfortschrittNew() {
   if (!_gfnInitDone) {
     _gfnInitDone = true;
-    var reloadBtn = document.getElementById("btnGesamtfortschrittNewReload");
+    var reloadBtn = document.getElementById("btnGesamtfortschrittReload");
     if (reloadBtn) reloadBtn.addEventListener("click", function () { void loadGesamtfortschrittNewDashboard(); });
   }
   void loadGesamtfortschrittNewDashboard();

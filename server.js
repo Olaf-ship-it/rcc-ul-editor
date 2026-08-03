@@ -4,8 +4,14 @@ const express = require("express");
 const cookieParser = require("cookie-parser");
 const bcrypt = require("bcryptjs");
 const jwt = require("jsonwebtoken");
-const { Pool } = require("pg");
+const { Pool, types } = require("pg");
 require("dotenv").config();
+
+// Postgres DATE columns (OID 1082) default to JS Date objects parsed in the
+// server's local timezone, which then serialize to shifted UTC ISO strings
+// (e.g. "2026-06-26T22:00:00.000Z" instead of "2026-06-27"). Keep them as the
+// raw "yyyy-MM-dd" text Postgres returns, since nothing here needs Date math.
+types.setTypeParser(1082, (val) => val);
 const {
   DEMO_UNIT,
   DEMO_UNITS,
@@ -20,6 +26,19 @@ const {
   getGuidelines,
   updateGuidelines,
 } = require("./server/guidelines-service");
+const {
+  ensureYearSnapshotsSchema,
+  getUnitBaselineStatus,
+  lockUnitBaseline,
+  unlockUnitBaseline,
+  listYearSnapshots,
+  fetchYearSnapshotsMap,
+  getYearSnapshot,
+  buildPrefillPayload,
+  aggregatePlanHintsForYear,
+  saveYearSnapshotDraft,
+  closeYearSnapshot,
+} = require("./server/year-snapshot-service");
 const {
   ensurePresenceSchema,
   upsertHeartbeat,
@@ -1270,6 +1289,29 @@ async function fetchBackcastingPlanForUnit(unit) {
     return mapBackcastingPlanRow(realRow);
   }
   return null;
+}
+
+async function assertBaselineEditable(req, unit) {
+  if (isAdminRole(req.user)) return null;
+  const status = await getUnitBaselineStatus(pool, unit);
+  if (status.locked) {
+    return "Ausgangslage ist fixiert. Bitte Jahresabschluss in Phase 2 nutzen.";
+  }
+  return null;
+}
+
+async function loadDashboardContext(unit) {
+  const planningConfig = await getPlanningYears();
+  const entries = await fetchPhase1EntriesForUnit(unit);
+  const planRow = await fetchBackcastingPlanForUnit(unit);
+  const planPayload = planRow || { measures: {}, meta: {} };
+  const yearSnapshots = await fetchYearSnapshotsMap(pool, unit);
+  const baselineStatus = await getUnitBaselineStatus(pool, unit);
+  const dashOpts = {
+    yearSnapshots,
+    planningStartYear: planningConfig.startYear,
+  };
+  return { planningConfig, entries, planPayload, planRow, yearSnapshots, baselineStatus, dashOpts };
 }
 
 async function enrichBackcastingPlanMeta(unit, meta) {
@@ -2641,6 +2683,7 @@ async function initDb() {
   await ensureGuidelinesSchema(pool);
   await seedGuidelinesIfEmpty(pool);
   await ensurePresenceSchema(pool);
+  await ensureYearSnapshotsSchema(pool);
   await ensureAppConfigSchema();
   await backfillSkillEntryPositionIds();
   await backfillSkillEntryCategoryIds();
@@ -2668,7 +2711,7 @@ async function initDb() {
   }
 }
 
-app.use(express.json());
+app.use(express.json({ limit: "10mb" }));
 app.use(cookieParser());
 app.use("/vendor/xlsx", express.static(path.join(__dirname, "node_modules/xlsx/dist")));
 
@@ -3238,6 +3281,8 @@ app.post("/api/entries", auth, async (req, res) => {
   if (!canAccessUnit(req, unit)) {
     return res.status(403).json({ error: "Kein Zugriff auf diese Unit." });
   }
+  const baselineErr = await assertBaselineEditable(req, unit);
+  if (baselineErr) return res.status(403).json({ error: baselineErr });
 
   const id = safeEntry.id || crypto.randomUUID();
   const now = new Date().toISOString();
@@ -3300,6 +3345,8 @@ app.put("/api/entries/:id", auth, async (req, res) => {
   if (!(await canAccessEntry(req, existing))) {
     return res.status(403).json({ error: "Kein Zugriff auf diesen Eintrag." });
   }
+  const baselineErr = await assertBaselineEditable(req, existing.unit);
+  if (baselineErr) return res.status(403).json({ error: baselineErr });
   const { entry } = req.body || {};
   const normalized = await normalizeEntryForSave(existing.type, entry, req.user);
   if (normalized.error) {
@@ -3363,6 +3410,8 @@ app.delete("/api/entries/:id", auth, async (req, res) => {
   if (!(await canAccessEntry(req, existing))) {
     return res.status(403).json({ error: "Kein Zugriff auf diesen Eintrag." });
   }
+  const baselineErr = await assertBaselineEditable(req, existing.unit);
+  if (baselineErr) return res.status(403).json({ error: baselineErr });
   if (existing.type === "skill") {
     await deleteSkillEmployeeUser(id);
   }
@@ -3382,29 +3431,33 @@ app.get("/api/dashboard/snapshot", auth, async (req, res) => {
     return res.status(403).json({ error: "Kein Zugriff auf diese Unit." });
   }
   const yearParam = req.query.year;
-  const entries = await fetchPhase1EntriesForUnit(unit);
-  const planRow = await fetchBackcastingPlanForUnit(unit);
-  const planPayload = planRow || { measures: {}, meta: {} };
+  const ctx = await loadDashboardContext(unit);
+  const { entries, planPayload, planRow, dashOpts, baselineStatus } = ctx;
 
   if (yearParam === "all") {
-    const planningConfig = await getPlanningYears();
-    const snapshot = buildDashboardSnapshotAllYears(entries, planPayload, planningConfig.years);
+    const snapshot = buildDashboardSnapshotAllYears(entries, planPayload, ctx.planningConfig.years, dashOpts);
     const demoEntries = entries.filter((e) => e.is_demo).length;
     const demoPlan = Boolean(planRow?.is_demo);
+    const yearSnapshotList = await listYearSnapshots(pool, unit);
     return res.json({
       unit,
       demo: { entries: demoEntries, plan: demoPlan, active: demoEntries > 0 || demoPlan },
+      baselineLocked: baselineStatus.locked,
+      yearSnapshots: yearSnapshotList,
       ...snapshot,
     });
   }
 
   const year = parseInt(yearParam, 10) || new Date().getFullYear();
-  const snapshot = buildDashboardSnapshot(entries, planPayload, year);
+  const snapshot = buildDashboardSnapshot(entries, planPayload, year, dashOpts);
   const demoEntries = entries.filter((e) => e.is_demo).length;
   const demoPlan = Boolean(planRow?.is_demo);
+  const yearSnapshotList = await listYearSnapshots(pool, unit);
   return res.json({
     unit,
     demo: { entries: demoEntries, plan: demoPlan, active: demoEntries > 0 || demoPlan },
+    baselineLocked: baselineStatus.locked,
+    yearSnapshots: yearSnapshotList,
     ...snapshot,
   });
 });
@@ -3421,21 +3474,43 @@ app.get("/api/dashboard/p1-snapshot", auth, async (req, res) => {
     return res.status(403).json({ error: "Kein Zugriff auf diese Unit." });
   }
   const yearParam = req.query.year;
-  const entries = await fetchPhase1EntriesForUnit(unit);
+  const ctx = await loadDashboardContext(unit);
   const registry = await fetchSkillRegistryEntry(pool, unit);
-  const planRow = await fetchBackcastingPlanForUnit(unit);
-  const planPayload = planRow || { measures: {}, meta: {} };
+  const { entries, planPayload, dashOpts, baselineStatus } = ctx;
 
   if (yearParam === "all") {
-    const planningConfig = await getPlanningYears();
-    const snapshot = buildP1DashboardSnapshotAllYears(entries, planPayload, planningConfig.years, registry);
-    return res.json({ unit, ...snapshot });
+    const snapshot = buildP1DashboardSnapshotAllYears(
+      entries,
+      planPayload,
+      ctx.planningConfig.years,
+      registry,
+      dashOpts
+    );
+    const yearSnapshotList = await listYearSnapshots(pool, unit);
+    return res.json({
+      unit,
+      baselineLocked: baselineStatus.locked,
+      yearSnapshots: yearSnapshotList,
+      ...snapshot,
+    });
   }
 
   const year = parseInt(yearParam, 10) || new Date().getFullYear();
-  const planningConfig = await getPlanningYears();
-  const snapshot = buildP1DashboardSnapshot(entries, planPayload, year, registry, planningConfig.years);
-  return res.json({ unit, ...snapshot });
+  const snapshot = buildP1DashboardSnapshot(
+    entries,
+    planPayload,
+    year,
+    registry,
+    ctx.planningConfig.years,
+    dashOpts
+  );
+  const yearSnapshotList = await listYearSnapshots(pool, unit);
+  return res.json({
+    unit,
+    baselineLocked: baselineStatus.locked,
+    yearSnapshots: yearSnapshotList,
+    ...snapshot,
+  });
 });
 
 app.get("/api/dashboard/p1-timeline", auth, async (req, res) => {
@@ -3452,10 +3527,15 @@ app.get("/api/dashboard/p1-timeline", auth, async (req, res) => {
     const units = [];
     for (const demoUnit of DEMO_UNITS) {
       if (!(await canAccessUnit(req, demoUnit))) continue;
-      const entries = await fetchPhase1EntriesForUnit(demoUnit);
+      const ctx = await loadDashboardContext(demoUnit);
       const registry = await fetchSkillRegistryEntry(pool, demoUnit);
-      const planRow = await fetchBackcastingPlanForUnit(demoUnit);
-      const timeline = buildP1DashboardTimeline(entries, planRow || { measures: {}, meta: {} }, years, registry);
+      const timeline = buildP1DashboardTimeline(
+        ctx.entries,
+        ctx.planPayload,
+        years,
+        registry,
+        ctx.dashOpts
+      );
       units.push({ unit: demoUnit, ...timeline });
     }
     return res.json({ all: true, years, units, totalUnits: DEMO_UNITS.length });
@@ -3468,10 +3548,15 @@ app.get("/api/dashboard/p1-timeline", auth, async (req, res) => {
   if (!(await canAccessUnit(req, unit))) {
     return res.status(403).json({ error: "Kein Zugriff auf diese Unit." });
   }
-  const entries = await fetchPhase1EntriesForUnit(unit);
+  const ctx = await loadDashboardContext(unit);
   const registry = await fetchSkillRegistryEntry(pool, unit);
-  const planRow = await fetchBackcastingPlanForUnit(unit);
-  const timeline = buildP1DashboardTimeline(entries, planRow || { measures: {}, meta: {} }, years, registry);
+  const timeline = buildP1DashboardTimeline(
+    ctx.entries,
+    ctx.planPayload,
+    years,
+    registry,
+    ctx.dashOpts
+  );
   return res.json({ unit, ...timeline });
 });
 
@@ -3490,9 +3575,8 @@ app.get("/api/dashboard/timeline", auth, async (req, res) => {
     const units = [];
     for (const demoUnit of DEMO_UNITS) {
       if (!(await canAccessUnit(req, demoUnit))) continue;
-      const entries = await fetchPhase1EntriesForUnit(demoUnit);
-      const planRow = await fetchBackcastingPlanForUnit(demoUnit);
-      const timeline = buildDashboardTimeline(entries, planRow || { measures: {}, meta: {} }, years);
+      const ctx = await loadDashboardContext(demoUnit);
+      const timeline = buildDashboardTimeline(ctx.entries, ctx.planPayload, years, ctx.dashOpts);
       units.push({ unit: demoUnit, ...timeline });
     }
     return res.json({
@@ -3510,9 +3594,8 @@ app.get("/api/dashboard/timeline", auth, async (req, res) => {
   if (!(await canAccessUnit(req, unit))) {
     return res.status(403).json({ error: "Kein Zugriff auf diese Unit." });
   }
-  const entries = await fetchPhase1EntriesForUnit(unit);
-  const planRow = await fetchBackcastingPlanForUnit(unit);
-  const timeline = buildDashboardTimeline(entries, planRow || { measures: {}, meta: {} }, years);
+  const ctx = await loadDashboardContext(unit);
+  const timeline = buildDashboardTimeline(ctx.entries, ctx.planPayload, years, ctx.dashOpts);
   return res.json({
     unit,
     ...timeline,
@@ -4096,6 +4179,157 @@ app.put("/api/backcasting/plan", auth, async (req, res) => {
   const isDemo = Boolean(isDemoBody);
   const id = await upsertBackcastingPlan(unit, payload, req.user.email, isDemo);
   return res.json({ ok: true, id, unit, is_demo: isDemo });
+});
+
+app.get("/api/year-snapshots", auth, async (req, res) => {
+  if (!canAccessBackcasting(req.user) && !canAccessFortschritt(req.user)) {
+    return res.status(403).json({ error: "Kein Zugriff." });
+  }
+  const resolved = resolveDashboardUnit(req, req.query.unit);
+  if (resolved.error) return res.status(403).json({ error: resolved.error });
+  const unit = resolved.unit;
+  if (!unit) return res.status(400).json({ error: "Unit fehlt." });
+  if (!(await canAccessUnit(req, unit))) {
+    return res.status(403).json({ error: "Kein Zugriff auf diese Unit." });
+  }
+  const list = await listYearSnapshots(pool, unit);
+  const baselineStatus = await getUnitBaselineStatus(pool, unit);
+  return res.json({ unit, snapshots: list, baseline: baselineStatus });
+});
+
+app.get("/api/year-snapshots/:year", auth, async (req, res) => {
+  if (!canAccessBackcasting(req.user) && !canAccessFortschritt(req.user)) {
+    return res.status(403).json({ error: "Kein Zugriff." });
+  }
+  const resolved = resolveDashboardUnit(req, req.query.unit);
+  if (resolved.error) return res.status(403).json({ error: resolved.error });
+  const unit = resolved.unit;
+  if (!unit) return res.status(400).json({ error: "Unit fehlt." });
+  if (!(await canAccessUnit(req, unit))) {
+    return res.status(403).json({ error: "Kein Zugriff auf diese Unit." });
+  }
+  const year = parseInt(req.params.year, 10);
+  if (!Number.isFinite(year)) return res.status(400).json({ error: "Jahr ungueltig." });
+
+  if (req.query.prefill === "1") {
+    const prefill = await buildPrefillPayload(pool, unit, year, fetchPhase1EntriesForUnit);
+    const planRow = await fetchBackcastingPlanForUnit(unit);
+    const planHints = aggregatePlanHintsForYear(planRow || { measures: {} }, year);
+    return res.json({
+      unit,
+      year,
+      snapshot: null,
+      prefill: prefill.payload,
+      prefilledFrom: prefill.prefilledFrom,
+      planHints,
+    });
+  }
+
+  const snapshot = await getYearSnapshot(pool, unit, year);
+  const planRow = await fetchBackcastingPlanForUnit(unit);
+  const planHints = aggregatePlanHintsForYear(planRow || { measures: {} }, year);
+  const baselineStatus = await getUnitBaselineStatus(pool, unit);
+  return res.json({ unit, year, snapshot, planHints, baseline: baselineStatus });
+});
+
+app.put("/api/year-snapshots/:year", auth, async (req, res) => {
+  if (!canAccessBackcasting(req.user)) {
+    return res.status(403).json({ error: "Kein Zugriff auf Backcasting." });
+  }
+  if (isPureMitarbeiterRole(req.user)) {
+    return res.status(403).json({ error: "Kein Zugriff." });
+  }
+  const resolved = resolveDashboardUnit(req, req.body?.unit || req.query.unit);
+  if (resolved.error) return res.status(403).json({ error: resolved.error });
+  const unit = resolved.unit;
+  if (!unit) return res.status(400).json({ error: "Unit fehlt." });
+  if (!(await canAccessUnit(req, unit))) {
+    return res.status(403).json({ error: "Kein Zugriff auf diese Unit." });
+  }
+  const year = parseInt(req.params.year, 10);
+  const { payload, stichtag } = req.body || {};
+  const result = await saveYearSnapshotDraft(pool, {
+    unit,
+    year,
+    payload,
+    stichtag,
+    email: req.user.email,
+    isAdmin: isAdminRole(req.user),
+  });
+  if (result.error) return res.status(400).json({ error: result.error });
+  return res.json({ ok: true, snapshot: result.snapshot });
+});
+
+app.post("/api/year-snapshots/:year/close", auth, async (req, res) => {
+  if (!canAccessBackcasting(req.user)) {
+    return res.status(403).json({ error: "Kein Zugriff auf Backcasting." });
+  }
+  if (isPureMitarbeiterRole(req.user)) {
+    return res.status(403).json({ error: "Kein Zugriff." });
+  }
+  const resolved = resolveDashboardUnit(req, req.body?.unit || req.query.unit);
+  if (resolved.error) return res.status(403).json({ error: resolved.error });
+  const unit = resolved.unit;
+  if (!unit) return res.status(400).json({ error: "Unit fehlt." });
+  if (!(await canAccessUnit(req, unit))) {
+    return res.status(403).json({ error: "Kein Zugriff auf diese Unit." });
+  }
+  const year = parseInt(req.params.year, 10);
+  const snap = await getYearSnapshot(pool, unit, year);
+  if (!snap && !req.body?.payload) {
+    return res.status(400).json({ error: "Kein Entwurf vorhanden." });
+  }
+  if (!snap && req.body?.payload) {
+    const draftResult = await saveYearSnapshotDraft(pool, {
+      unit,
+      year,
+      payload: req.body.payload,
+      stichtag: req.body.stichtag,
+      email: req.user.email,
+      isAdmin: isAdminRole(req.user),
+    });
+    if (draftResult.error) return res.status(400).json({ error: draftResult.error });
+  }
+  const result = await closeYearSnapshot(pool, {
+    unit,
+    year,
+    email: req.user.email,
+    lockBaseline: lockUnitBaseline,
+  });
+  if (result.error) return res.status(400).json({ error: result.error });
+  return res.json({ ok: true, snapshot: result.snapshot });
+});
+
+app.get("/api/units/:unit/baseline-status", auth, async (req, res) => {
+  const unit = decodeURIComponent(req.params.unit || "").trim();
+  if (!unit) return res.status(400).json({ error: "Unit fehlt." });
+  if (!(await canAccessUnit(req, unit))) {
+    return res.status(403).json({ error: "Kein Zugriff auf diese Unit." });
+  }
+  const status = await getUnitBaselineStatus(pool, unit);
+  return res.json({ unit, ...status });
+});
+
+app.post("/api/units/:unit/baseline/lock", auth, async (req, res) => {
+  if (isPureMitarbeiterRole(req.user)) {
+    return res.status(403).json({ error: "Kein Zugriff." });
+  }
+  const unit = decodeURIComponent(req.params.unit || "").trim();
+  if (!unit) return res.status(400).json({ error: "Unit fehlt." });
+  if (!(await canAccessUnit(req, unit))) {
+    return res.status(403).json({ error: "Kein Zugriff auf diese Unit." });
+  }
+  const result = await lockUnitBaseline(pool, unit, req.user.email);
+  if (result.error) return res.status(400).json({ error: result.error });
+  return res.json({ ok: true, unit, ...result });
+});
+
+app.post("/api/units/:unit/baseline/unlock", auth, requireAdmin, async (req, res) => {
+  const unit = decodeURIComponent(req.params.unit || "").trim();
+  if (!unit) return res.status(400).json({ error: "Unit fehlt." });
+  const result = await unlockUnitBaseline(pool, unit);
+  if (result.error) return res.status(400).json({ error: result.error });
+  return res.json({ ok: true, unit, ...result });
 });
 
 app.delete("/api/entries", auth, async (req, res) => {

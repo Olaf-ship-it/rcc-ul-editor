@@ -43,6 +43,21 @@ function p1SkillLevelOptions(selected) {
   return html;
 }
 
+const P1_QUARTER_OPTIONS = ["Q1", "Q2", "Q3", "Q4"];
+const P1_DEFAULT_QUARTER = "Q1";
+
+function p1EffectiveQuarter(value) {
+  const q = String(value || "").trim();
+  return P1_QUARTER_OPTIONS.includes(q) ? q : P1_DEFAULT_QUARTER;
+}
+
+function p1QuarterSelectOptions(selected) {
+  const current = p1EffectiveQuarter(selected);
+  return P1_QUARTER_OPTIONS.map(function (q) {
+    return '<option value="' + q + '"' + (current === q ? " selected" : "") + ">" + q + "</option>";
+  }).join("");
+}
+
 function p1SummaryUnit() {
   if (typeof getBcSaveUnit === "function") {
     const saveUnit = String(getBcSaveUnit() || "").trim();
@@ -147,9 +162,14 @@ function p1AreaSectionCountLabel(areaKey, count) {
 const P1_TOP_AREAS = [
   { key: "portfolio", label: "Portfolio", icon: "\ud83d\udcbc" },
   { key: "organisation", label: "Organisation", icon: "\ud83c\udfe2", sections: P1_ORG_SECTIONS },
-  { key: "mitarbeiter", label: "Mitarbeiter-Entwicklung", icon: "\ud83d\udc64" },
+  { key: "mitarbeiter", label: "Skills", icon: "\ud83d\udc64" },
 ];
 
+const P1_FLAT_PLAN_AREAS = ["portfolio", "gliederungen", "rollen"];
+
+function p1UsesFlatYearPlan(area) {
+  return P1_FLAT_PLAN_AREAS.indexOf(area) >= 0;
+}
 const P1_TRACK_AREA_KEYS = ["portfolio", "gliederungen", "rollen", "mitarbeiter"];
 const P1_CATEGORIZED_AREAS = ["portfolio"];
 
@@ -326,6 +346,16 @@ function p1TracksMatch(area, a, b) {
   if ((area === "gliederungen" || area === "rollen") && a.orgItemId && b.orgItemId) {
     return a.orgItemId === b.orgItemId;
   }
+  if (area === "gliederungen" || area === "rollen") {
+    if (a.orgItemId && b.subcategory) {
+      const p1 = findOrgPhase1Item(area, a);
+      if (p1 && p1.subcategory === b.subcategory) return true;
+    }
+    if (b.orgItemId && a.subcategory) {
+      const p1 = findOrgPhase1Item(area, b);
+      if (p1 && p1.subcategory === a.subcategory) return true;
+    }
+  }
   return a.subcategory === b.subcategory;
 }
 
@@ -397,10 +427,123 @@ function collectMilestoneTracks(areaKey) {
   return tracks;
 }
 
+function collectMeasureKeyTracks(areaKey) {
+  const tracks = [];
+  const seen = [];
+  const prefix = "P1||" + areaKey + "||";
+  Object.keys(plan.measures || {}).forEach(function (key) {
+    if (key.indexOf(prefix) !== 0) return;
+    const parts = key.split("||");
+    if (parts.length < 4) return;
+    const segmentId = parts[2];
+    const entries = plan.measures[key] || [];
+    const m = entries.find(function (row) { return row && row.kind === "p1Year"; }) || entries[0];
+    let track;
+    if (m) {
+      track = p1ApplyEntityRefToTrack(areaKey, {
+        category: m.category,
+        subcategory: m.subcategory || segmentId,
+        phase1Id: m.phase1Id,
+        itemId: m.itemId,
+        skillItemId: m.skillItemId,
+        orgItemId: m.orgItemId,
+        skillEntryId: m.skillEntryId,
+        entityRef: m.entityRef,
+        personalnummer: m.personalnummer,
+        source: m.phase1Id || m.skillItemId || m.orgItemId || m.skillEntryId ? "phase1" : "plan",
+      });
+    } else {
+      track = p1ApplyEntityRefToTrack(areaKey, {
+        subcategory: segmentId,
+        source: /^[0-9a-f-]{36}$/i.test(segmentId) ? "phase1" : "plan",
+        orgItemId: /^[0-9a-f-]{36}$/i.test(segmentId) ? segmentId : undefined,
+      });
+    }
+    if (!seen.some(function (t) { return p1TracksMatch(areaKey, t, track); })) {
+      seen.push(track);
+      tracks.push(track);
+    }
+  });
+  return tracks;
+}
+
+function ensureP1TrackAreaArrays() {
+  if (!plan.meta.p1Tracks) return;
+  P1_TRACK_AREA_KEYS.forEach(function (areaKey) {
+    if (!Array.isArray(plan.meta.p1Tracks[areaKey])) {
+      plan.meta.p1Tracks[areaKey] = [];
+    }
+  });
+}
+
+function reconcileP1TracksFromMeasures(areaKeys) {
+  ensureP1Tracks();
+  let added = 0;
+  (areaKeys || ["gliederungen", "rollen"]).forEach(function (areaKey) {
+    const candidates = [];
+    const seen = [];
+    function addCandidate(track) {
+      const applied = p1ApplyEntityRefToTrack(areaKey, track);
+      if (!applied.subcategory && !applied.orgItemId) return;
+      if (seen.some(function (t) { return p1TracksMatch(areaKey, t, applied); })) return;
+      seen.push(applied);
+      candidates.push(applied);
+    }
+    collectMilestoneTracks(areaKey).forEach(addCandidate);
+    collectMeasureKeyTracks(areaKey).forEach(addCandidate);
+
+    const hasMeasureKeys = Object.keys(plan.measures || {}).some(function (key) {
+      return key.indexOf("P1||" + areaKey + "||") === 0;
+    });
+    const existing = plan.meta.p1Tracks[areaKey] || [];
+
+    if (hasMeasureKeys && candidates.length && !existing.length) {
+      plan.meta.p1Tracks[areaKey] = candidates.slice();
+      added += candidates.length;
+      candidates.forEach(function (track) {
+        seedP1TrackMilestonesForAllYears(areaKey, track);
+      });
+      return;
+    }
+
+    candidates.forEach(function (track) {
+      if (hasP1Track(areaKey, track)) return;
+      plan.meta.p1Tracks[areaKey].push(track);
+      seedP1TrackMilestonesForAllYears(areaKey, track);
+      added++;
+    });
+  });
+  return added;
+}
+
+function dedupeP1TracksArea(areaKey) {
+  const list = plan.meta.p1Tracks?.[areaKey];
+  if (!Array.isArray(list)) return;
+  const next = [];
+  list.forEach(function (track) {
+    if (!next.some(function (t) { return p1TracksMatch(areaKey, t, track); })) {
+      next.push(track);
+    }
+  });
+  plan.meta.p1Tracks[areaKey] = next;
+}
+
+function p1LegacyMeasurePrefixes(areaKey, track) {
+  const ids = new Set();
+  const canonId = p1TrackMeasureId(areaKey, track);
+  if (canonId) ids.add(String(canonId));
+  if (track?.subcategory) ids.add(String(track.subcategory));
+  if (track?.orgItemId) ids.add(String(track.orgItemId));
+  return Array.from(ids).map(function (id) {
+    return "P1||" + areaKey + "||" + id + "||";
+  });
+}
+
 function trackHasMilestones(areaKey, track) {
-  const keyPrefix = "P1||" + areaKey + "||" + p1TrackMeasureId(areaKey, track) + "||";
-  return Object.keys(plan.measures || {}).some(function (k) {
-    return k.indexOf(keyPrefix) === 0 && (plan.measures[k] || []).length > 0;
+  return p1LegacyMeasurePrefixes(areaKey, track).some(function (prefix) {
+    return Object.keys(plan.measures || {}).some(function (k) {
+      return k.indexOf(prefix) === 0 && (plan.measures[k] || []).length > 0;
+    });
   });
 }
 
@@ -455,6 +598,7 @@ function migrateLegacyMeasureKeys(areaKey, oldSub, newTrack) {
     delete plan.measures[key];
     const newKey = newPrefix + yr;
     entries.forEach(function (m) {
+      if (!m || m.kind !== "p1Year") return;
       if (p1IsCategorizedArea(areaKey)) {
         m.category = newTrack.category;
         m.subcategory = newTrack.subcategory;
@@ -463,6 +607,10 @@ function migrateLegacyMeasureKeys(areaKey, oldSub, newTrack) {
         if (newTrack.skillItemId) m.skillItemId = newTrack.skillItemId;
         if (newTrack.orgItemId) m.orgItemId = newTrack.orgItemId;
         if (newTrack.skillEntryId) m.skillEntryId = newTrack.skillEntryId;
+        if (newTrack.entityRef) m.entityRef = newTrack.entityRef;
+      } else if (areaKey === "gliederungen" || areaKey === "rollen") {
+        if (newTrack.subcategory) m.subcategory = newTrack.subcategory;
+        if (newTrack.orgItemId) m.orgItemId = newTrack.orgItemId;
         if (newTrack.entityRef) m.entityRef = newTrack.entityRef;
       }
     });
@@ -693,7 +841,10 @@ function migrateP1TracksIfNeeded() {
 function ensureP1Tracks() {
   plan.meta = plan.meta || {};
   migrateP1TracksIfNeeded();
-  if (plan.meta.p1Tracks != null) return;
+  if (plan.meta.p1Tracks != null) {
+    ensureP1TrackAreaArrays();
+    return;
+  }
 
   const tracks = p1EmptyTracks();
   const seen = {};
@@ -717,6 +868,7 @@ function mergeTrackWithPhase1(areaKey, track) {
         phase1Id: track.phase1Id || p1.id,
         itemId: track.itemId,
         entityRef: track.entityRef || { kind: "portfolio", id: p1.id },
+        verantwortlich: String(track.verantwortlich || "").trim(),
         _hasPhase1: true,
         umsatz_teur: p1.umsatz_teur || 0,
         ampel: p1.ampel || "",
@@ -729,6 +881,7 @@ function mergeTrackWithPhase1(areaKey, track) {
       source: track.source,
       phase1Id: track.phase1Id,
       itemId: track.itemId,
+      verantwortlich: String(track.verantwortlich || "").trim(),
       _hasPhase1: false,
       umsatz_teur: 0,
     };
@@ -771,6 +924,7 @@ function mergeTrackWithPhase1(areaKey, track) {
       orgItemId: track.orgItemId || p1.id,
       entityRef: track.entityRef || (p1.id ? { kind: p1EntityKindForArea(areaKey), id: p1.id } : undefined),
       source: track.source,
+      verantwortlich: String(track.verantwortlich || "").trim(),
       _hasPhase1: true,
     });
   }
@@ -779,6 +933,7 @@ function mergeTrackWithPhase1(areaKey, track) {
     label: track.subcategory || "\u2013",
     source: track.source,
     orgItemId: track.orgItemId,
+    verantwortlich: String(track.verantwortlich || "").trim(),
     entityRef: track.entityRef,
     _hasPhase1: false,
     count: 0,
@@ -810,6 +965,9 @@ function p1TrackMetaFromCanonical(areaKey, track) {
   if (c.skillEntryId) meta.skillEntryId = c.skillEntryId;
   if (c.personalnummer) meta.personalnummer = c.personalnummer;
   if (c.skillItemId) meta.skillItemId = c.skillItemId;
+  if (areaKey === "portfolio" || areaKey === "gliederungen" || areaKey === "rollen") {
+    meta.verantwortlich = String(c.verantwortlich || track.verantwortlich || "").trim();
+  }
   return meta;
 }
 
@@ -940,6 +1098,9 @@ function addP1Track(areaKey, track) {
   if (p1ShouldSeedTrackYears(areaKey)) {
     seedP1TrackMilestonesForAllYears(areaKey, applied);
   }
+  if (areaKey === "mitarbeiter") {
+    seedP1EmployeeSkillYearsForTrack(areaKey, applied);
+  }
   return true;
 }
 
@@ -954,6 +1115,8 @@ function normalizeP1EmployeeSkillRows(e) {
         technologie: String(s.technologie || s.label || "").trim() || "\u2013",
         level: Number.isFinite(Number(s.level)) ? Number(s.level) : null,
         skillItemId: s.skillItemId || null,
+        kategorie_id: s.kategorie_id != null ? Number(s.kategorie_id) : null,
+        bemerkungen: String(s.bemerkungen || s.bemerkung || "").trim(),
       };
     }),
     softSkills: soft.map(function (s) {
@@ -961,9 +1124,70 @@ function normalizeP1EmployeeSkillRows(e) {
         kind: "soft",
         kategorie: String(s.kategorie || "Sonstiges").trim(),
         level: Number.isFinite(Number(s.level)) ? Number(s.level) : null,
+        kategorie_id: s.kategorie_id != null ? Number(s.kategorie_id) : null,
+        bemerkungen: String(s.bemerkungen || s.bemerkung || "").trim(),
       };
     }),
   };
+}
+
+function p1IstSkillRowHasContent(row) {
+  if (!row) return false;
+  const level = Number(row.level);
+  return (Number.isFinite(level) && level >= 1) || String(row.bemerkungen || "").trim() !== "";
+}
+
+function p1IstSkillCatalogRowTemplate(cat, kind) {
+  return {
+    skillPlanKind: kind,
+    kategorie_id: Number(cat.id),
+    kategorie: String(cat.name || "").trim(),
+    level: null,
+    bemerkungen: "",
+    technologie: "",
+  };
+}
+
+function buildP1EmployeeIstSkillMatrix(employeeItem) {
+  const techSaved = employeeItem?.skills || [];
+  const softSaved = employeeItem?.softSkills || [];
+
+  function mergeKind(catalog, kind, savedList) {
+    const savedByCatId = new Map();
+    const extras = [];
+
+    savedList.forEach(function (s) {
+      if (!s) return;
+      const id = s.kategorie_id != null ? Number(s.kategorie_id) : null;
+      const inCatalog = Number.isInteger(id) && id > 0 && catalog.some(function (c) {
+        return Number(c.id) === id;
+      });
+      const normalized = {
+        skillPlanKind: kind,
+        kategorie_id: inCatalog ? id : null,
+        kategorie: String(s.kategorie || "").trim(),
+        level: Number.isFinite(Number(s.level)) ? Number(s.level) : null,
+        bemerkungen: String(s.bemerkungen || s.bemerkung || "").trim(),
+        technologie: String(s.technologie || "").trim(),
+        _legacy: !inCatalog,
+      };
+      if (inCatalog) {
+        if (!savedByCatId.has(id)) savedByCatId.set(id, normalized);
+        else extras.push(normalized);
+      } else if (p1IstSkillRowHasContent(normalized)) {
+        extras.push(normalized);
+      }
+    });
+
+    const matrix = catalog.map(function (cat) {
+      return savedByCatId.get(Number(cat.id)) || p1IstSkillCatalogRowTemplate(cat, kind);
+    });
+    return matrix.concat(extras);
+  }
+
+  const techCats = _p1SkillCategoriesCache?.tech || [];
+  const softCats = _p1SkillCategoriesCache?.soft || [];
+  return mergeKind(techCats, "tech", techSaved).concat(mergeKind(softCats, "soft", softSaved));
 }
 
 function buildP1EmployeesFromSkillEntries(skillEntries) {
@@ -1062,24 +1286,76 @@ async function refreshP1SummaryCache() {
   }
 }
 
-function getP1Entries(area, track, yr) {
-  const canonical = canonicalP1Track(area, track);
-  const key = p1Key(area, canonical, yr);
-  let v = plan.measures[key];
-  if (!v && track) {
-    const legacyId = p1TrackMeasureId(area, track);
-    const canonId = p1TrackMeasureId(area, canonical);
-    if (legacyId !== canonId) {
-      const legacyKey = p1Key(area, legacyId, yr);
-      v = plan.measures[legacyKey];
-      if (v) {
-        plan.measures[key] = v;
-        delete plan.measures[legacyKey];
-      }
-    }
+function p1MilestoneHasPlanContent(ms, area) {
+  if (!ms) return false;
+  if (area === "mitarbeiter" && ms.skillPlanKind) {
+    return p1IsSkillLevelExplicit(ms) || String(ms.ergebnis || "").trim() !== "";
   }
-  if (!v) return [];
-  return Array.isArray(v) ? v : [v];
+  if (!p1UsesFlatYearPlan(area) && String(ms.bezeichnung || "").trim()) return true;
+  if (String(ms.ergebnis || "").trim()) return true;
+  if (ms.ziel_headcount != null || ms.ziel_umsatz_teur != null || ms.ziel_anzahl != null) return true;
+  if (String(ms.ziel_quartal || "").trim()) return true;
+  if (!p1UsesFlatYearPlan(area) && String(ms.verantwortlich || "").trim()) return true;
+  return false;
+}
+
+function measureListContentScore(list, area) {
+  return (list || []).reduce(function (score, ms) {
+    return score + (p1MilestoneHasPlanContent(ms, area) ? 10 : 1);
+  }, 0);
+}
+
+function trackMatchesMeasureSegment(area, track, segmentId) {
+  const seg = String(segmentId || "");
+  if (!seg) return false;
+  const prefixes = p1LegacyMeasurePrefixes(area, track).concat(p1LegacyMeasurePrefixes(area, canonicalP1Track(area, track)));
+  return prefixes.some(function (prefix) {
+    return prefix === "P1||" + area + "||" + seg + "||";
+  });
+}
+
+function getP1EntriesFromMeasures(area, track, yr) {
+  const canonical = canonicalP1Track(area, track);
+  const canonicalKey = p1Key(area, canonical, yr);
+  let bestKey = null;
+  let bestList = null;
+  let bestScore = -1;
+
+  Object.keys(plan.measures || {}).forEach(function (key) {
+    const parts = key.split("||");
+    if (parts.length < 4 || parts[0] !== "P1" || parts[1] !== area || parts[3] !== String(yr)) return;
+    if (!trackMatchesMeasureSegment(area, track, parts[2])) return;
+    const list = plan.measures[key] || [];
+    if (!list.length) return;
+    const score = measureListContentScore(list, area);
+    if (score > bestScore) {
+      bestScore = score;
+      bestKey = key;
+      bestList = list;
+    }
+  });
+
+  if (!bestList) return [];
+
+  if (bestKey !== canonicalKey) {
+    plan.measures[canonicalKey] = bestList;
+    if (bestKey) delete plan.measures[bestKey];
+    Object.keys(plan.measures || {}).forEach(function (key) {
+      if (key === canonicalKey) return;
+      const parts = key.split("||");
+      if (parts.length < 4 || parts[0] !== "P1" || parts[1] !== area || parts[3] !== String(yr)) return;
+      if (!trackMatchesMeasureSegment(area, track, parts[2])) return;
+      delete plan.measures[key];
+    });
+  }
+
+  return Array.isArray(bestList) ? bestList.slice() : [bestList];
+}
+
+function getP1Entries(area, track, yr) {
+  const list = getP1EntriesFromMeasures(area, track, yr);
+  if (area !== "mitarbeiter") return list;
+  return ensureP1EmployeeSkillCatalog(area, track, yr, list);
 }
 
 function setP1Entries(area, track, yr, arr) {
@@ -1102,7 +1378,7 @@ function p1MilestoneTemplate(area, track, yr) {
     bezeichnung: defaultBezeichnung,
     ergebnis: "",
     verantwortlich: "",
-    ziel_quartal: "",
+    ziel_quartal: P1_DEFAULT_QUARTER,
   };
   if (applied.entityRef) base.entityRef = applied.entityRef;
   if (p1IsCategorizedArea(area)) {
@@ -1163,7 +1439,158 @@ function p1EmployeeSkillPlanTemplate(area, track, yr, skillPlanKind) {
   base.kompetenz = "";
   base.bezeichnung = "";
   base.ergebnis = "";
+  base.ziel_skill_level_min = 1;
+  base.skill_level_explicit = false;
   return base;
+}
+
+function p1IsSkillLevelExplicit(ms) {
+  if (!ms) return false;
+  if (ms.skill_level_explicit === true) return true;
+  const n = Number(ms.ziel_skill_level_min);
+  return Number.isFinite(n) && n >= 2 && n <= 5;
+}
+
+function p1SkillLevelPickerState(ms) {
+  return {
+    level: p1EffectiveSkillLevel(ms),
+    explicit: p1IsSkillLevelExplicit(ms),
+  };
+}
+
+function p1NormalizeSkillLevelExplicit(ms) {
+  if (!ms) return ms;
+  ms.skill_level_explicit = p1IsSkillLevelExplicit(ms);
+  return ms;
+}
+
+function p1EffectiveSkillLevel(ms) {
+  const n = Number(ms?.ziel_skill_level_min);
+  if (Number.isFinite(n) && n >= 1 && n <= 5) return Math.round(n);
+  return 1;
+}
+
+function p1EmployeeSkillCatalogTemplate(area, track, yr, cat, kind) {
+  const base = p1EmployeeSkillPlanTemplate(area, track, yr, kind);
+  base.kategorie_id = Number(cat.id);
+  base.kategorie = String(cat.name || "").trim();
+  base.ziel_skill_level_min = 1;
+  base.skill_level_explicit = false;
+  base.bezeichnung = base.kategorie;
+  return base;
+}
+
+function p1IsCatalogSkillEntry(ms, kind) {
+  if (!ms || ms.skillPlanKind !== kind) return false;
+  const id = Number(ms.kategorie_id);
+  if (!Number.isInteger(id) || id <= 0) return false;
+  const catalog = kind === "soft"
+    ? (_p1SkillCategoriesCache?.soft || [])
+    : (_p1SkillCategoriesCache?.tech || []);
+  return catalog.some(function (c) { return Number(c.id) === id; });
+}
+
+function p1EmployeeSkillEntryHasLegacyContent(ms) {
+  return Boolean(
+    String(ms?.technologie || "").trim()
+      || String(ms?.kompetenz || "").trim()
+      || String(ms?.verantwortlich || "").trim()
+      || String(ms?.ziel_quartal || "").trim()
+      || p1IsSkillLevelExplicit(ms)
+      || String(ms?.ergebnis || "").trim()
+  );
+}
+
+function buildP1EmployeeSkillMatrix(savedEntries, area, track, yr) {
+  const saved = Array.isArray(savedEntries) ? savedEntries : [];
+
+  function mergeKind(catalog, kind) {
+    const savedByCatId = new Map();
+    const extras = [];
+
+    saved.forEach(function (ms) {
+      if (!ms || ms.skillPlanKind !== kind) return;
+      if (p1IsCatalogSkillEntry(ms, kind)) {
+        const id = Number(ms.kategorie_id);
+        if (!savedByCatId.has(id)) {
+          const copy = Object.assign({}, ms);
+          copy.ziel_skill_level_min = p1EffectiveSkillLevel(copy);
+          copy.kategorie = String(copy.kategorie || "").trim();
+          copy.bezeichnung = copy.kategorie;
+          p1NormalizeSkillLevelExplicit(copy);
+          savedByCatId.set(id, copy);
+        } else {
+          extras.push(ms);
+        }
+        return;
+      }
+      if (p1EmployeeSkillEntryHasLegacyContent(ms)) {
+        const legacy = Object.assign({}, ms);
+        legacy._legacy = true;
+        extras.push(legacy);
+      }
+    });
+
+    const matrix = catalog.map(function (cat) {
+      return savedByCatId.get(Number(cat.id)) || p1EmployeeSkillCatalogTemplate(area, track, yr, cat, kind);
+    });
+    return matrix.concat(extras);
+  }
+
+  const techCats = _p1SkillCategoriesCache?.tech || [];
+  const softCats = _p1SkillCategoriesCache?.soft || [];
+  return mergeKind(techCats, "tech").concat(mergeKind(softCats, "soft"));
+}
+
+function p1EmployeeSkillMatrixNeedsSync(saved, merged) {
+  if (!Array.isArray(saved) || !Array.isArray(merged)) return true;
+  if (saved.length !== merged.length) return true;
+  for (let i = 0; i < merged.length; i += 1) {
+    const a = merged[i];
+    const b = saved[i];
+    if (!b) return true;
+    if (String(a.skillPlanKind || "") !== String(b.skillPlanKind || "")) return true;
+    if (Number(a.kategorie_id) !== Number(b.kategorie_id)) return true;
+    if (p1EffectiveSkillLevel(a) !== p1EffectiveSkillLevel(b)) return true;
+    if (p1IsSkillLevelExplicit(a) !== p1IsSkillLevelExplicit(b)) return true;
+    if (String(a.kategorie || "") !== String(b.kategorie || "")) return true;
+  }
+  return false;
+}
+
+function ensureP1EmployeeSkillCatalog(area, track, yr, currentList) {
+  const saved = currentList != null ? currentList.slice() : getP1EntriesFromMeasures(area, track, yr);
+  const merged = buildP1EmployeeSkillMatrix(saved, area, track, yr);
+  if (p1EmployeeSkillMatrixNeedsSync(saved, merged) && requireBcSaveUnit()) {
+    setP1Entries(area, track, yr, merged);
+  }
+  return merged;
+}
+
+function seedP1EmployeeSkillYearsForTrack(areaKey, track) {
+  if (areaKey !== "mitarbeiter") return 0;
+  let added = 0;
+  YEARS.forEach(function (yr) {
+    const before = getP1EntriesFromMeasures(areaKey, track, yr).length;
+    ensureP1EmployeeSkillCatalog(areaKey, track, yr, []);
+    const after = getP1EntriesFromMeasures(areaKey, track, yr).length;
+    if (!before && after) added += 1;
+  });
+  return added;
+}
+
+function ensureP1EmployeeSkillCatalogAllYears() {
+  let changed = 0;
+  ensureP1Tracks();
+  (getP1Tracks("mitarbeiter") || []).forEach(function (track) {
+    YEARS.forEach(function (yr) {
+      const before = JSON.stringify(getP1EntriesFromMeasures("mitarbeiter", track, yr));
+      ensureP1EmployeeSkillCatalog("mitarbeiter", track, yr);
+      const after = JSON.stringify(getP1EntriesFromMeasures("mitarbeiter", track, yr));
+      if (before !== after) changed += 1;
+    });
+  });
+  return changed;
 }
 
 function p1EmployeeSkillPlanTitle(ms) {
@@ -1182,12 +1609,7 @@ function p1EmployeeSkillPlanTitle(ms) {
 }
 
 function p1EmployeeSkillPlanHasContent(ms) {
-  return Boolean(
-    String(ms?.kategorie || "").trim()
-      || String(ms?.technologie || "").trim()
-      || String(ms?.kompetenz || "").trim()
-      || ms?.ziel_skill_level_min != null
-  );
+  return p1MilestoneHasPlanContent(ms, "mitarbeiter");
 }
 
 function findEmployeeIstSkillLevel(employeeItem, ms) {
@@ -1200,6 +1622,7 @@ function findEmployeeIstSkillLevel(employeeItem, ms) {
     return match && match.level != null ? Number(match.level) : null;
   }
   const match = (employeeItem.skills || []).find(function (s) {
+    if (ms.kategorie_id && s.kategorie_id) return String(s.kategorie_id) === String(ms.kategorie_id);
     if (ms.skillItemId && s.skillItemId) return String(s.skillItemId) === String(ms.skillItemId);
     const sameKat = String(s.kategorie || "").trim() === String(ms.kategorie || "").trim();
     const tech = String(ms.technologie || "").trim();
@@ -1211,12 +1634,15 @@ function findEmployeeIstSkillLevel(employeeItem, ms) {
 
 function p1NormalizeEmployeeSkillPlanEntry(ms) {
   if (!ms || !ms.skillPlanKind) return ms;
+  ms.ziel_skill_level_min = p1EffectiveSkillLevel(ms);
+  p1NormalizeSkillLevelExplicit(ms);
   if (ms.skillEntryId) {
     const emp = (_p1SummaryCache?.employees || []).find(function (e) {
       return String(e.skillEntryId) === String(ms.skillEntryId);
     });
     if (emp && ms.skillPlanKind === "tech") {
       const match = (emp.skills || []).find(function (s) {
+        if (ms.kategorie_id && s.kategorie_id) return String(s.kategorie_id) === String(ms.kategorie_id);
         const sameKat = String(s.kategorie || "").trim() === String(ms.kategorie || "").trim();
         const tech = String(ms.technologie || "").trim();
         const sTech = String(s.technologie || "").trim();
@@ -1225,7 +1651,7 @@ function p1NormalizeEmployeeSkillPlanEntry(ms) {
       if (match && match.skillItemId) ms.skillItemId = match.skillItemId;
     }
   }
-  ms.bezeichnung = p1EmployeeSkillPlanTitle(ms);
+  ms.bezeichnung = String(ms.kategorie || p1EmployeeSkillPlanTitle(ms)).trim();
   return ms;
 }
 
@@ -1235,6 +1661,17 @@ function p1KpiFields(area) {
   if (area === "rollen") return [["ziel_anzahl", "Ziel-Anzahl", "number"]];
   if (area === "mitarbeiter") return [["ziel_skill_level_min", "Ziel-\u00d8-Level (1\u20135)", "number"]];
   return [];
+}
+
+function p1NormalizeNumericFieldValue(field, rawValue) {
+  const raw = String(rawValue == null ? "" : rawValue).trim();
+  if (raw === "") return null;
+  const n = Number(raw);
+  if (!Number.isFinite(n)) return null;
+  if (field === "ziel_umsatz_teur" || field === "ziel_headcount" || field === "ziel_anzahl") {
+    return Math.max(0, n);
+  }
+  return n;
 }
 
 function p1IstBadge(area, item) {
@@ -1261,9 +1698,40 @@ function p1MilestoneDomId(area, track, yr, idx) {
   return "p1ms_" + area + "_" + idPart + "_" + yr + "_" + idx;
 }
 
-function p1YearMilestoneCountText(count, area) {
+function p1EmployeeSkillYearCountText(area, track, yr) {
+  const entries = getP1Entries(area, track, yr);
+  const total = entries.length;
+  if (!total) return "leer";
+  let filled = 0;
+  entries.forEach(function (ms) {
+    if (p1MilestoneHasPlanContent(ms, area)) filled += 1;
+  });
+  return filled + "/" + total + " bewertet";
+}
+
+function p1YearMilestoneCountText(count, area, track, yr) {
+  if (area === "mitarbeiter" && track && yr != null) {
+    return p1EmployeeSkillYearCountText(area, track, yr);
+  }
   if (area === "mitarbeiter") return count ? count + " Skill(s)" : "leer";
   return count ? count + " Meilenstein(e)" : "leer";
+}
+
+function p1TrackMilestoneCountLabel(area, track) {
+  let total = 0;
+  let filled = 0;
+  YEARS.forEach(function (yr) {
+    getP1Entries(area, track, yr).forEach(function (ms) {
+      total += 1;
+      if (p1MilestoneHasPlanContent(ms, area)) filled += 1;
+    });
+  });
+  if (!total) return p1YearMilestoneCountText(0, area);
+  if (area === "mitarbeiter") {
+    return filled + "/" + total + " bewertet";
+  }
+  if (filled > 0) return filled + " mit Planung \u00b7 " + total + " Jahr(e)";
+  return total + " Jahr(e) \u00b7 noch ohne Planung";
 }
 
 function countP1TrackMilestones(area, track) {
@@ -1274,10 +1742,116 @@ function countP1TrackMilestones(area, track) {
   return total;
 }
 
+/* ---------- Planungsstatus-Übersicht (Register „Review“) ---------- */
+
+const P1_OVERVIEW_AREAS = [
+  { key: "portfolio", label: "Portfolio", mandatory: false },
+  { key: "gliederungen", label: "Organisation · Gliederungen", mandatory: false },
+  { key: "rollen", label: "Organisation · Rollen", mandatory: false },
+  { key: "mitarbeiter", label: "Mitarbeiter · Skills", mandatory: true },
+];
+
+function p1OverviewYearState(areaKey, track, yr) {
+  const entries = getP1Entries(areaKey, track, yr) || [];
+  const total = entries.length;
+  const filled = entries.filter(function (ms) { return p1MilestoneHasPlanContent(ms, areaKey); }).length;
+  const complete = areaKey === "mitarbeiter" ? (total > 0 && filled === total) : filled > 0;
+  return { total: total, filled: filled, complete: complete };
+}
+
+function p1OverviewMitarbeiterItems() {
+  const tracks = getP1Tracks("mitarbeiter") || [];
+  const trackByEntryId = {};
+  tracks.forEach(function (t) {
+    const id = t.skillEntryId || (t.entityRef && t.entityRef.kind === "employee" ? t.entityRef.id : null);
+    if (id) trackByEntryId[String(id)] = t;
+  });
+  const employees = (_p1SummaryCache && _p1SummaryCache.employees) || [];
+  return employees
+    .map(function (emp) {
+      const totalSkills = (emp.skills ? emp.skills.length : 0) + (emp.softSkills ? emp.softSkills.length : 0);
+      if (!totalSkills) return null; // kein Skill-Profil in Phase 1 -> keine Basis, nicht zu planen
+      const track = emp.skillEntryId ? trackByEntryId[String(emp.skillEntryId)] : null;
+      const years = {};
+      YEARS.forEach(function (yr) {
+        years[yr] = track
+          ? p1OverviewYearState("mitarbeiter", track, yr)
+          : { total: totalSkills, filled: 0, complete: false };
+      });
+      return { track: track || null, label: emp.name || "–", years: years };
+    })
+    .filter(Boolean)
+    .sort(function (a, b) { return String(a.label).localeCompare(String(b.label), "de"); });
+}
+
+function buildP1OverviewModel() {
+  ensureP1Tracks();
+  return P1_OVERVIEW_AREAS.map(function (def) {
+    const items = def.key === "mitarbeiter"
+      ? p1OverviewMitarbeiterItems()
+      : (getP1Tracks(def.key) || []).map(function (track) {
+          const years = {};
+          YEARS.forEach(function (yr) { years[yr] = p1OverviewYearState(def.key, track, yr); });
+          return { track: track, label: resolveEntityLabel(def.key, track) || "–", years: years };
+        }).sort(function (a, b) { return String(a.label).localeCompare(String(b.label), "de"); });
+    const yearTotals = {};
+    YEARS.forEach(function (yr) {
+      yearTotals[yr] = {
+        planned: items.filter(function (it) { return it.years[yr].complete; }).length,
+        total: items.length,
+      };
+    });
+    const fullyPlanned = items.filter(function (it) {
+      return YEARS.every(function (yr) { return it.years[yr].complete; });
+    }).length;
+    return Object.assign({}, def, { items: items, yearTotals: yearTotals, fullyPlanned: fullyPlanned });
+  });
+}
+
+async function ensureP1OverviewDataLoaded() {
+  if (isBcViewAll()) return false;
+  if (!_p1SummaryCache) {
+    await initPlanungNew();
+  } else {
+    ensureP1Tracks();
+  }
+  return Boolean(_p1SummaryCache);
+}
+
+function consolidateOrgMeasureKeys() {
+  const before = JSON.stringify(plan.measures || {});
+  ["gliederungen", "rollen"].forEach(function (areaKey) {
+    (getP1Tracks(areaKey) || []).forEach(function (track) {
+      YEARS.forEach(function (yr) {
+        getP1Entries(areaKey, track, yr);
+      });
+    });
+  });
+  return JSON.stringify(plan.measures || {}) !== before;
+}
+
+function renderP1OrgIstHint(area, item) {
+  if (!item || !item._hasPhase1) return "";
+  let html = '<div class="p1-org-ist-hint">';
+  html += '<span class="p1-org-ist-hint__label">Phase 1 IST</span> ';
+  if (area === "gliederungen") {
+    html += "<span><b>" + escAttr(String(item.headcount || 0)) + " HC</b></span>";
+    if (item.umsatz_teur) {
+      html += ' <span class="p1-org-ist-hint__sep">\u00b7</span> <span><b>' + escAttr(String(item.umsatz_teur)) + " TEUR</b></span>";
+    }
+  } else if (area === "rollen") {
+    html += "<span><b>" + escAttr(String(item.anzahl || 0)) + " Personen</b></span>";
+  }
+  html += "</div>";
+  return html;
+}
+
 function removeP1TrackMeasures(area, track) {
-  const prefix = "P1||" + area + "||" + p1TrackMeasureId(area, track) + "||";
   Object.keys(plan.measures || {}).forEach(function (key) {
-    if (key.indexOf(prefix) === 0) delete plan.measures[key];
+    const parts = key.split("||");
+    if (parts.length < 4 || parts[0] !== "P1" || parts[1] !== area) return;
+    if (!trackMatchesMeasureSegment(area, track, parts[2])) return;
+    delete plan.measures[key];
   });
 }
 
@@ -1336,7 +1910,18 @@ function p1MoveBtn(onclick, title, svg, disabled) {
   );
 }
 
-function p1MilestoneTitle(ms) {
+function p1PortfolioMilestoneTitle(ms, yr) {
+  const text = String(ms?.ergebnis || "").trim();
+  if (text) {
+    const firstLine = text.split("\n")[0].trim();
+    if (firstLine.length <= 96) return firstLine;
+    return firstLine.slice(0, 93) + "\u2026";
+  }
+  return yr ? "Beschreibung f\u00fcr " + yr + "\u2026" : "Beschreibung eingeben\u2026";
+}
+
+function p1MilestoneTitle(ms, area, yr) {
+  if (area === "portfolio") return p1PortfolioMilestoneTitle(ms, yr);
   const bez = String(ms?.bezeichnung || "").trim();
   if (bez) {
     return bez.length <= 96 ? bez : bez.slice(0, 93) + "\u2026";
@@ -1348,39 +1933,211 @@ function p1MilestoneTitle(ms) {
   return firstLine.slice(0, 93) + "\u2026";
 }
 
-function p1MilestoneHasContent(ms) {
-  return Boolean(String(ms?.bezeichnung || "").trim() || String(ms?.ergebnis || "").trim());
+function p1TrackDomId(area, track) {
+  return "p1_track_" + p1TrackMeasureId(area, track).replace(/[^a-zA-Z0-9]/g, "_");
+}
+
+function p1FlatTrackCountLabel(area, track) {
+  let filled = 0;
+  YEARS.forEach(function (yr) {
+    getP1Entries(area, track, yr).forEach(function (ms) {
+      if (p1MilestoneHasPlanContent(ms, area)) filled += 1;
+    });
+  });
+  if (!filled) return YEARS.length + " Jahre \u00b7 noch offen";
+  return filled + "/" + YEARS.length + " Jahre geplant";
+}
+
+function p1FlatTrackMetaTitle(area) {
+  if (area === "portfolio") return "Produkt";
+  if (area === "gliederungen") return "Bereich";
+  if (area === "rollen") return "Rolle";
+  return "Eintrag";
+}
+
+function p1FlatTrackDeleteLabel(area) {
+  if (area === "portfolio") return "Produkt aus Planung entfernen";
+  if (area === "gliederungen") return "Bereich aus Planung entfernen";
+  if (area === "rollen") return "Rolle aus Planung entfernen";
+  return "Eintrag aus Planung entfernen";
+}
+
+function p1FlatPlanColumns(area) {
+  if (area === "portfolio") {
+    return [
+      { key: "desc", head: "Beschreibung", className: "p1-flat-plan__desc" },
+      { key: "ziel_umsatz_teur", head: "Ziel-Umsatz (TEUR)", className: "p1-flat-plan__kpi p1-flat-plan__kpi--umsatz" },
+      { key: "ziel_quartal", head: "Ziel-Quartal", className: "p1-flat-plan__quarter" },
+    ];
+  }
+  if (area === "gliederungen") {
+    return [
+      { key: "desc", head: "Beschreibung", className: "p1-flat-plan__desc" },
+      { key: "ziel_headcount", head: "Ziel-Headcount", className: "p1-flat-plan__kpi p1-flat-plan__kpi--hc" },
+      { key: "ziel_umsatz_teur", head: "Ziel-Umsatz (TEUR)", className: "p1-flat-plan__kpi p1-flat-plan__kpi--umsatz" },
+      { key: "ziel_quartal", head: "Ziel-Quartal", className: "p1-flat-plan__quarter" },
+    ];
+  }
+  if (area === "rollen") {
+    return [
+      { key: "desc", head: "Beschreibung", className: "p1-flat-plan__desc" },
+      { key: "ziel_anzahl", head: "Ziel-Anzahl", className: "p1-flat-plan__kpi p1-flat-plan__kpi--anzahl" },
+      { key: "ziel_quartal", head: "Ziel-Quartal", className: "p1-flat-plan__quarter" },
+    ];
+  }
+  return [];
+}
+
+function renderP1FlatTrackMeta(area, track, item) {
+  const ref = encodeP1TrackRef(area, track);
+  const domId = p1TrackDomId(area, track);
+  const label = item.label || item.subcategory || "";
+  const verantwortlich = item.verantwortlich || track.verantwortlich || "";
+  const istBadge = item._hasPhase1 ? p1IstBadge(area, item) : "";
+  let html = '<div class="p1-flat-track-meta">';
+  html += '<div class="p1-flat-track-meta__head">';
+  html += '<span class="p1-flat-track-meta__title">' + escAttr(p1FlatTrackMetaTitle(area)) + "</span>";
+  if (istBadge) {
+    html += '<span class="p1-flat-track-meta__ist">Phase 1 IST: <strong>' + escAttr(istBadge) + "</strong></span>";
+  }
+  html += "</div>";
+  html += '<div class="p1-flat-track-meta__grid">';
+  html += '<div class="p1-ms__field"><label for="' + domId + '_bezeichnung">Bezeichnung</label>';
+  html += '<input type="text" id="' + domId + '_bezeichnung" value="' + escAttr(label) + '" onchange="updP1TrackField(this,\'' + escAttr(ref) + '\',\'bezeichnung\')">';
+  html += '</div>';
+  html += '<div class="p1-ms__field"><label for="' + domId + '_verantwortlich">Verantwortlich</label>';
+  html += '<input type="text" id="' + domId + '_verantwortlich" value="' + escAttr(verantwortlich) + '" placeholder="z.\u00a0B. Unit Lead" onchange="updP1TrackField(this,\'' + escAttr(ref) + '\',\'verantwortlich\')">';
+  html += "</div></div></div>";
+  return html;
+}
+
+function renderP1FlatYearField(area, track, yr, ms, col, eid, ref) {
+  if (col.key === "desc") {
+    return '<div class="' + col.className + '">' +
+      '<label class="p1-flat-plan__sr-only" for="' + eid + '_ergebnis">Beschreibung ' + yr + "</label>" +
+      '<textarea id="' + eid + '_ergebnis" rows="2" placeholder="Ziel f\u00fcr ' + yr + ' beschreiben\u2026" onchange="updP1(this,\'' + escAttr(ref) + '\',' + yr + ',0,\'ergebnis\')">' + escAttr(ms.ergebnis || "") + "</textarea>" +
+      "</div>";
+  }
+  if (col.key === "ziel_quartal") {
+    return '<div class="' + col.className + '">' +
+      '<label class="p1-flat-plan__sr-only" for="' + eid + '_ziel_quartal">Ziel-Quartal ' + yr + "</label>" +
+      '<select id="' + eid + '_ziel_quartal" onchange="updP1(this,\'' + escAttr(ref) + '\',' + yr + ',0,\'ziel_quartal\')">' +
+      p1QuarterSelectOptions(ms.ziel_quartal) +
+      "</select></div>";
+  }
+  const val = ms[col.key];
+  const minAttr = (col.key === "ziel_umsatz_teur" || col.key === "ziel_headcount" || col.key === "ziel_anzahl") ? ' min="0"' : "";
+  const placeholder = col.key === "ziel_umsatz_teur" ? "TEUR" : col.key === "ziel_headcount" ? "HC" : "Anzahl";
+  return '<div class="' + col.className + '">' +
+    '<label class="p1-flat-plan__sr-only" for="' + eid + "_" + col.key + '">' + escAttr(col.head) + " " + yr + "</label>" +
+    '<input type="number" step="1"' + minAttr + ' id="' + eid + "_" + col.key + '" value="' + (val != null ? val : "") + '" placeholder="' + placeholder + '" oninput="updP1Num(this,\'' + escAttr(ref) + '\',' + yr + ',0,\'' + col.key + '\')" onchange="updP1Num(this,\'' + escAttr(ref) + '\',' + yr + ',0,\'' + col.key + '\')">' +
+    "</div>";
+}
+
+function renderP1FlatYearRow(area, track, yr) {
+  const entries = getP1Entries(area, track, yr);
+  const ms = entries[0] || p1MilestoneTemplate(area, track, yr);
+  const ref = encodeP1TrackRef(area, track);
+  const idPart = p1TrackMeasureId(area, track).replace(/[^a-zA-Z0-9]/g, "_");
+  const eid = "p1_" + area + "_" + idPart + "_" + yr + "_0";
+  const hasContent = p1MilestoneHasPlanContent(ms, area);
+  const rowCls = hasContent
+    ? "p1-flat-plan__row p1-flat-plan__row--filled"
+    : "p1-flat-plan__row";
+  const columns = p1FlatPlanColumns(area);
+
+  let html = '<div class="' + rowCls + '" data-yr="' + yr + '">';
+  html += '<div class="p1-flat-plan__yr">';
+  html += '<span class="p1-flat-plan__yr-badge">' + yr + "</span>";
+  html += '<span class="p1-flat-plan__status" title="' + (hasContent ? "Geplant" : "Noch offen") + '" aria-hidden="true"></span>';
+  html += "</div>";
+  columns.forEach(function (col) {
+    html += renderP1FlatYearField(area, track, yr, ms, col, eid, ref);
+  });
+  html += "</div>";
+  return html;
+}
+
+function renderP1FlatYearPlan(area, track) {
+  const columns = p1FlatPlanColumns(area);
+  let html = '<div class="p1-flat-plan p1-flat-plan--' + escAttr(area) + '">';
+  html += '<div class="p1-flat-plan__intro">Jahresplanung \u2013 alle Planungsjahre auf einen Blick</div>';
+  html += '<div class="p1-flat-plan__head p1-flat-plan__row" aria-hidden="true">';
+  html += '<div class="p1-flat-plan__yr">Jahr</div>';
+  columns.forEach(function (col) {
+    html += '<div class="' + col.className + '">' + escAttr(col.head) + "</div>";
+  });
+  html += "</div>";
+  html += '<div class="p1-flat-plan__body">';
+  YEARS.forEach(function (yr) {
+    html += renderP1FlatYearRow(area, track, yr);
+  });
+  html += "</div></div>";
+  return html;
+}
+
+function p1ToggleFlatPlanRowFilled(el, area, ms) {
+  const row = el.closest(".p1-flat-plan__row");
+  if (row) row.classList.toggle("p1-flat-plan__row--filled", p1MilestoneHasPlanContent(ms, area));
+}
+
+function p1MilestoneHasContent(ms, area) {
+  return p1MilestoneHasPlanContent(ms, area);
 }
 
 function p1FlushMilestoneFieldsFromDom(area, track, yr, idx, ms) {
   const idPart = p1TrackMeasureId(area, track).replace(/[^a-zA-Z0-9]/g, "_");
   const eid = "p1_" + area + "_" + idPart + "_" + yr + "_" + idx;
-  const bez = document.getElementById(eid + "_bezeichnung");
   const erg = document.getElementById(eid + "_ergebnis");
-  if (bez) ms.bezeichnung = bez.value;
+  if (p1UsesFlatYearPlan(area)) {
+    ms.bezeichnung = resolveEntityLabel(area, track);
+  } else {
+    const bez = document.getElementById(eid + "_bezeichnung");
+    if (bez) ms.bezeichnung = bez.value;
+    const ver = document.getElementById(eid + "_verantwortlich");
+    if (ver) ms.verantwortlich = ver.value;
+  }
   if (erg) ms.ergebnis = erg.value;
-  const ver = document.getElementById(eid + "_verantwortlich");
-  if (ver) ms.verantwortlich = ver.value;
   const quartal = document.getElementById(eid + "_ziel_quartal");
-  if (quartal) ms.ziel_quartal = quartal.value;
+  if (quartal) ms.ziel_quartal = p1EffectiveQuarter(quartal.value);
   p1KpiFields(area).forEach(function (f) {
     const el = document.getElementById(eid + "_" + f[0]);
     if (!el) return;
-    const v = el.value.trim();
-    ms[f[0]] = v === "" ? null : Number(v);
+    ms[f[0]] = p1NormalizeNumericFieldValue(f[0], el.value);
   });
   ms.updatedAt = new Date().toISOString();
 }
 
+function p1FlushEmployeeSkillPlanFromDom(area, track) {
+  YEARS.forEach(function (yr) {
+    const entries = getP1EntriesFromMeasures(area, track, yr);
+    entries.forEach(function (ms, idx) {
+      if (!ms || !ms.skillPlanKind) return;
+      const idPart = p1TrackMeasureId(area, track).replace(/[^a-zA-Z0-9]/g, "_");
+      const eid = "p1_" + area + "_" + idPart + "_" + yr + "_" + idx;
+      const erg = document.getElementById(eid + "_ergebnis");
+      if (erg) ms.ergebnis = erg.value;
+      ms.ziel_skill_level_min = p1EffectiveSkillLevel(ms);
+      p1NormalizeEmployeeSkillPlanEntry(ms);
+      ms.updatedAt = new Date().toISOString();
+    });
+    if (entries.length) setP1Entries(area, track, yr, entries);
+  });
+}
+
 function p1FlushTrackFormToPlan(area, track) {
   const canonical = canonicalP1Track(area, track);
-  YEARS.forEach(function (yr) {
-    const entries = getP1Entries(area, canonical, yr);
-    entries.forEach(function (ms, idx) {
-      p1FlushMilestoneFieldsFromDom(area, canonical, yr, idx, ms);
+  if (area === "mitarbeiter") {
+    p1FlushEmployeeSkillPlanFromDom(area, canonical);
+  } else {
+    YEARS.forEach(function (yr) {
+      const entries = getP1Entries(area, canonical, yr);
+      entries.forEach(function (ms, idx) {
+        p1FlushMilestoneFieldsFromDom(area, canonical, yr, idx, ms);
+      });
+      if (entries.length) setP1Entries(area, canonical, yr, entries);
     });
-    if (entries.length) setP1Entries(area, canonical, yr, entries);
-  });
+  }
   ensureP1Tracks();
   const list = plan.meta.p1Tracks[area];
   if (list) {
@@ -1391,15 +2148,60 @@ function p1FlushTrackFormToPlan(area, track) {
   }
 }
 
-function renderP1MilestoneForm(area, track, yr, idx, ms, forceOpen) {
+function renderP1PortfolioMilestoneForm(area, track, yr, idx, ms, forceOpen) {
   const fields = p1KpiFields(area);
   const ref = encodeP1TrackRef(area, track);
   const idPart = p1TrackMeasureId(area, track).replace(/[^a-zA-Z0-9]/g, "_");
   const eid = "p1_" + area + "_" + idPart + "_" + yr + "_" + idx;
   const mid = p1MilestoneDomId(area, track, yr, idx);
-  const title = p1MilestoneTitle(ms);
-  const hasContent = p1MilestoneHasContent(ms);
-  const bodyOpen = forceOpen || !hasContent;
+  const title = p1PortfolioMilestoneTitle(ms, yr);
+  const hasContent = p1MilestoneHasContent(ms, area);
+  const bodyOpen = !!forceOpen;
+  const titleCls = hasContent ? "p1-ms__title" : "p1-ms__title p1-ms__title--empty";
+  const bodyCls = bodyOpen ? "p1-ms__body" : "p1-ms__body closed";
+  const wrapCls = bodyOpen ? "p1-ms p1-ms--open" : "p1-ms";
+
+  let html = '<div class="' + wrapCls + '" data-ref="' + escAttr(ref) + '" data-yr="' + yr + '" data-idx="' + idx + '">';
+  html += '<div class="p1-ms__head" onclick="toggleP1Ms(\'' + mid + '\')" role="button" tabindex="0" onkeydown="if(event.key===\'Enter\'||event.key===\' \'){event.preventDefault();toggleP1Ms(\'' + mid + '\')}">';
+  html += '<span class="p1-ms__chev" aria-hidden="true"></span>';
+  html += '<span class="' + titleCls + '" id="' + mid + '_title">' + escAttr(title) + '</span>';
+  html += '<span class="p1-ms__actions" onclick="event.stopPropagation()">';
+  html += p1TrashBtn("delP1Entry('" + escAttr(ref) + "'," + yr + "," + idx + ")", "L\u00f6schen");
+  html += '</span></div>';
+
+  html += '<div id="' + mid + '" class="' + bodyCls + '">';
+  html += '<div class="p1-ms__field"><label>Beschreibung</label>';
+  html += '<textarea id="' + eid + '_ergebnis" rows="2" oninput="p1SyncPortfolioMsTitle(this)" onchange="updP1(this,\'' + escAttr(ref) + '\',' + yr + ',' + idx + ',\'ergebnis\')">' + escAttr(ms.ergebnis || "") + '</textarea></div>';
+
+  html += '<div class="p1-ms__kpi-grid">';
+  fields.forEach(function(f) {
+    const val = ms[f[0]];
+    const minAttr = (f[0] === "ziel_umsatz_teur" || f[0] === "ziel_headcount" || f[0] === "ziel_anzahl") ? ' min="0"' : "";
+    html += '<div class="p1-ms__field p1-ms__field--kpi"><label>' + escAttr(f[1]) + '</label>';
+    html += '<input type="number" step="any"' + minAttr + ' id="' + eid + "_" + f[0] + '" value="' + (val != null ? val : "") + '" oninput="updP1Num(this,\'' + escAttr(ref) + '\',' + yr + ',' + idx + ',\'' + f[0] + '\')" onchange="updP1Num(this,\'' + escAttr(ref) + '\',' + yr + ',' + idx + ',\'' + f[0] + '\')">';
+    html += '</div>';
+  });
+  html += '<div class="p1-ms__field p1-ms__field--kpi"><label>ZIEL-QUARTAL</label>';
+  html += '<select id="' + eid + '_ziel_quartal" onchange="updP1(this,\'' + escAttr(ref) + '\',' + yr + ',' + idx + ',\'ziel_quartal\')">';
+  html += p1QuarterSelectOptions(ms.ziel_quartal);
+  html += '</select></div>';
+  html += '</div>';
+  html += '</div></div>';
+  return html;
+}
+
+function renderP1MilestoneForm(area, track, yr, idx, ms, forceOpen) {
+  if (area === "portfolio") {
+    return renderP1PortfolioMilestoneForm(area, track, yr, idx, ms, forceOpen);
+  }
+  const fields = p1KpiFields(area);
+  const ref = encodeP1TrackRef(area, track);
+  const idPart = p1TrackMeasureId(area, track).replace(/[^a-zA-Z0-9]/g, "_");
+  const eid = "p1_" + area + "_" + idPart + "_" + yr + "_" + idx;
+  const mid = p1MilestoneDomId(area, track, yr, idx);
+  const title = p1MilestoneTitle(ms, area, yr);
+  const hasContent = p1MilestoneHasContent(ms, area);
+  const bodyOpen = !!forceOpen;
   const titleCls = hasContent ? "p1-ms__title" : "p1-ms__title p1-ms__title--empty";
   const bodyCls = bodyOpen ? "p1-ms__body" : "p1-ms__body closed";
   const wrapCls = bodyOpen ? "p1-ms p1-ms--open" : "p1-ms";
@@ -1422,16 +2224,14 @@ function renderP1MilestoneForm(area, track, yr, idx, ms, forceOpen) {
   html += '<div class="p1-ms__kpi-grid">';
   fields.forEach(function(f) {
     const val = ms[f[0]];
+    const minAttr = (f[0] === "ziel_umsatz_teur" || f[0] === "ziel_headcount" || f[0] === "ziel_anzahl") ? ' min="0"' : "";
     html += '<div class="p1-ms__field p1-ms__field--kpi"><label>' + escAttr(f[1]) + '</label>';
-    html += '<input type="number" step="any" id="' + eid + "_" + f[0] + '" value="' + (val != null ? val : "") + '" oninput="updP1Num(this,\'' + escAttr(ref) + '\',' + yr + ',' + idx + ',\'' + f[0] + '\')" onchange="updP1Num(this,\'' + escAttr(ref) + '\',' + yr + ',' + idx + ',\'' + f[0] + '\')">';
+    html += '<input type="number" step="any"' + minAttr + ' id="' + eid + "_" + f[0] + '" value="' + (val != null ? val : "") + '" oninput="updP1Num(this,\'' + escAttr(ref) + '\',' + yr + ',' + idx + ',\'' + f[0] + '\')" onchange="updP1Num(this,\'' + escAttr(ref) + '\',' + yr + ',' + idx + ',\'' + f[0] + '\')">';
     html += '</div>';
   });
-  html += '<div class="p1-ms__field p1-ms__field--kpi"><label>Quartal</label>';
+  html += '<div class="p1-ms__field p1-ms__field--kpi"><label>ZIEL-QUARTAL</label>';
   html += '<select id="' + eid + '_ziel_quartal" onchange="updP1(this,\'' + escAttr(ref) + '\',' + yr + ',' + idx + ',\'ziel_quartal\')">';
-  html += '<option value="">--</option>';
-  ["Q1","Q2","Q3","Q4"].forEach(function(q) {
-    html += '<option value="' + q + '"' + (ms.ziel_quartal === q ? ' selected' : '') + '>' + q + '</option>';
-  });
+  html += p1QuarterSelectOptions(ms.ziel_quartal);
   html += '</select></div>';
   html += '<div class="p1-ms__field p1-ms__field--kpi"><label>Verantwortlich</label>';
   html += '<input type="text" id="' + eid + '_verantwortlich" value="' + escAttr(ms.verantwortlich || "") + '" onchange="updP1(this,\'' + escAttr(ref) + '\',' + yr + ',' + idx + ',\'verantwortlich\')">';
@@ -1441,145 +2241,223 @@ function renderP1MilestoneForm(area, track, yr, idx, ms, forceOpen) {
   return html;
 }
 
-function renderP1EmployeeSkillPlanForm(area, track, yr, idx, ms, forceOpen) {
-  const ref = encodeP1TrackRef(area, track);
-  const idPart = p1TrackMeasureId(area, track).replace(/[^a-zA-Z0-9]/g, "_");
-  const eid = "p1_" + area + "_" + idPart + "_" + yr + "_" + idx;
-  const mid = p1MilestoneDomId(area, track, yr, idx);
-  const employeeItem = findEmployeePhase1Item(track);
-  const istLevel = findEmployeeIstSkillLevel(employeeItem, ms);
-  const title = p1EmployeeSkillPlanTitle(ms);
-  const hasContent = p1EmployeeSkillPlanHasContent(ms);
-  const bodyOpen = forceOpen || !hasContent;
-  const titleCls = hasContent ? "p1-ms__title" : "p1-ms__title p1-ms__title--empty";
-  const bodyCls = bodyOpen ? "p1-ms__body" : "p1-ms__body closed";
-  const wrapCls = bodyOpen ? "p1-ms p1-ms--open" : "p1-ms";
-  const isTech = ms.skillPlanKind === "tech";
-  const kindLabel = isTech ? "Fachskill" : "Soft Skill";
-
-  let html = '<div class="' + wrapCls + ' p1-ms--employee-skill" data-ref="' + escAttr(ref) + '" data-yr="' + yr + '" data-idx="' + idx + '">';
-  html += '<div class="p1-ms__head" onclick="toggleP1Ms(\'' + mid + '\')" role="button" tabindex="0" onkeydown="if(event.key===\'Enter\'||event.key===\' \'){event.preventDefault();toggleP1Ms(\'' + mid + '\')}">';
-  html += '<span class="p1-ms__chev" aria-hidden="true"></span>';
-  html += '<span class="p1-ms__kind-badge p1-ms__kind-badge--' + (isTech ? "tech" : "soft") + '">' + kindLabel + "</span>";
-  html += '<span class="' + titleCls + '" id="' + mid + '_title">' + escAttr(title) + "</span>";
-  if (istLevel != null) {
-    html += '<span class="p1-ms__ist-level">IST Lvl ' + escAttr(String(istLevel)) + "</span>";
+function renderP1SkillLevelPicker(ref, yr, idx, ms) {
+  const state = p1SkillLevelPickerState(ms);
+  let html = '<div class="p1-skill-level-picker" role="group" aria-label="Ziel-Level 1 bis 5">';
+  for (let lvl = 1; lvl <= 5; lvl += 1) {
+    let cls = "p1-skill-level-btn";
+    if (state.explicit && state.level === lvl) {
+      cls += " p1-skill-level-btn--active";
+    } else if (!state.explicit && lvl === 1) {
+      cls += " p1-skill-level-btn--default";
+    }
+    const pressed = state.explicit && state.level === lvl ? ' aria-pressed="true"' : ' aria-pressed="false"';
+    const title = !state.explicit && lvl === 1
+      ? "Noch nicht best\u00e4tigt \u2013 Klick setzt Bewertung"
+      : "Level " + lvl;
+    html += '<button type="button" class="' + cls + '"' + pressed +
+      ' onclick="setP1SkillLevel(\'' + escAttr(ref) + '\',' + yr + "," + idx + "," + lvl + ')"' +
+      ' title="' + escAttr(title) + '">' + lvl + "</button>";
   }
-  html += '<span class="p1-ms__actions" onclick="event.stopPropagation()">';
-  html += p1SaveBtn("saveP1Milestone('" + escAttr(ref) + "'," + yr + "," + idx + ")");
-  html += p1TrashBtn("delP1Entry('" + escAttr(ref) + "'," + yr + "," + idx + ")", "L\u00f6schen");
-  html += "</span></div>";
-
-  html += '<div id="' + mid + '" class="' + bodyCls + '">';
-  html += '<div class="p1-employee-skill-plan">';
-  html += '<div class="p1-ms__field"><label>' + (isTech ? "Skill-Kategorie" : "Soft-Skill-Kategorie") + "</label>";
-  html += '<select onchange="updP1SkillCategory(this,\'' + escAttr(ref) + '\',' + yr + "," + idx + ')\">';
-  html += p1SkillCategoryOptions(ms.skillPlanKind, ms.kategorie_id, ms.kategorie);
-  html += "</select></div>";
-
-  if (isTech) {
-    html += '<div class="p1-ms__field"><label>Technologie / Details</label>';
-    html += '<input type="text" value="' + escAttr(ms.technologie || "") + '" placeholder="z.\u00a0B. AWS, SAP BTP" oninput="p1SyncEmployeeSkillPlanTitle(\'' + escAttr(ref) + '\',' + yr + "," + idx + ')" onchange="updP1(this,\'' + escAttr(ref) + '\',' + yr + "," + idx + ",\'technologie\')\">";
-    html += "</div>";
-  } else {
-    html += '<div class="p1-ms__field"><label>Weitere Details</label>';
-    html += '<input type="text" value="' + escAttr(ms.kompetenz || "") + '" placeholder="Weitere Details" oninput="p1SyncEmployeeSkillPlanTitle(\'' + escAttr(ref) + '\',' + yr + "," + idx + ')" onchange="updP1(this,\'' + escAttr(ref) + '\',' + yr + "," + idx + ",\'kompetenz\')\">";
-    html += "</div>";
-  }
-
-  html += '<div class="p1-ms__kpi-grid">';
-  html += '<div class="p1-ms__field p1-ms__field--kpi"><label>Ziel-Level (1\u20135)</label>';
-  html += '<select onchange="updP1SkillLevel(this,\'' + escAttr(ref) + '\',' + yr + "," + idx + ")\">";
-  html += p1SkillLevelOptions(ms.ziel_skill_level_min);
-  html += "</select></div>";
-  html += '<div class="p1-ms__field p1-ms__field--kpi"><label>Quartal</label>';
-  html += '<select onchange="updP1(this,\'' + escAttr(ref) + '\',' + yr + "," + idx + ",\'ziel_quartal\')\">";
-  html += '<option value="">--</option>';
-  ["Q1", "Q2", "Q3", "Q4"].forEach(function (q) {
-    html += '<option value="' + q + '"' + (ms.ziel_quartal === q ? " selected" : "") + ">" + q + "</option>";
-  });
-  html += "</select></div>";
-  html += '<div class="p1-ms__field p1-ms__field--kpi"><label>Verantwortlich</label>';
-  html += '<input type="text" value="' + escAttr(ms.verantwortlich || "") + '" onchange="updP1(this,\'' + escAttr(ref) + '\',' + yr + "," + idx + ",\'verantwortlich\')\">";
-  html += "</div></div>";
-
-  html += '<div class="p1-ms__field"><label>Bemerkungen</label>';
-  html += '<textarea id="' + eid + '_ergebnis" rows="2" onchange="updP1(this,\'' + escAttr(ref) + '\',' + yr + "," + idx + ",\'ergebnis\')\">" + escAttr(ms.ergebnis || "") + "</textarea>";
-  html += "</div></div></div></div>";
+  html += "</div>";
   return html;
 }
 
-function renderP1MitarbeiterYearEntry(area, track, yr, idx, ms, forceOpen) {
-  if (ms && (ms.skillPlanKind === "tech" || ms.skillPlanKind === "soft")) {
-    return renderP1EmployeeSkillPlanForm(area, track, yr, idx, ms, forceOpen);
-  }
-  return renderP1MilestoneForm(area, track, yr, idx, ms, forceOpen);
+function renderP1EmployeeSkillYearPlanRow(area, track, yr, idx, ms, employeeItem, ref) {
+  const idPart = p1TrackMeasureId(area, track).replace(/[^a-zA-Z0-9]/g, "_");
+  const eid = "p1_" + area + "_" + idPart + "_" + yr + "_" + idx;
+  const istLevel = findEmployeeIstSkillLevel(employeeItem, ms);
+  const hasContent = p1MilestoneHasPlanContent(ms, area);
+  const rowCls = hasContent
+    ? "p1-skill-plan__row p1-skill-plan__row--filled"
+    : "p1-skill-plan__row";
+  const isTech = ms.skillPlanKind === "tech";
+  const legacyCls = ms._legacy ? " p1-skill-plan__row--legacy" : "";
+  const label = String(ms.kategorie || ms.bezeichnung || "\u2013").trim();
+
+  let html = '<div class="' + rowCls + legacyCls + '" data-idx="' + idx + '">';
+  html += '<div class="p1-skill-plan__name">';
+  html += '<span class="p1-ms__kind-badge p1-ms__kind-badge--' + (isTech ? "tech" : "soft") + '">' + (isTech ? "Fach" : "Soft") + "</span>";
+  html += '<span class="p1-skill-plan__label">' + escAttr(label);
+  if (ms._legacy) html += ' <span class="p1-skill-plan__legacy-tag">(Alt)</span>';
+  html += "</span></div>";
+  html += '<div class="p1-skill-plan__ist" title="IST aus Phase 1">' + (istLevel != null ? escAttr(String(istLevel)) : "\u2013") + "</div>";
+  html += '<div class="p1-skill-plan__level">' + renderP1SkillLevelPicker(ref, yr, idx, ms) + "</div>";
+  html += '<div class="p1-skill-plan__comment">';
+  html += '<label class="p1-flat-plan__sr-only" for="' + eid + '_ergebnis">Kommentar ' + escAttr(label) + "</label>";
+  html += '<input type="text" id="' + eid + '_ergebnis" value="' + escAttr(ms.ergebnis || "") + '" placeholder="Optional\u2026" onchange="updP1(this,\'' + escAttr(ref) + '\',' + yr + "," + idx + ",\'ergebnis\')\">";
+  html += "</div></div>";
+  return html;
 }
 
-function renderP1YearAccordion(area, track, yr, isFirst, openMsIdx) {
+function renderP1EmployeeSkillYearPlanSection(area, track, yr, entries, kind, sectionLabel, employeeItem, ref) {
+  const rows = entries
+    .map(function (ms, idx) { return { ms: ms, idx: idx }; })
+    .filter(function (item) { return item.ms && item.ms.skillPlanKind === kind; });
+  if (!rows.length) return "";
+
+  let html = '<div class="p1-skill-plan__section">';
+  html += '<div class="p1-skill-plan__section-title">' + escAttr(sectionLabel) + "</div>";
+  html += '<div class="p1-skill-plan__head p1-skill-plan__row" aria-hidden="true">';
+  html += '<div class="p1-skill-plan__name">Skill</div>';
+  html += '<div class="p1-skill-plan__ist">IST</div>';
+  html += '<div class="p1-skill-plan__level">Ziel-Level</div>';
+  html += '<div class="p1-skill-plan__comment">Kommentar</div>';
+  html += "</div>";
+  rows.forEach(function (item) {
+    html += renderP1EmployeeSkillYearPlanRow(area, track, yr, item.idx, item.ms, employeeItem, ref);
+  });
+  html += "</div>";
+  return html;
+}
+
+function renderP1EmployeeSkillYearPlan(area, track, yr) {
+  const entries = getP1Entries(area, track, yr);
+  const employeeItem = findEmployeePhase1Item(track);
+  const ref = encodeP1TrackRef(area, track);
+  const techCats = (_p1SkillCategoriesCache?.tech || []).length;
+  const softCats = (_p1SkillCategoriesCache?.soft || []).length;
+
+  let html = '<div class="p1-skill-plan" data-yr="' + yr + '">';
+  if (!techCats && !softCats) {
+    html += '<p class="bc-muted p1-skill-plan__empty">Keine Skill-Kategorien im Admin hinterlegt.</p>';
+  } else {
+    html += '<div class="p1-skill-plan__columns">';
+    html += renderP1EmployeeSkillYearPlanSection(area, track, yr, entries, "tech", "Fachskills", employeeItem, ref);
+    html += renderP1EmployeeSkillYearPlanSection(area, track, yr, entries, "soft", "Soft Skills", employeeItem, ref);
+    html += "</div>";
+  }
+  html += "</div>";
+  return html;
+}
+
+function renderP1YearAccordion(area, track, yr) {
   const entries = getP1Entries(area, track, yr);
   const count = entries.length;
   const ref = encodeP1TrackRef(area, track);
-  const openCls = isFirst ? " p1-acc--open" : "";
   const isMitarbeiter = area === "mitarbeiter";
-  let html = '<div class="p1-acc' + openCls + '" data-yr="' + yr + '">';
+  let html = '<div class="p1-acc" data-yr="' + yr + '">';
   html += '<div class="p1-acc__head" onclick="this.parentElement.classList.toggle(\'p1-acc--open\')">';
   html += '<span class="p1-acc__yr">' + yr + '</span>';
-  html += '<span class="p1-acc__count">' + p1YearMilestoneCountText(count, area) + '</span>';
-  if (count) {
+  html += '<span class="p1-acc__count">' + p1YearMilestoneCountText(count, area, track, yr) + '</span>';
+  if (count && isMitarbeiter) {
     html += '<span class="p1-acc__actions" onclick="event.stopPropagation()">';
     html += p1TrashBtn(
       "delP1YearEntries('" + escAttr(ref) + "'," + yr + ")",
-      isMitarbeiter ? "Alle Skills f\u00fcr " + yr + " l\u00f6schen" : "Alle Meilensteine f\u00fcr " + yr + " l\u00f6schen"
+      "Bewertungen f\u00fcr " + yr + " zur\u00fccksetzen"
     );
-    html += '</span>';
+    html += "</span>";
+  } else if (count && !isMitarbeiter) {
+    html += '<span class="p1-acc__actions" onclick="event.stopPropagation()">';
+    html += p1TrashBtn(
+      "delP1YearEntries('" + escAttr(ref) + "'," + yr + ")",
+      "Alle Meilensteine f\u00fcr " + yr + " l\u00f6schen"
+    );
+    html += "</span>";
   }
   html += '</div>';
   html += '<div class="p1-acc__body">';
-  entries.forEach(function(ms, idx) {
-    if (isMitarbeiter) {
-      html += renderP1MitarbeiterYearEntry(area, track, yr, idx, ms, openMsIdx === idx);
-    } else {
-      html += renderP1MilestoneForm(area, track, yr, idx, ms, openMsIdx === idx);
-    }
-  });
   if (isMitarbeiter) {
-    html += '<div class="p1-employee-plan-add">';
-    html += '<button type="button" class="btn btn-sm btn-outline p1-add-btn" onclick="event.stopPropagation();addP1EmployeeSkillEntry(\'' + escAttr(ref) + '\',' + yr + ',\'tech\')">+ Fachskill</button>';
-    html += '<button type="button" class="btn btn-sm btn-outline p1-add-btn" onclick="event.stopPropagation();addP1EmployeeSkillEntry(\'' + escAttr(ref) + '\',' + yr + ',\'soft\')">+ Soft Skill</button>';
-    html += "</div>";
+    html += renderP1EmployeeSkillYearPlan(area, track, yr);
   } else {
-    html += '<button type="button" class="btn btn-sm btn-outline p1-add-btn" onclick="event.stopPropagation();addP1Entry(\'' + escAttr(ref) + '\',' + yr + ')">+ Meilenstein</button>';
+    entries.forEach(function (ms, idx) {
+      html += renderP1MilestoneForm(area, track, yr, idx, ms, false);
+    });
+    if (!p1UsesFlatYearPlan(area)) {
+      html += '<button type="button" class="btn btn-sm btn-outline p1-add-btn" onclick="event.stopPropagation();addP1Entry(\'' + escAttr(ref) + '\',' + yr + ')">+ Meilenstein</button>';
+    }
   }
   html += '</div></div>';
   return html;
 }
 
-function renderP1EmployeeSkillList(item) {
-  const tech = item.skills || [];
-  const soft = item.softSkills || [];
-  if (!tech.length && !soft.length) {
-    return '<p class="bc-muted p1-employee-ist__empty">Keine Skills in Phase 1 erfasst.</p>';
+function renderP1SkillLevelDisplay(level) {
+  const n = Number(level);
+  const activeLevel = Number.isFinite(n) && n >= 1 && n <= 5 ? Math.round(n) : null;
+  let html = '<div class="p1-skill-level-picker p1-skill-level-picker--readonly" role="img" aria-label="';
+  html += activeLevel != null ? "Level " + activeLevel : "Kein Level erfasst";
+  html += '">';
+  for (let lvl = 1; lvl <= 5; lvl += 1) {
+    const active = activeLevel === lvl ? " p1-skill-level-btn--active" : "";
+    html += '<span class="p1-skill-level-btn p1-skill-level-btn--readonly' + active + '" aria-hidden="true">' + lvl + "</span>";
   }
-  let html = '<div class="p1-employee-ist">';
-  html += '<div class="p1-employee-ist__head">IST-Skills aus Phase 1</div>';
-  html += '<ul class="p1-employee-skill-list">';
-  tech.forEach(function (s) {
-    const label = (s.kategorie ? s.kategorie + " \u00b7 " : "") + (s.technologie || "\u2013");
-    html += '<li class="p1-employee-skill p1-employee-skill--tech">';
-    html += '<span class="p1-employee-skill__kind">Fach</span>';
-    html += '<span class="p1-employee-skill__label">' + escAttr(label) + "</span>";
-    if (s.level != null) html += '<span class="p1-employee-skill__level">Lvl ' + escAttr(String(s.level)) + "</span>";
-    html += "</li>";
+  html += "</div>";
+  return html;
+}
+
+function renderP1EmployeeIstSkillRow(row) {
+  const hasContent = p1IstSkillRowHasContent(row);
+  const rowCls = hasContent
+    ? "p1-skill-plan__row p1-skill-plan__row--filled"
+    : "p1-skill-plan__row";
+  const isTech = row.skillPlanKind === "tech";
+  const legacyCls = row._legacy ? " p1-skill-plan__row--legacy" : "";
+  const label = String(row.kategorie || "\u2013").trim();
+  const comment = String(row.bemerkungen || "").trim();
+
+  let html = '<div class="' + rowCls + legacyCls + '">';
+  html += '<div class="p1-skill-plan__name">';
+  html += '<span class="p1-ms__kind-badge p1-ms__kind-badge--' + (isTech ? "tech" : "soft") + '">' + (isTech ? "Fach" : "Soft") + "</span>";
+  html += '<span class="p1-skill-plan__label">' + escAttr(label);
+  if (row._legacy) html += ' <span class="p1-skill-plan__legacy-tag">(Alt)</span>';
+  html += "</span></div>";
+  html += '<div class="p1-skill-plan__level">' + renderP1SkillLevelDisplay(row.level) + "</div>";
+  html += '<div class="p1-skill-plan__comment">';
+  html += '<span class="p1-skill-plan__comment-text">' + escAttr(comment || "\u2013") + "</span>";
+  html += "</div></div>";
+  return html;
+}
+
+function renderP1EmployeeIstSkillSection(rows, kind, sectionLabel) {
+  const sectionRows = rows.filter(function (row) { return row && row.skillPlanKind === kind; });
+  if (!sectionRows.length) return "";
+
+  let html = '<div class="p1-skill-plan__section">';
+  html += '<div class="p1-skill-plan__section-title">' + escAttr(sectionLabel) + "</div>";
+  html += '<div class="p1-skill-plan__head p1-skill-plan__row p1-skill-plan__row--ist-head" aria-hidden="true">';
+  html += '<div class="p1-skill-plan__name">Skill</div>';
+  html += '<div class="p1-skill-plan__level">Level</div>';
+  html += '<div class="p1-skill-plan__comment">Kommentar</div>';
+  html += "</div>";
+  sectionRows.forEach(function (row) {
+    html += renderP1EmployeeIstSkillRow(row);
   });
-  soft.forEach(function (s) {
-    html += '<li class="p1-employee-skill p1-employee-skill--soft">';
-    html += '<span class="p1-employee-skill__kind">Soft</span>';
-    html += '<span class="p1-employee-skill__label">' + escAttr(s.kategorie || "Soft Skill") + "</span>";
-    if (s.level != null) html += '<span class="p1-employee-skill__level">Lvl ' + escAttr(String(s.level)) + "</span>";
-    html += "</li>";
+  html += "</div>";
+  return html;
+}
+
+function p1EmployeeIstCountText(rows) {
+  const total = (rows || []).length;
+  if (!total) return "leer";
+  let filled = 0;
+  rows.forEach(function (row) {
+    if (p1IstSkillRowHasContent(row)) filled += 1;
   });
-  html += "</ul></div>";
+  return filled + "/" + total + " erfasst";
+}
+
+function renderP1EmployeePhase1SkillPlan(item) {
+  const employeeItem = item || {};
+  const techCats = (_p1SkillCategoriesCache?.tech || []).length;
+  const softCats = (_p1SkillCategoriesCache?.soft || []).length;
+  const rows = buildP1EmployeeIstSkillMatrix(employeeItem);
+
+  let html = '<div class="p1-acc p1-acc--ist" data-yr="ist">';
+  html += '<div class="p1-acc__head" onclick="this.parentElement.classList.toggle(\'p1-acc--open\')">';
+  html += '<span class="p1-acc__yr">IST-Skills aus Phase 1</span>';
+  html += '<span class="p1-acc__count">' + p1EmployeeIstCountText(rows) + "</span>";
+  html += "</div>";
+  html += '<div class="p1-acc__body">';
+  if (!techCats && !softCats) {
+    html += '<p class="bc-muted p1-skill-plan__empty">Keine Skill-Kategorien im Admin hinterlegt.</p>';
+  } else {
+    html += '<div class="p1-skill-plan p1-skill-plan--ist">';
+    html += '<div class="p1-skill-plan__columns">';
+    html += renderP1EmployeeIstSkillSection(rows, "tech", "Fachskills");
+    html += renderP1EmployeeIstSkillSection(rows, "soft", "Soft Skills");
+    html += "</div></div>";
+  }
+  html += "</div></div>";
   return html;
 }
 
@@ -1595,17 +2473,23 @@ function renderP1SubcategoryBlock(area, item, moveCtx) {
     personalnummer: item.personalnummer,
     entityRef: item.entityRef,
     source: item.source,
+    verantwortlich: item.verantwortlich,
   });
   const label = item.label || item.subcategory;
   const blockId = p1BlockDomId(area, track);
   const ref = encodeP1TrackRef(area, track);
-  const msCount = countP1TrackMilestones(area, track);
+  const countLabel = p1UsesFlatYearPlan(area)
+    ? p1FlatTrackCountLabel(area, track)
+    : p1TrackMilestoneCountLabel(area, track);
   const movePos = moveCtx || p1TrackMovePosition(area, track);
+  const subcatCls = p1UsesFlatYearPlan(area) || area === "mitarbeiter"
+    ? "p1-subcat p1-subcat--flat p1-subcat--" + area
+    : "p1-subcat";
 
-  let html = '<details class="p1-subcat" id="' + escAttr(blockId) + '">';
+  let html = '<details class="' + subcatCls + '" id="' + escAttr(blockId) + '">';
   html += '<summary class="p1-subcat__head">';
   html += '<span class="p1-subcat__label">' + escAttr(label) + '</span>';
-  html += '<span class="p1-subcat__count">' + p1YearMilestoneCountText(msCount, area) + '</span>';
+  html += '<span class="p1-subcat__count">' + countLabel + '</span>';
   html += '<span class="p1-subcat__actions" onclick="event.preventDefault();event.stopPropagation()">';
   html += '<span class="p1-subcat__move">';
   html += p1MoveBtn(
@@ -1621,22 +2505,25 @@ function renderP1SubcategoryBlock(area, item, moveCtx) {
     !movePos.canDown
   );
   html += "</span>";
-  if (area !== "mitarbeiter") {
-    html += p1SaveBtn("saveP1Track('" + escAttr(ref) + "')", "Speichern");
-  }
-  if (area === "portfolio") {
-    html += p1EditBtn("openP1RenameTrack('" + escAttr(ref) + "')", "Bezeichnung \u00e4ndern");
-  }
-  html += p1TrashBtn("delP1Track('" + escAttr(ref) + "')", "Meilenstein l\u00f6schen");
+  html += p1SaveBtn("saveP1Track('" + escAttr(ref) + "')", "Speichern");
+  html += p1TrashBtn(
+    "delP1Track('" + escAttr(ref) + "')",
+    p1UsesFlatYearPlan(area) ? p1FlatTrackDeleteLabel(area) : "Meilenstein l\u00f6schen"
+  );
   html += '</span>';
   html += '</summary>';
   html += '<div class="p1-subcat__body">';
-  if (area === "mitarbeiter") {
-    html += renderP1EmployeeSkillList(item);
+  if (p1UsesFlatYearPlan(area)) {
+    html += renderP1FlatTrackMeta(area, track, item);
+    html += renderP1FlatYearPlan(area, track);
+  } else if (area === "mitarbeiter") {
+    html += renderP1EmployeePhase1SkillPlan(item);
   }
-  YEARS.forEach(function(yr, i) {
-    html += renderP1YearAccordion(area, track, yr, i === 0);
-  });
+  if (!p1UsesFlatYearPlan(area)) {
+    YEARS.forEach(function(yr) {
+      html += renderP1YearAccordion(area, track, yr);
+    });
+  }
   html += '</div></details>';
   return html;
 }
@@ -1776,7 +2663,7 @@ function renderP1OrganisationArea() {
 
 function renderPlanungNewHtml() {
   let html = '<div class="p1-planning">';
-  html += '<div class="card" style="margin-bottom:.75rem"><h3 style="margin:0;color:var(--rc-accent2)">Planung NEW \u00b7 Phase-1-basiert</h3>';
+  html += '<div class="card" style="margin-bottom:.75rem"><h3 style="margin:0;color:var(--rc-accent2)">Planung \u00b7 Phase-1-basiert</h3>';
   html += '<p class="bc-muted" style="margin:.3rem 0 0">Meilensteinplanung auf Item-Ebene innerhalb der Phase-1-Kategorien.</p></div>';
 
   P1_TOP_AREAS.forEach(function (areaDef) {
@@ -1885,6 +2772,12 @@ function bindP1OpenStatePersistence() {
     }
     writePersistedP1OpenState(collectP1OpenState());
   }, true);
+  root.addEventListener("click", function (e) {
+    if (!e.target.closest(".p1-acc__head")) return;
+    requestAnimationFrame(function () {
+      writePersistedP1OpenState(collectP1OpenState());
+    });
+  });
 }
 
 function applyP1OpenState(state, focusTarget) {
@@ -1958,7 +2851,19 @@ function applyP1OpenState(state, focusTarget) {
     body.closest(".p1-ms")?.classList.add("p1-ms--open");
   });
 
-  if (focusTarget && focusTarget.idx != null && focusTarget.idx >= 0 && focusTarget.track) {
+  if (focusTarget && focusTarget.track && focusTarget.yr != null) {
+    const idPart = p1TrackMeasureId(focusTarget.area, focusTarget.track).replace(/[^a-zA-Z0-9]/g, "_");
+    const idx = focusTarget.idx != null ? focusTarget.idx : 0;
+    const field = p1UsesFlatYearPlan(focusTarget.area) || focusTarget.area === "mitarbeiter"
+      ? "ergebnis"
+      : "bezeichnung";
+    const input = document.getElementById(
+      "p1_" + focusTarget.area + "_" + idPart + "_" + focusTarget.yr + "_" + idx + "_" + field
+    );
+    if (input) {
+      requestAnimationFrame(function () { input.focus(); });
+    }
+  } else if (focusTarget && focusTarget.idx != null && focusTarget.idx >= 0 && focusTarget.track) {
     const idPart = p1TrackMeasureId(focusTarget.area, focusTarget.track).replace(/[^a-zA-Z0-9]/g, "_");
     const input = document.getElementById(
       "p1_" + focusTarget.area + "_" + idPart + "_" + focusTarget.yr + "_" + focusTarget.idx + "_bezeichnung"
@@ -1982,7 +2887,7 @@ async function initPlanungNew(opts) {
   const root = document.getElementById("planungNewContent");
   if (!root) return;
 
-  const notice = document.getElementById("bcUnitSaveNoticeNew");
+  const notice = document.getElementById("bcUnitSaveNotice");
   if (notice) notice.style.display = isBcViewAll() ? "" : "none";
 
   if (isBcViewAll()) {
@@ -2001,6 +2906,9 @@ async function initPlanungNew(opts) {
     try {
       const unit = p1SummaryUnit();
       if (!unit) throw new Error("Bitte oben eine konkrete Unit w\u00e4hlen.");
+      if (typeof loadPlanFromApi === "function") {
+        await loadPlanFromApi();
+      }
       const resp = await fetch("/api/backcasting/phase1-summary?unit=" + encodeURIComponent(unit), { credentials: "include" });
       if (!resp.ok) throw new Error("API-Fehler " + resp.status);
       _p1SummaryCache = await resp.json();
@@ -2015,15 +2923,22 @@ async function initPlanungNew(opts) {
     return initPlanungNew();
   } else {
     const unit = p1SummaryUnit();
+    if (unit && typeof loadPlanFromApi === "function") {
+      await loadPlanFromApi();
+    }
     if (unit) await ensureP1SummaryEmployees(unit);
     await loadP1SkillCategories();
   }
 
   ensureP1Tracks();
+  const reconciled = reconcileP1TracksFromMeasures(["gliederungen", "rollen"]);
   const normalized = normalizeP1TracksInMeta();
   const synced = syncP1TracksFromPhase1(["gliederungen", "rollen"]);
+  ["gliederungen", "rollen"].forEach(dedupeP1TracksArea);
+  const measuresConsolidated = consolidateOrgMeasureKeys();
   const seeded = ensureP1TrackYearCoverage();
-  if ((normalized || synced > 0 || seeded > 0) && typeof savePlan === "function") {
+  const employeeCatalogSynced = ensureP1EmployeeSkillCatalogAllYears();
+  if ((reconciled > 0 || normalized || synced > 0 || seeded > 0 || measuresConsolidated || employeeCatalogSynced > 0) && typeof savePlan === "function") {
     await savePlan({ allowIncomplete: true, silent: true });
   }
 
@@ -2127,7 +3042,50 @@ function renderP1OrgAddModalBody(areaKey) {
 }
 
 function renderP1GliederungAddModalBody() {
-  return renderP1OrgAddModalBody("gliederungen");
+  ensureP1Tracks();
+  const adoptable = getPhase1CandidatesForAdoption("gliederungen");
+  const hasPhase1Data = getPhase1SummaryItems("gliederungen").length > 0;
+  const defaultMode = adoptable.length ? "phase1" : "plan";
+
+  let html = '<div class="p1-add-modal p1-add-modal--org">';
+  html += '<p class="bc-muted p1-add-modal__intro">Organisatorische Gliederung f\u00fcr die Meilensteinplanung anlegen.</p>';
+  html += '<p class="bc-muted p1-add-modal__hint" style="font-size:.8rem;margin:0 0 .75rem">Eintr\u00e4ge aus Phase 1 erscheinen automatisch in der Liste. Hier k\u00f6nnen weitere Bereiche aus Phase 1 \u00fcbernommen oder rein f\u00fcr die Planung neu angelegt werden.</p>';
+
+  if (_p1SummaryRefreshFailed) {
+    html += '<p class="bc-muted p1-add-modal__empty" style="color:var(--rc-red)">Phase-1-Daten konnten nicht geladen werden.</p>';
+  }
+
+  html += '<fieldset class="p1-add-modal__mode">';
+  html += '<legend class="p1-add-modal__legend">Art der Anlage</legend>';
+  html += '<label class="p1-add-modal__radio"><input type="radio" name="p1AddItemMode" value="phase1"' + (defaultMode === "phase1" ? ' checked' : '') + ' onchange="syncP1AddItemModalMode()"> Aus Phase 1 \u00fcbernehmen</label>';
+  html += '<label class="p1-add-modal__radio"><input type="radio" name="p1AddItemMode" value="plan"' + (defaultMode === "plan" ? ' checked' : '') + ' onchange="syncP1AddItemModalMode()"> Neue Bezeichnung anlegen</label>';
+  html += '</fieldset>';
+
+  html += '<div id="p1AddPhase1Panel" class="p1-add-modal__panel"' + (defaultMode === "phase1" ? '' : ' hidden') + '>';
+  if (adoptable.length) {
+    html += '<label for="p1AddPhase1Select">Phase-1-Bereich w\u00e4hlen</label>';
+    html += '<select id="p1AddPhase1Select" class="p1-add-modal__select">';
+    html += '<option value="">\u2013 Bitte w\u00e4hlen \u2013</option>';
+    adoptable.forEach(function (item) {
+      const label = item.subcategory || item.label || item.id;
+      const badge = p1IstBadge("gliederungen", item);
+      html += '<option value="' + escAttr(item.id) + '">' + escAttr(label) + ' (IST: ' + escAttr(badge) + ')</option>';
+    });
+    html += '</select>';
+  } else if (hasPhase1Data) {
+    html += '<p class="bc-muted p1-add-modal__empty">Alle erfassten Phase-1-Bereiche sind bereits in der Planung. Nutzen Sie \u201eNeue Bezeichnung anlegen\u201c f\u00fcr zus\u00e4tzliche Planungseintr\u00e4ge.</p>';
+  } else {
+    html += '<p class="bc-muted p1-add-modal__empty">F\u00fcr diese Unit sind noch keine Bereiche in Phase 1 erfasst. Nutzen Sie \u201eNeue Bezeichnung anlegen\u201c oder erfassen Sie zuerst Phase-1-Daten.</p>';
+  }
+  html += '</div>';
+
+  html += '<div id="p1AddPlanPanel" class="p1-add-modal__panel"' + (defaultMode === "plan" ? '' : ' hidden') + '>';
+  html += '<label for="p1AddPlanOther">Bezeichnung</label>';
+  html += '<input type="text" id="p1AddPlanOther" class="p1-add-modal__input" placeholder="z.\u00a0B. Custom Integration Team">';
+  html += '<p class="bc-muted p1-add-modal__hint" style="font-size:.76rem;margin:.35rem 0 0">Reine Planung ohne Phase-1-IST. Die Verkn\u00fcpfung erh\u00e4lt eine eigene ID.</p>';
+  html += '</div>';
+  html += '</div>';
+  return html;
 }
 
 function renderP1RolleAddModalBody() {
@@ -2246,8 +3204,13 @@ window.openP1AddItemModal = async function (areaKey, categoryKey) {
     if (confirmBtn) confirmBtn.disabled = !refreshed || !adoptable.length;
     return;
   }
-  if (areaKey === "gliederungen" || areaKey === "rollen") {
-    body.innerHTML = areaKey === "gliederungen" ? renderP1GliederungAddModalBody() : renderP1RolleAddModalBody();
+  if (areaKey === "gliederungen") {
+    body.innerHTML = renderP1GliederungAddModalBody();
+    syncP1AddItemModalMode();
+    return;
+  }
+  if (areaKey === "rollen") {
+    body.innerHTML = renderP1RolleAddModalBody();
     syncP1AddPlanOther();
     return;
   }
@@ -2296,7 +3259,43 @@ window.confirmP1AddItem = async function () {
       personalnummer: item.personalnummer,
       source: "phase1",
     });
-  } else if (areaKey === "gliederungen" || areaKey === "rollen") {
+  } else if (areaKey === "gliederungen") {
+    const mode = document.querySelector('input[name="p1AddItemMode"]:checked')?.value || "plan";
+    if (mode === "phase1") {
+      const selected = document.getElementById("p1AddPhase1Select")?.value || "";
+      if (!selected) {
+        alert("Bitte einen Phase-1-Bereich ausw\u00e4hlen.");
+        return;
+      }
+      const item = getPhase1SummaryItems("gliederungen").find(function (i) {
+        return String(i.id) === String(selected);
+      });
+      if (!item) {
+        alert("Phase-1-Bereich nicht gefunden.");
+        return;
+      }
+      track = p1ApplyEntityRefToTrack(areaKey, {
+        subcategory: item.subcategory,
+        orgItemId: item.id,
+        source: "phase1",
+      });
+    } else {
+      const name = String(document.getElementById("p1AddPlanOther")?.value || "").trim();
+      if (!name) {
+        alert("Bitte eine Bezeichnung eingeben.");
+        document.getElementById("p1AddPlanOther")?.focus();
+        return;
+      }
+      const planOrgId = typeof crypto !== "undefined" && crypto.randomUUID
+        ? crypto.randomUUID()
+        : uid();
+      track = p1ApplyEntityRefToTrack(areaKey, {
+        subcategory: name,
+        orgItemId: planOrgId,
+        source: "plan",
+      });
+    }
+  } else if (areaKey === "rollen") {
     const sel = document.getElementById("p1AddPlanSelect");
     const other = document.getElementById("p1AddPlanOther");
     const sonstiges = typeof SELECT_SONSTIGES !== "undefined" ? SELECT_SONSTIGES : "__sonstiges__";
@@ -2444,25 +3443,15 @@ window.addP1Entry = function(ref, yr) {
   });
 };
 
-window.addP1EmployeeSkillEntry = function(ref, yr, skillPlanKind) {
-  if (!requireBcSaveUnit()) return;
-  const resolved = p1ResolveTrackRef(ref);
-  if (!resolved || resolved.area !== "mitarbeiter") return;
-  const openState = collectP1OpenState();
-  const entries = getP1Entries(resolved.area, resolved.track, yr);
-  entries.unshift(p1EmployeeSkillPlanTemplate(resolved.area, resolved.track, yr, skillPlanKind));
-  setP1Entries(resolved.area, resolved.track, yr, entries);
-  initPlanungNew({
-    skipFetch: true,
-    openState: openState,
-    focusTarget: { area: resolved.area, track: resolved.track, yr: yr, idx: 0 },
-  });
+window.addP1EmployeeSkillEntry = function() {
+  // Katalog-Skills werden automatisch angelegt; manuelles Hinzufügen entfällt.
 };
 
 window.delP1Entry = function(ref, yr, idx) {
-  if (!confirm("Meilenstein l\u00f6schen?")) return;
   const resolved = p1ResolveTrackRef(ref);
   if (!resolved) return;
+  if (resolved.area === "mitarbeiter") return;
+  if (!confirm("Meilenstein l\u00f6schen?")) return;
   const openState = collectP1OpenState();
   const entries = getP1Entries(resolved.area, resolved.track, yr);
   entries.splice(idx, 1);
@@ -2479,13 +3468,17 @@ window.delP1YearEntries = async function (ref, yr) {
   const entries = getP1Entries(resolved.area, resolved.track, yr);
   if (!entries.length) return;
   const deleteLabel = resolved.area === "mitarbeiter"
-    ? "Alle " + entries.length + " Skill(s) f\u00fcr " + yr + " l\u00f6schen?"
+    ? "Alle Bewertungen f\u00fcr " + yr + " zur\u00fccksetzen?"
     : "Alle " + entries.length + " Meilenstein(e) f\u00fcr " + yr + " l\u00f6schen?";
   if (!confirm(deleteLabel)) return;
   if (!requireBcSaveUnit()) return;
   const openState = collectP1OpenState();
-  setP1Entries(resolved.area, resolved.track, yr, []);
-  seedP1TrackMilestonesForAllYears(resolved.area, resolved.track);
+  if (resolved.area === "mitarbeiter") {
+    ensureP1EmployeeSkillCatalog(resolved.area, resolved.track, yr, []);
+  } else {
+    setP1Entries(resolved.area, resolved.track, yr, []);
+    seedP1TrackMilestonesForAllYears(resolved.area, resolved.track);
+  }
   await savePlan({ allowIncomplete: true });
   initPlanungNew({
     skipFetch: true,
@@ -2494,11 +3487,30 @@ window.delP1YearEntries = async function (ref, yr) {
   });
 };
 
+function ensureP1YearEntry(area, track, yr, idx) {
+  let entries = getP1Entries(area, track, yr);
+  if (!entries[idx]) {
+    if (area === "mitarbeiter") {
+      ensureP1EmployeeSkillCatalog(area, track, yr, entries);
+    } else {
+      entries = entries.slice();
+      while (entries.length <= idx) {
+        entries.push(p1MilestoneTemplate(area, track, yr));
+      }
+      setP1Entries(area, track, yr, entries);
+    }
+  }
+  return getP1Entries(area, track, yr);
+}
+
 window.delP1Track = async function (ref) {
-  if (!confirm("Meilenstein und alle Jahres-Eintr\u00e4ge l\u00f6schen?")) return;
-  if (!requireBcSaveUnit()) return;
   const resolved = p1ResolveTrackRef(ref);
   if (!resolved) return;
+  const deleteLabel = p1UsesFlatYearPlan(resolved.area)
+    ? p1FlatTrackDeleteLabel(resolved.area) + "?"
+    : "Meilenstein und alle Jahres-Eintr\u00e4ge l\u00f6schen?";
+  if (!confirm(deleteLabel)) return;
+  if (!requireBcSaveUnit()) return;
   const openState = collectP1OpenState();
   removeP1TrackMeasures(resolved.area, resolved.track);
   ensureP1Tracks();
@@ -2515,17 +3527,32 @@ window.delP1Track = async function (ref) {
 window.updP1 = function(el, ref, yr, idx, field) {
   const resolved = p1ResolveTrackRef(ref);
   if (!resolved) return;
-  const entries = getP1Entries(resolved.area, resolved.track, yr);
+  const entries = ensureP1YearEntry(resolved.area, resolved.track, yr, idx);
   if (!entries[idx]) return;
   entries[idx][field] = el.value;
   if (entries[idx].skillPlanKind) p1NormalizeEmployeeSkillPlanEntry(entries[idx]);
   entries[idx].updatedAt = new Date().toISOString();
   setP1Entries(resolved.area, resolved.track, yr, entries);
+  if (p1UsesFlatYearPlan(resolved.area) && (field === "ergebnis" || field === "ziel_quartal")) {
+    p1ToggleFlatPlanRowFilled(el, resolved.area, entries[idx]);
+  }
+  if (resolved.area === "mitarbeiter" && field === "ergebnis") {
+    const row = el.closest(".p1-skill-plan__row");
+    if (row) {
+      row.classList.toggle("p1-skill-plan__row--filled", p1MilestoneHasPlanContent(entries[idx], resolved.area));
+    }
+    const acc = el.closest(".p1-acc");
+    const countEl = acc?.querySelector(".p1-acc__count");
+    if (countEl) countEl.textContent = p1EmployeeSkillYearCountText(resolved.area, resolved.track, yr);
+    const block = document.getElementById(p1BlockDomId(resolved.area, resolved.track));
+    const trackCountEl = block?.querySelector(".p1-subcat__count");
+    if (trackCountEl) trackCountEl.textContent = p1TrackMilestoneCountLabel(resolved.area, resolved.track);
+  }
   if (field === "bezeichnung") {
     const mid = p1MilestoneDomId(resolved.area, resolved.track, yr, idx);
     const titleEl = document.getElementById(mid + "_title");
     if (titleEl) {
-      titleEl.textContent = p1MilestoneTitle(entries[idx]);
+      titleEl.textContent = p1MilestoneTitle(entries[idx], resolved.area, yr);
       titleEl.classList.toggle("p1-ms__title--empty", !String(el.value || "").trim());
     }
   }
@@ -2534,10 +3561,16 @@ window.updP1 = function(el, ref, yr, idx, field) {
 window.updP1Num = function(el, ref, yr, idx, field) {
   const resolved = p1ResolveTrackRef(ref);
   if (!resolved) return;
-  const entries = getP1Entries(resolved.area, resolved.track, yr);
+  const entries = ensureP1YearEntry(resolved.area, resolved.track, yr, idx);
   if (!entries[idx]) return;
-  const v = el.value.trim();
-  entries[idx][field] = v === "" ? null : Number(v);
+  const normalized = p1NormalizeNumericFieldValue(field, el.value);
+  entries[idx][field] = normalized;
+  if (el) {
+    el.value = normalized == null ? "" : String(normalized);
+  }
+  if (p1UsesFlatYearPlan(resolved.area)) {
+    p1ToggleFlatPlanRowFilled(el, resolved.area, entries[idx]);
+  }
   if (entries[idx].skillPlanKind) p1NormalizeEmployeeSkillPlanEntry(entries[idx]);
   entries[idx].updatedAt = new Date().toISOString();
   setP1Entries(resolved.area, resolved.track, yr, entries);
@@ -2564,10 +3597,48 @@ window.updP1SkillLevel = function(el, ref, yr, idx) {
   const entries = getP1Entries(resolved.area, resolved.track, yr);
   if (!entries[idx]) return;
   const v = el.value.trim();
-  entries[idx].ziel_skill_level_min = v === "" ? null : Number(v);
+  entries[idx].ziel_skill_level_min = v === "" ? 1 : Number(v);
+  entries[idx].skill_level_explicit = true;
   p1NormalizeEmployeeSkillPlanEntry(entries[idx]);
   entries[idx].updatedAt = new Date().toISOString();
   setP1Entries(resolved.area, resolved.track, yr, entries);
+};
+
+window.setP1SkillLevel = function(ref, yr, idx, level) {
+  if (!requireBcSaveUnit()) return;
+  const resolved = p1ResolveTrackRef(ref);
+  if (!resolved || resolved.area !== "mitarbeiter") return;
+  const entries = ensureP1YearEntry(resolved.area, resolved.track, yr, idx);
+  if (!entries[idx]) return;
+  const lvl = Math.max(1, Math.min(5, Number(level) || 1));
+  entries[idx].ziel_skill_level_min = lvl;
+  entries[idx].skill_level_explicit = true;
+  p1NormalizeEmployeeSkillPlanEntry(entries[idx]);
+  entries[idx].updatedAt = new Date().toISOString();
+  setP1Entries(resolved.area, resolved.track, yr, entries);
+
+  const block = document.getElementById(p1BlockDomId(resolved.area, resolved.track));
+  const row = block?.querySelector(
+    '.p1-skill-plan[data-yr="' + yr + '"] .p1-skill-plan__row[data-idx="' + idx + '"]'
+  );
+  if (row) {
+    row.querySelectorAll(".p1-skill-level-btn").forEach(function (btn) {
+      const n = Number(btn.textContent);
+      const active = n === lvl;
+      btn.classList.remove("p1-skill-level-btn--active", "p1-skill-level-btn--default");
+      if (active) {
+        btn.classList.add("p1-skill-level-btn--active");
+      }
+      btn.setAttribute("aria-pressed", active ? "true" : "false");
+    });
+    row.classList.toggle("p1-skill-plan__row--filled", p1MilestoneHasPlanContent(entries[idx], resolved.area));
+    const acc = row.closest(".p1-acc");
+    const countEl = acc?.querySelector(".p1-acc__count");
+    if (countEl) countEl.textContent = p1EmployeeSkillYearCountText(resolved.area, resolved.track, yr);
+    const block = document.getElementById(p1BlockDomId(resolved.area, resolved.track));
+    const trackCountEl = block?.querySelector(".p1-subcat__count");
+    if (trackCountEl) trackCountEl.textContent = p1TrackMilestoneCountLabel(resolved.area, resolved.track);
+  }
 };
 
 window.p1SyncEmployeeSkillPlanTitle = function(ref, yr, idx) {
@@ -2604,11 +3675,93 @@ window.moveP1Track = async function (ref, delta) {
   });
 };
 
+window.p1SyncPortfolioMsTitle = function (el) {
+  const wrap = el.closest(".p1-ms");
+  const titleEl = wrap?.querySelector(".p1-ms__title");
+  if (!titleEl) return;
+  const yr = wrap?.dataset?.yr;
+  const text = String(el.value || "").trim();
+  const firstLine = text.split("\n")[0].trim();
+  if (firstLine) {
+    titleEl.textContent = firstLine.length <= 96 ? firstLine : firstLine.slice(0, 93) + "\u2026";
+    titleEl.classList.remove("p1-ms__title--empty");
+  } else {
+    titleEl.textContent = yr ? "Beschreibung f\u00fcr " + yr + "\u2026" : "Beschreibung eingeben\u2026";
+    titleEl.classList.add("p1-ms__title--empty");
+  }
+};
+
+function patchP1TrackInMeta(area, track, patch) {
+  ensureP1Tracks();
+  let updated = null;
+  const list = plan.meta.p1Tracks[area] || [];
+  plan.meta.p1Tracks[area] = list.map(function (t) {
+    if (!p1TracksMatch(area, t, track)) return t;
+    updated = p1ApplyEntityRefToTrack(area, Object.assign({}, t, patch));
+    return updated;
+  });
+  return updated;
+}
+
+window.updP1TrackField = function (el, ref, field) {
+  if (!requireBcSaveUnit()) return;
+  const resolved = p1ResolveTrackRef(ref);
+  if (!resolved || !p1UsesFlatYearPlan(resolved.area)) return;
+  const area = resolved.area;
+  const value = String(el.value || "").trim();
+  if (field === "bezeichnung") {
+    const updated = patchP1TrackInMeta(area, resolved.track, { subcategory: value });
+    syncTrackSubcategoryInPlan(area, resolved.track, value);
+    const block = document.getElementById(p1BlockDomId(area, updated || resolved.track));
+    const labelEl = block?.querySelector(".p1-subcat__label");
+    if (labelEl) labelEl.textContent = value || "\u2013";
+    YEARS.forEach(function (yr) {
+      const entries = getP1Entries(area, resolved.track, yr);
+      entries.forEach(function (ms) {
+        ms.bezeichnung = value;
+      });
+      if (entries.length) setP1Entries(area, resolved.track, yr, entries);
+    });
+  } else if (field === "verantwortlich") {
+    patchP1TrackInMeta(area, resolved.track, { verantwortlich: value });
+  }
+};
+
+async function applyFlatTrackMetaFromDom(area, track) {
+  const domId = p1TrackDomId(area, track);
+  const bezEl = document.getElementById(domId + "_bezeichnung");
+  const verEl = document.getElementById(domId + "_verantwortlich");
+  const newName = bezEl ? String(bezEl.value || "").trim() : "";
+  const verantwortlich = verEl ? String(verEl.value || "").trim() : "";
+  const currentName = resolveEntityLabel(area, track);
+  if (area === "portfolio") {
+    const phase1Id = track.phase1Id || (track.entityRef?.kind === "portfolio" ? track.entityRef.id : null);
+    if (phase1Id && newName && newName !== currentName) {
+      await renamePortfolioPhase1Entry(phase1Id, newName);
+      await refreshP1SummaryCache();
+    }
+  }
+  if (newName) syncTrackSubcategoryInPlan(area, track, newName);
+  return patchP1TrackInMeta(area, track, {
+    subcategory: newName || track.subcategory,
+    verantwortlich: verantwortlich,
+  });
+};
+
 window.saveP1Track = async function(ref) {
   if (!requireBcSaveUnit()) return;
   const resolved = p1ResolveTrackRef(ref);
   if (!resolved) return;
-  p1FlushTrackFormToPlan(resolved.area, resolved.track);
+  let updatedTrack = resolved.track;
+  if (p1UsesFlatYearPlan(resolved.area)) {
+    try {
+      updatedTrack = await applyFlatTrackMetaFromDom(resolved.area, resolved.track) || resolved.track;
+    } catch (e) {
+      alert(e.message || "Speichern fehlgeschlagen.");
+      return;
+    }
+  }
+  p1FlushTrackFormToPlan(resolved.area, updatedTrack);
   const openState = collectP1OpenState();
   const ok = await savePlan({ allowIncomplete: true });
   if (!ok) return;
@@ -2616,7 +3769,7 @@ window.saveP1Track = async function(ref) {
   initPlanungNew({
     skipFetch: true,
     openState: openState,
-    focusTarget: { area: resolved.area, track: resolved.track },
+    focusTarget: { area: resolved.area, track: updatedTrack },
   });
 };
 
@@ -2627,15 +3780,14 @@ window.saveP1Milestone = async function(ref, yr, idx) {
   const ms = entries[idx];
   if (!ms) return;
   if (ms.skillPlanKind) {
-    if (!String(ms.kategorie || "").trim()) {
-      alert("Bitte eine Skill-Kategorie ausw\u00e4hlen.");
-      return;
-    }
-    if (ms.ziel_skill_level_min == null || !Number.isFinite(Number(ms.ziel_skill_level_min))) {
-      alert("Bitte ein Ziel-Level (1\u20135) angeben.");
-      return;
-    }
     p1NormalizeEmployeeSkillPlanEntry(ms);
+    setP1Entries(resolved.area, resolved.track, yr, entries);
+  } else if (p1UsesFlatYearPlan(resolved.area)) {
+    p1FlushMilestoneFieldsFromDom(resolved.area, resolved.track, yr, idx, ms);
+    if (!String(ms.ergebnis || "").trim()) {
+      alert("Bitte das Feld \u201eBeschreibung\u201c ausf\u00fcllen.");
+      return;
+    }
     setP1Entries(resolved.area, resolved.track, yr, entries);
   } else {
     if (!String(ms.bezeichnung || "").trim()) {
@@ -2679,7 +3831,9 @@ function syncTrackSubcategoryInPlan(area, track, newSubcategory) {
   Object.keys(plan.measures || {}).forEach(function (key) {
     if (key.indexOf(keyPrefix) !== 0) return;
     (plan.measures[key] || []).forEach(function (m) {
-      if (m && m.kind === "p1Year") m.subcategory = name;
+      if (!m || m.kind !== "p1Year") return;
+      m.subcategory = name;
+      if (p1UsesFlatYearPlan(area)) m.bezeichnung = name;
     });
   });
 

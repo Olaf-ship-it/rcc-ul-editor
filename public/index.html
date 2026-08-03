@@ -4,7 +4,7 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>RCC Strategische Planung</title>
-<link rel="stylesheet" href="/styles.css">
+<link rel="stylesheet" href="/styles.css?v=20260803a">
 
 </head>
 <body class="session-booting">
@@ -97,10 +97,8 @@
     <div class="tab" data-page="export">📤 Export</div>
   </div>
   <div class="tabs-nav-main" id="tabsNavPhase3" style="display:none">
-    <div class="tab active" data-page="fortschritt-new">📊 Fortschritt NEW</div>
+    <div class="tab active" data-page="fortschritt">📊 Fortschritt</div>
     <div class="tab" data-page="gesamtfortschritt">📈 Gesamtfortschritt</div>
-    <div class="tab" data-page="gesamtfortschritt-new">📈 Gesamtfortschritt NEW</div>
-    <div class="tab" data-page="fortschritt">📊 Detailfortschritt</div>
     <div class="tab" data-page="fortschritt-erlaeuterung">📘 Erläuterung Berechnung</div>
   </div>
   </div>
@@ -108,6 +106,10 @@
 </div>
 
 <div class="main" id="appMain" style="display:none">
+
+<div class="card baseline-kickoff-bar" id="baselineKickoffBar" style="display:none;margin-bottom:1rem;border-left-color:var(--rc-accent2)" role="status">
+  <div id="baselineKickoffBarInner"></div>
+</div>
 
 <!-- ===== PORTFOLIO ===== -->
 <div class="page active" id="page-portfolio">
@@ -414,7 +416,7 @@
     </p>
   </div>
 
-  <form id="organisationForm" autocomplete="off">
+  <form id="organisationForm" autocomplete="off" novalidate>
     <input type="hidden" id="org_editId" value="">
 
     <details class="card admin-collapsible admin-collapsible--accent organisation-section" id="orgSectionStichtag" style="border-left-color:var(--rc-accent2);margin-bottom:1rem" open>
@@ -572,8 +574,8 @@
           </summary>
           <div class="admin-collapsible__body" id="sk_assessment_section">
             <ul id="sk_assessment_rows" class="skill-assessment-list" aria-label="Fachskills"></ul>
-            <p id="sk_assessment_empty" class="skill-assessment-empty">Noch keine Fachskills erfasst.</p>
-            <button type="button" class="btn btn-sm btn-outline" onclick="addSkillAssessmentRowFromButton()">+ Fachskill</button>
+            <p id="sk_assessment_empty" class="skill-assessment-empty" style="display:none">Noch keine Fachskills erfasst.</p>
+            <button type="button" class="btn btn-sm btn-outline" onclick="addSkillAssessmentRowFromButton()">+ Sonstiger Fachskill</button>
           </div>
         </details>
 
@@ -584,8 +586,8 @@
           </summary>
           <div class="admin-collapsible__body" id="ss_assessment_section">
             <ul id="ss_assessment_rows" class="skill-assessment-list" aria-label="Soft Skills"></ul>
-            <p id="ss_assessment_empty" class="skill-assessment-empty">Noch keine Soft Skills erfasst.</p>
-            <button type="button" class="btn btn-sm btn-outline" onclick="addSoftSkillAssessmentRowFromButton()">+ Soft Skill</button>
+            <p id="ss_assessment_empty" class="skill-assessment-empty" style="display:none">Noch keine Soft Skills erfasst.</p>
+            <button type="button" class="btn btn-sm btn-outline" onclick="addSoftSkillAssessmentRowFromButton()">+ Sonstiger Soft Skill</button>
           </div>
         </details>
 
@@ -613,33 +615,22 @@
     <h3>Alle Eintraege – <span id="ovUnitLabel"></span></h3>
     <div class="filter-row">
       <div><label>Typ</label><select id="ov_filterType"><option value="">Alle</option><option value="portfolio">Portfolio</option><option value="organisation">Organisation</option><option value="skill">Skills</option></select></div>
-      <div><label>Workstream</label><select id="ov_filterWS"><option value="">Alle</option><option>Portfolio & Markt</option><option>Skills & Mindset</option><option>Organisation & Rollen</option><option>Partner & Ecosystem</option></select></div>
       <div><label>Suche</label><input type="text" id="ov_filterSearch" placeholder="Freitext..."></div>
     </div>
     <div class="tbl-wrap">
-      <table class="entries"><thead id="overviewHead"><tr><th>Typ</th><th>WS</th><th>Kategorie/Name</th><th>Ampel</th><th>Detail</th><th>Aktionen</th></tr></thead>
+      <table class="entries"><thead id="overviewHead"><tr><th>Typ</th><th>Kategorie/Name</th><th>Ampel</th><th>Detail</th><th>Aktionen</th></tr></thead>
       <tbody id="overviewBody"></tbody></table>
     </div>
     <p id="noOverview" style="text-align:center;color:var(--rc-muted);padding:2rem;display:none">Noch keine Eintraege.</p>
   </div>
 </div>
 
-<!-- ===== GESAMTFORTSCHRITT (Zeitstrahl 2026–2029) ===== -->
+<!-- ===== GESAMTFORTSCHRITT (Phase-1-basiert) ===== -->
 <div class="page" id="page-gesamtfortschritt">
   <div class="card" style="border-left-color:var(--rc-accent2);margin-bottom:1rem">
-    <div class="ft-tip-title-row ft-has-tip" tabindex="0" role="button" aria-expanded="false" aria-label="Gesamtfortschritt – Klicken für Erklärung">
-      <span class="ft-stat-tip-icon" aria-hidden="true">i</span>
-      <h3 style="margin:0">Gesamtfortschritt · Zeitstrahl <span class="planning-yr-range">2026–2029</span></h3>
-      <div class="ft-stat-tooltip ft-stat-tooltip--title" role="dialog" aria-label="Erklärung Gesamtfortschritt">
-        <button type="button" class="ft-stat-tip-close" aria-label="Schließen">×</button>
-        <strong>Gesamtfortschritt · Zeitstrahl <span class="planning-yr-range">2026–2029</span></strong>
-        <p>Zeigt den Planverlauf der drei Kern-KPIs (Umsatz, Headcount, Zertifizierung) über den konfigurierten Planungszeitraum.</p>
-        <p><b>SOLL (durchgezogene Linie)</b> – jährliche Zielwerte aus Backcasting-Meilensteinen. <b>IST (gestrichelte Linie)</b> – projizierter Verlauf vom Ist-Stand linear zum Soll-Ziel.</p>
-        <p>Bei <b>Alle Units</b> (Admin) werden alle Standard-Units farblich überlagert. Für IST/SOLL-Details je Unit nutzen Sie das Register <em>Detailfortschritt</em>.</p>
-      </div>
-    </div>
+    <h3 style="margin:0">Gesamtfortschritt &middot; Phase-1-basiert <span class="planning-yr-range">2026&ndash;2029</span></h3>
     <p style="color:var(--rc-muted);font-size:.8rem;margin-bottom:.75rem">
-      Überblick über Plan-Meilensteine und projizierten Ist-Verlauf – je Unit oder alle Standard-Units.
+      Zeitstrahl auf Basis der Backcasting-Planung (p1Year-Meilensteine). Zeigt Umsatz, Headcount und Zertifizierung.
     </p>
     <div class="fortschritt-toolbar">
       <div class="fortschritt-toolbar-actions">
@@ -650,56 +641,9 @@
   <div id="gesamtfortschrittContent"></div>
 </div>
 
-<!-- ===== GESAMTFORTSCHRITT NEW (Phase-1-basiert) ===== -->
-<div class="page" id="page-gesamtfortschritt-new">
-  <div class="card" style="border-left-color:var(--rc-accent2);margin-bottom:1rem">
-    <h3 style="margin:0">Gesamtfortschritt NEW &middot; Phase-1-basiert <span class="planning-yr-range">2026&ndash;2029</span></h3>
-    <p style="color:var(--rc-muted);font-size:.8rem;margin-bottom:.75rem">
-      Zeitstrahl auf Basis der Planung NEW (p1Year-Meilensteine). Zeigt Umsatz, Headcount und Zertifizierung.
-    </p>
-    <div class="fortschritt-toolbar">
-      <div class="fortschritt-toolbar-actions">
-        <button type="button" class="btn btn-outline btn-sm" id="btnGesamtfortschrittNewReload">Aktualisieren</button>
-      </div>
-    </div>
-  </div>
-  <div id="gesamtfortschrittNewContent"></div>
-</div>
-
-<!-- ===== FORTSCHRITT (IST vs. SOLL) ===== -->
+<!-- ===== FORTSCHRITT (Phase-1-basiert) ===== -->
 <div class="page" id="page-fortschritt">
-  <div class="card" style="border-left-color:var(--rc-accent2);margin-bottom:1rem">
-    <div class="ft-tip-title-row ft-has-tip" tabindex="0" role="button" aria-expanded="false" aria-label="Detailfortschritt – Klicken für Erklärung">
-      <span class="ft-stat-tip-icon" aria-hidden="true">i</span>
-      <h3 style="margin:0">Detailfortschritt · IST vs. SOLL</h3>
-      <div class="ft-stat-tooltip ft-stat-tooltip--title" role="dialog" aria-label="Erklärung Detailfortschritt">
-        <button type="button" class="ft-stat-tip-close" aria-label="Schließen">×</button>
-        <strong>Detailfortschritt · IST vs. SOLL</strong>
-        <p>Diese Ansicht vergleicht den <b>Ist-Stand</b> aus Phase&nbsp;1 (Status Aufnahme) mit den <b>Soll-Vorgaben</b> aus der Backcasting-Planung (Phase&nbsp;2) für die gewählte Unit.</p>
-        <p><b>IST</b> = aktuelle Erfassung (Portfolio, Organisation, Skills). <b>SOLL</b> = aggregierte Zielwerte aus Plan-Meilensteinen des gewählten Jahres.</p>
-        <p>Den Zeitstrahl (<span class="planning-yr-range">2026–2029</span>) finden Sie im Register <em>Gesamtfortschritt</em>. Das Jahr steuert hier die Detail-Ansicht (KPI-Karten, Meilensteine). Demo-Datensätze pflegen Sie im Admin-Bereich unter dem Register <em>Demo-Daten</em>.</p>
-        <p>Feldzuordnung Phase&nbsp;1 ↔ Backcasting: Register <em>Erläuterung Berechnung</em>.</p>
-      </div>
-    </div>
-    <p style="color:var(--rc-muted);font-size:.8rem;margin-bottom:.75rem">
-      Vergleicht Phase 1 (Status Aufnahme) mit der Backcasting-Planung (Phase 2) je Unit und Jahr. Im Filter <em>Alle Jahre</em> werden alle Planjahre zusammen angezeigt.
-    </p>
-    <div class="fortschritt-toolbar">
-      <div>
-        <label>Jahr (Plan)</label>
-        <select id="fortschrittYear"></select>
-      </div>
-      <div class="fortschritt-toolbar-actions">
-        <button type="button" class="btn btn-outline btn-sm" id="btnFortschrittReload">Aktualisieren</button>
-      </div>
-    </div>
-  </div>
   <div id="fortschrittContent"></div>
-</div>
-
-<!-- ===== FORTSCHRITT NEW (Phase-1-basiert) ===== -->
-<div class="page" id="page-fortschritt-new">
-  <div id="fortschrittNewContent"></div>
 </div>
 
 <!-- ===== ERLÄUTERUNG BERECHNUNG ===== -->
@@ -707,7 +651,7 @@
   <div class="card" style="border-left-color:var(--rc-accent2);margin-bottom:1rem">
     <h3 style="margin:0">Erläuterung Berechnung</h3>
     <p style="color:var(--rc-muted);font-size:.8rem;margin-bottom:0">
-      Methodik und Feldzuordnung zwischen Phase&nbsp;1 (Statusaufnahme) und Phase&nbsp;2 (Backcasting) für Gesamt- und Detailfortschritt.
+      Methodik und Feldzuordnung zwischen Phase&nbsp;1 (Statusaufnahme) und Phase&nbsp;2 (Backcasting) für Fortschritt und Gesamtfortschritt.
     </p>
   </div>
   <div id="fortschrittErlaeuterungMount"></div>
@@ -1116,7 +1060,7 @@
       <p class="demo-daten-lead">
         Lädt je Unit vollständige <strong>Phase&nbsp;1</strong>-Daten (Portfolio, Organisation, Skills) und einen
         <strong>Phase&nbsp;2</strong>-Backcasting-Plan (Meilensteine 2026–2029).
-        Den IST/SOLL-Vergleich finden Sie im Register <strong>Detailfortschritt</strong>, den Zeitstrahl im Register <strong>Gesamtfortschritt</strong>.
+        Den IST/SOLL-Vergleich finden Sie im Register <strong>Fortschritt</strong>, den Zeitstrahl im Register <strong>Gesamtfortschritt</strong>.
         Demo-Einträge sind markiert und überschreiben keine echten Daten.
       </p>
       <div class="demo-daten-actions">
@@ -1133,7 +1077,7 @@
         <ul class="fortschritt-demo-info__list">
           <li><b>Phase 1</b> – Portfolio-Positionen, Organisation (Gliederungen, Rollen) und Skill-Matrix mit Mitarbeitenden</li>
           <li><b>Phase 2</b> – Backcasting-Plan mit Meilensteinen für 2026–2029 (Umsatz, Headcount, Zertifizierung, Skill-Ziele)</li>
-          <li><b>Phase 3</b> – daraus abgeleitete Auswertungen: Zeitstrahl im Register <em>Gesamtfortschritt</em>, IST/SOLL-Details im Register <em>Detailfortschritt</em></li>
+          <li><b>Phase 3</b> – daraus abgeleitete Auswertungen: IST/SOLL im Register <em>Fortschritt</em>, Zeitstrahl im Register <em>Gesamtfortschritt</em></li>
         </ul>
         <h4 class="fortschritt-demo-info__h">Standard-Units &amp; Profile</h4>
         <div class="tbl-wrap">
@@ -1176,8 +1120,8 @@
           <li><b>Demo entfernen</b> – löscht ausschließlich Demo-Einträge und Demo-Pläne; echte Daten bleiben erhalten</li>
         </ul>
         <p class="fortschritt-demo-info__hint">
-          Der Zeitstrahl (2026–2029) ist im Register <em>Gesamtfortschritt</em> einsehbar.
-          IST/SOLL-Details je Unit im Register <em>Detailfortschritt</em> (konkrete Unit im Filter wählen).
+          Der Zeitstrahl (<span class="planning-yr-range">2026–2029</span>) ist im Register <em>Gesamtfortschritt</em> einsehbar.
+          IST/SOLL-Details je Unit im Register <em>Fortschritt</em> (konkrete Unit im Filter wählen).
         </p>
       </div>
     </div>
@@ -1372,7 +1316,7 @@
         <label class="unit-checkbox-item"><input type="checkbox" data-app-module="backcasting"> Phase 2 · Backcasting-Planung</label>
         <label class="unit-checkbox-item"><input type="checkbox" data-app-module="fortschritt"> Phase 3 · Fortschritt</label>
       </div>
-      <p style="color:var(--rc-muted);font-size:.75rem;margin:0">Freischaltung von Phase 2 (<code>/backcasting/</code>) und Phase 3 (Gesamtfortschritt / Detailfortschritt) für <strong>Unit Leiter</strong>, <strong>Stellv. Unit Leiter</strong>, <strong>CC Leiter</strong> und <strong>Regionalleiter</strong>. Bei <strong>Admin</strong> oder <strong>Super Admin</strong> sind beide Phasen automatisch aktiv und nicht änderbar. <strong>Demo-Daten</strong> pflegen Admins im Register <em>Demo-Daten</em> in der Administration.</p>
+      <p style="color:var(--rc-muted);font-size:.75rem;margin:0">Freischaltung von Phase 2 (<code>/backcasting/</code>) und Phase 3 (Fortschritt / Gesamtfortschritt) für <strong>Unit Leiter</strong>, <strong>Stellv. Unit Leiter</strong>, <strong>CC Leiter</strong> und <strong>Regionalleiter</strong>. Bei <strong>Admin</strong> oder <strong>Super Admin</strong> sind beide Phasen automatisch aktiv und nicht änderbar. <strong>Demo-Daten</strong> pflegen Admins im Register <em>Demo-Daten</em> in der Administration.</p>
     </div>
     <div class="admin-user-section" style="margin-bottom:.65rem">
       <h4 style="margin:0 0 .35rem;font-size:.9rem">Rollen (Organisation)</h4>
@@ -1426,8 +1370,8 @@
 <script src="/js/harmonization-data.js"></script>
 <script src="/js/view-unit-persist.js"></script>
 <script src="/js/presence.js"></script>
-<script src="/js/fortschritt-dashboard.js?v=20260702i"></script>
-<script src="/js/fortschritt-new.js?v=20260702i" defer></script>
-<script src="/backcasting/js/guidelines.js?v=20260626a"></script>
+<script src="/js/fortschritt-dashboard.js?v=20260706c"></script>
+<script src="/js/fortschritt-new.js?v=20260706c" defer></script>
+<script src="/backcasting/js/guidelines.js?v=20260803a"></script>
 <script src="/js/roles-permissions-doc.js"></script>
-<script src="/js/app.js"></script>
+<script src="/js/app.js?v=20260703e"></script>
